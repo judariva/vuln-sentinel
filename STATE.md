@@ -2,34 +2,35 @@
 
 Actualizado: 2026-11-25.
 
-## Fase actual: F0 cerrada; plan con las decisiones de Juan; repo privado en GitHub
+## Fase actual: plan cerrado salvo J-2; siguiente, F1a-0
 
 | Elemento | Estado |
 |---|---|
-| Licencia | **Todo Apache-2.0** (ADR-0011). ADR-0018 (open core) rechazado. Contribuciones con DCO (`CONTRIBUTING.md`) |
-| Sostenibilidad | Donaciones, no venta. Donaciones en Bitcoin sin custodia: ADR-0021 (propuesto), fase F4b con el interruptor `donations.enabled` |
-| Transparencia | Pantalla pública «Coste del proyecto»: coste real frente a lo recibido (§9, §10). Tablas `cost_daily` y `donation_received`, sin datos del donante; test que lo comprueba |
-| Redes | ADR-0017 propuesto: Buffer comprobado; aceptable con confirmación por escrito de su cláusula 4.2(n) |
-| VulnCheck KEV | Fuera de la v1 por sus términos (ADR-0020) |
-| ADR | 0001–0021. Propuestos: 0017 y 0021. Rechazado: 0018 |
-| Repo | Privado en GitHub. CI en verde en el primer push. **`main` sin protección**: GitHub no permite proteger ramas (ni rulesets) en repos privados con el plan gratuito (HTTP 403, «Upgrade to GitHub Pro or make this repository public»). Mientras tanto, todo cambio entra por PR por convención. Se aplica en cuanto haya GitHub Pro o el repo sea público (J-8). Hacerlo público lo decide Juan, con otra búsqueda de fugas sobre el historial |
+| Licencia | Todo Apache-2.0 (ADR-0011). ADR-0018 (open core) rechazado. Contribuciones con DCO (`CONTRIBUTING.md`) |
+| Sostenibilidad | Donaciones, no venta. **ADR-0021 aceptado**: lista on-chain pregenerada offline (en secret) + Phoenix con totales manuales, detrás de `donations.enabled`, en la F4b |
+| Transparencia | Pantalla pública «Coste del proyecto» (§9, §10). Tablas `cost_daily` y `donation_received`, sin datos del donante; test que lo comprueba |
+| Redes | ADR-0017 propuesto: **Zernio** recomendada; Buffer descartado por su cláusula 4.2(n). Pendiente de Juan (J-2) |
+| VulnCheck KEV | Fuera (ADR-0020; J-3 cerrada) |
+| ADR | 0001–0021. Propuesto: 0017. Rechazado: 0018 |
+| Repo | **Privado** en GitHub. Pasa a público al cerrar la F1a, tras una búsqueda de fugas sobre todo el historial (J-7) |
+| `main` | Sin protección de GitHub mientras sea privado (sin GitHub Pro, J-8). **Regla 9 de `CLAUDE.md`**: ninguna sesión hace push a `main`; solo ramas y PR; fusiona Juan. Hook `pre-push` local: `bash .githooks/install.sh`. Al hacerlo público se aplica la protección de rama |
+| PR abiertos | #1 (estado de la protección de `main`) y el de esta rama, apilado sobre #1. Los fusiona Juan |
 
 ## Pendiente de Juan
 
-- J-2: aceptar o no ADR-0017 (Buffer, condicionado a su confirmación por escrito).
-- J-3: VulnCheck, solo con permiso por escrito o licencia.
-- J-6: aceptar o no ADR-0021 (donaciones).
-- J-7: hacer público el repo, cuando lo decida.
-- J-8: protección de `main`. Opciones: GitHub Pro (de pago) o esperar a que el repo sea público,
-  donde es gratuita. La configuración (PR obligatorio, check `test` en verde, sin force-push ni
-  borrado, historial lineal) está preparada y se aplica en un minuto.
+- Fusionar los PR abiertos (primero #1).
+- J-2: aceptar o no Zernio (ADR-0017).
 
-## Siguiente: F1a-0 y F1a (sesión nueva)
+## Siguiente: F1a-0 (sesión nueva)
 
-1. **F1a-0**: scripts que generan `exposed-products` y `trusted-exploit-authors` con su criterio, y
-   PR de revisión de Juan. Fusionado antes de cualquier fixture de nginx2root.
-2. **F1a**: modelo de datos, `config/sources.yaml` con uso comercial y aislamiento, reglas,
-   colectores (cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub, nginx.org), feed completo y de
-   alertas, firma, API y reconstrucción de nginx2root.
+1. Instalar el hook (`bash .githooks/install.sh`) y crear una rama desde `main`.
+2. Scripts que generan `config/exposed-products.yaml` y `config/trusted-exploit-authors.yaml` con
+   el criterio escrito en cada fichero, a partir de datos públicos (KEV, metadatos de Metasploit,
+   `credits` de registros CVE), de forma reproducible (fecha de corte y hash de las entradas).
+3. **PR con las dos listas para que Juan las revise ANTES de cualquier fixture de nginx2root**
+   (R7). No se añade a mano ningún autor ni producto pensando en el caso de prueba.
+4. Cuando Juan fusione ese PR, empieza la F1a: modelo de datos, `config/sources.yaml` con uso
+   comercial y aislamiento, reglas, colectores (cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub,
+   nginx.org), feed completo y de alertas, firma, API y reconstrucción de nginx2root.
 
 La búsqueda de fugas de cada push se registra en `local/` (informe de la sesión), no aquí.

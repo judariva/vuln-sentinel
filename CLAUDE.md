@@ -39,6 +39,11 @@ versiona); el resumen público de las decisiones está en `docs/journey/00-orige
    recursos internos ni la **postura de seguridad de la plataforma** (tipo de oferta, reglas,
    políticas, apps, hallazgos). Van en variables y secrets del pipeline o en `local/`, que está en
    `.gitignore`.
+9. **Ninguna sesión hace push a `main`.** Solo ramas y PR, con la CI en verde. **Fusiona Juan.**
+   Mientras el repo sea privado, GitHub no protege `main` sin plan de pago, así que lo impide un
+   hook `pre-push` local: se instala con `bash .githooks/install.sh` al empezar en una máquina o
+   un clon nuevo. El día que el repo sea público, se aplica también la protección de rama de
+   GitHub.
 
 ## Cómo se despliega y quién cambia qué
 

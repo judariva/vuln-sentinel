@@ -83,11 +83,11 @@ tenant) está en `local/ACCESS.md`.
 | ADR-014 | Pipeline con **RBAC Administrator con condición** (R9) | Que el pipeline no pueda darse a sí mismo cualquier rol |
 | ADR-015 | **Continuidad de la suscripción**: al cambiar su modelo de facturación pasa a pago por uso, a cargo de Juan (P-13) | El producto es 24/7; el coste ya está dimensionado para pago por uso (§14) |
 | ADR-016 | **Hosts, nombre y marca en configuración** (P-3) | Objetivo de negocio: migrar a marca y dominio propios cambiando DNS y variables, sin tocar código |
-| ADR-017 | **Redes: feed Atom + herramienta existente** (Buffer recomendada; Postiz autoalojado como alternativa) (P-6) | Sin integrar las API de las redes una a una; lock-in bajo |
+| ADR-017 | **Redes: feed Atom + herramienta existente** de pago con API permitida (**Zernio** recomendada; Upload-Post segunda; Postiz autoalojado como alternativa futura; Buffer descartado) (P-6, J-2) | Sin integrar las API de las redes una a una; lock-in bajo |
 | ADR-018 | ~~Open core con FSL-1.1-ALv2~~ → **rechazado** | Sostenibilidad por donaciones, no por venta |
 | ADR-019 | **Feed completo + feed de alertas**; índice de cambios paginado y páginas selladas en R2 | El consumidor recibe todas las CVE; las listas solo deciden la urgencia |
 | ADR-020 | **Uso comercial de las fuentes**; VulnCheck fuera de la v1; INCIBE y nginx.org solo hechos y enlace (P-5) | Términos comprobados con URL |
-| ADR-021 | **Donaciones solo en Bitcoin** (Lightning y on-chain), sin custodia, con una dirección nueva por donación; las recibe Juan como persona física (propuesto) | Sostenibilidad sin vender datos ni acceso; el feed es igual para todos |
+| ADR-021 | **Donaciones solo en Bitcoin** (Lightning y on-chain), sin custodia, con una dirección nueva por donación; las recibe Juan como persona física (**aceptado**: lista pregenerada offline + Phoenix con totales manuales) | Sostenibilidad sin vender datos ni acceso; el feed es igual para todos |
 
 ---
 
@@ -475,15 +475,16 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
      3 al día por canal.
   2. Juan lo aprueba en Administración.
   3. El post aprobado se publica en **`/v1/social.atom`**, que es la fuente canónica y va firmada.
-  4. Si la herramienta tiene API, en el momento de la aprobación un adaptador de una sola llamada
-     (`SocialPublisher`) la invoca. Recomendada: **Buffer** (API GraphQL; plan Free o Essentials a
-     15 USD/mes). Alternativa: Postiz autoalojado.
+  4. En el momento de la aprobación, un adaptador de una sola llamada (`SocialPublisher`) invoca
+     la API de la herramienta. **Recomendada: Zernio** (ADR-017, propuesto). Sus términos permiten
+     publicar por API y no tienen ninguna cláusula contra la automatización. Cuesta ~6 USD/mes con
+     3 canales, y X se paga al precio de X desde un saldo prepago, sin credenciales propias.
+     Segunda opción: Upload-Post. Alternativa futura: Postiz autoalojado. **Buffer, descartado**
+     por la cláusula 4.2(n) de sus API Terms (J-2).
   5. La herramienta reparte a X, Bluesky y **LinkedIn con el perfil personal** (P-7).
 
   - El post de X va **sin URL**: 0,015 USD frente a 0,20 USD con URL
-    ([docs.x.com](https://docs.x.com/x-api/getting-started/pricing)).
-  - Para aceptar ADR-017 hay que comprobar antes: el uso comercial del plan de Buffer y si exige
-    credenciales propias de X.
+    ([docs.zernio.com](https://docs.zernio.com/platforms/twitter)). Alerta de saldo bajo de X.
   - Las plantillas de los posts leen la marca y los hosts de configuración (ADR-016).
 
 ---
@@ -523,7 +524,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 | Log Analytics + Sentinel (~1 GB) + reglas | ~6 | 5,59 USD/GB en el precio simplificado ([billing](https://learn.microsoft.com/en-us/azure/sentinel/billing)) |
 | IA: Sonnet 5.5 + Haiku 5.5 | ~33 | Tope de 1,5 USD/día (~41 €) |
 | Cloudflare | 0 | Access gratis hasta 50 usuarios; con Workers Paid, +4,5 € |
-| Redes: Buffer + X | ~0–15 | Buffer Free o Essentials (15 USD/mes) ([pricing](https://buffer.com/pricing)); X sin URL ≤ 1,35 USD/mes si hay que pagarlo aparte |
+| Redes: Zernio + saldo de X | ~7 | 3 cuentas: 2 gratis + 1 × 6 USD/mes ([pricing](https://zernio.com/pricing)); X sin URL ≈ 1,35 USD/mes (90 posts) |
 | Cloudflare R2 (páginas selladas y snapshot) | ~0 | Plan gratuito de 10 GB y salida de datos gratuita; el corpus completo comprimido cabe |
 | ntfy | 0 | Plan gratuito o instancia propia (SIN VERIFICAR) |
 | GitHub Actions (CI y vigilante externo) | 0 | Repo público |
@@ -531,7 +532,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 
 Palancas:
 - agente con Haiku si cumple la evaluación (P-2, −30 €);
-- Buffer Free en lugar de Essentials (−13 €);
+- posts de X sin URL (ya es el valor por defecto; con URL serían +15 €);
 - KV sin endpoint privado, que entraría **como ADR** si G-4 se complica, no como atajo.
 
 Alerta de presupuesto a 80 € (G-9).
@@ -543,9 +544,9 @@ Alerta de presupuesto a 80 € (G-9).
 | Fase | Contenido | Termina cuando |
 |---|---|---|
 | **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…020; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5) | `uv run pytest` y `ruff` en verde en local. **Hecho** (commit inicial local) |
-| **Repo privado** | `gh repo create` privado; `CONTRIBUTING` con DCO. Todo Apache-2.0 (ADR-011). Protección de `main` (PR obligatorio y CI en verde) **bloqueada en privado con el plan gratuito de GitHub**: se aplica con GitHub Pro o al hacerlo público (J-8) | Hecho tras la búsqueda de fugas sobre el árbol y el historial. **Hacerlo público** es otra decisión de Juan, con otra búsqueda de fugas sobre el historial |
+| **Repo privado** | `gh repo create` privado; `CONTRIBUTING` con DCO. Todo Apache-2.0 (ADR-011). Protección de `main` (PR obligatorio y CI en verde) **bloqueada en privado con el plan gratuito de GitHub**. Sin GitHub Pro (J-8): regla 9 de `CLAUDE.md` + hook `pre-push` local; la protección de rama se aplica al hacerlo público, al cerrar la F1a (J-7) | Hecho tras la búsqueda de fugas sobre el árbol y el historial. **Hacerlo público** es otra decisión de Juan, con otra búsqueda de fugas sobre el historial |
 | **F1a-0 · listas** | Scripts que generan `exposed-products` y `trusted-exploit-authors` con sus criterios escritos; **PR de revisión de Juan** (P-10). Desde entonces, cada cambio de las listas va por PR | PR aprobado y fusionado **antes** de cualquier fixture de nginx2root (R7). Necesita el repo (G-13) |
-| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema |
+| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema. **Al cerrar: búsqueda de fugas sobre todo el historial y, si Juan lo confirma, el repo pasa a público y se aplica la protección de `main`** (J-7) |
 | **F1b · resto del núcleo y en vivo** | El resto de fuentes (EPSS, GHSA, OSV, NVD, Metasploit, Exploit-DB, nuclei, fabricantes y CERT), cada una con su carga inicial; front (5 pantallas, con métricas); despliegue por OIDC (requiere el gate); 72 h en vivo | 72 h sin UNKNOWN no explicados; el portal muestra nginx2root (reconstrucción) con su línea de tiempo |
 | **F2 · IA** | Agente, redacción, verificador de citas, topes, conjunto de evaluación en CI, expediente en el portal | Conjunto de evaluación en verde, incluidos la inyección y el DoS |
 | **F3 · vigilancia** | Latido, reglas de Sentinel, `SentinelHealth`, **vigilante externo en GitHub Actions**, alerta de presupuesto | Se para `ingest` → llega el incidente; se corta el Tunnel → falla el vigilante externo |
@@ -586,6 +587,7 @@ Alerta de presupuesto a 80 € (G-9).
 | G-12 | Comprobar el plan de Workers |
 | G-13 | Repo público en el GitHub personal, con reglas de protección. R1 cerrado; lo crea Juan |
 | G-14 | **Recordatorio en septiembre de 2027** del cambio de facturación de la suscripción (ADR-015), con margen para revisar costes. La fecha exacta y las condiciones, solo en `local/`. G-9 sigue valiendo con pago por uso |
+| G-19 | (F4, ADR-017) Clave de API de la herramienta de redes en el Key Vault del RG, con caducidad; saldo prepago de X y alerta de saldo bajo |
 | G-18 | (F4b, ADR-021) Secret en el Key Vault del RG con la lista de direcciones on-chain pregeneradas (o la xpub watch-only), con caducidad y rotación (G-5). Exclusión de logs del endpoint de donación en App Insights y Cloudflare |
 | G-17 | Lectura de costes para la transparencia (§9): rol **Cost Management Reader** sobre el RG para la identidad del job diario; token de Cloudflare con lectura de facturación de la cuenta, guardado en el Key Vault del RG |
 | G-15 | Bucket de Cloudflare R2 para las páginas selladas y el snapshot (ADR-019); token de R2 **limitado a ese bucket**, guardado en el Key Vault del RG; dominio público del bucket detrás de la misma zona y caché |
@@ -600,7 +602,7 @@ Alerta de presupuesto a 80 € (G-9).
 | P-3 | `vuln.` y `api.vuln.` en la zona actual. Si funciona, puede migrar a marca y dominio propios. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
 | P-4 | Cloudflare Tunnel | ADR-004 (aceptado) |
 | P-5 | Token de GitHub: sí. **VulnCheck: sus términos prohíben ofrecer los datos gratis o con licencia abierta → fuera de la v1**, documentado. Vuelve con un permiso por escrito o una licencia | ADR-020, §4 |
-| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta existente (Buffer recomendada, con dos comprobaciones pendientes; alternativa Postiz) | ADR-017 (propuesto), §12 |
+| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta de pago con API permitida (Zernio recomendada tras descartar Buffer, J-2; alternativa futura Postiz) | ADR-017 (propuesto), §12 |
 | P-7 | LinkedIn con el perfil personal | §12 |
 | P-8 | El ejemplo de Teams se prueba contra un receptor de webhook local; no se guarda aquí ninguna URL de terceros | §12 |
 | P-9 | Correo y ntfy desde los dos vigilantes | §11, G-8, G-16 |
@@ -623,7 +625,8 @@ Alerta de presupuesto a 80 € (G-9).
 
 | # | Qué | Para qué |
 |---|---|---|
-| J-2 | Aceptar o no ADR-017: la comprobación de Buffer ya está hecha y documentada en el ADR | F4 |
-| J-3 | Si quiere VulnCheck: pedir el permiso por escrito o presupuestar la licencia | Volver a incluirlo (ADR-020) |
-| J-6 | Aceptar o no ADR-021 (donaciones en Bitcoin) | F4b |
-| J-7 | Hacer público el repo, cuando lo decida (con otra búsqueda de fugas sobre el historial) | Publicación |
+| J-2 | Aceptar o no ADR-017 con **Zernio** (Buffer descartado por la 4.2(n)). Matiz: sus términos permiten publicar por API, pero no dicen literalmente «automatizado» | F4 |
+| J-3 | **Cerrada**: VulnCheck sigue fuera (cláusula comprobada también por la sesión directora) | ADR-020 |
+| J-6 | **Cerrada**: ADR-021 aceptado | F4b |
+| J-7 | **Repo público al cerrar la F1a**, tras una búsqueda de fugas sobre todo el historial; Juan lo confirma en ese momento | Fin de F1a |
+| J-8 | **Cerrada: sin GitHub Pro.** Regla 9 de `CLAUDE.md` (sin push a `main`; fusiona Juan) + hook `pre-push` local (`.githooks/`). Al hacerlo público se aplica la protección de rama | `CLAUDE.md`, `.githooks/` |

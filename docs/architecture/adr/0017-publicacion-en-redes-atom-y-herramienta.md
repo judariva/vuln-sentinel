@@ -1,6 +1,6 @@
 ---
 adr: "0017"
-titulo: Publicación en redes con feed Atom y una herramienta existente
+titulo: Publicación en redes con feed Atom y una herramienta de pago con API permitida
 estado: propuesto
 fecha: 2026-11-25
 afecta: [CMP-002, CMP-005, CMP-015]
@@ -12,66 +12,84 @@ sustituye: null
 P-6: no se integran las API de las redes una a una. vuln-sentinel genera el borrador, Juan lo
 aprueba y el post aprobado se publica como feed Atom (`/v1/social.atom`). Una herramienta existente
 lo reparte a X, Bluesky y LinkedIn (perfil personal, P-7). Topes: solo A y B, como mucho 3 posts al
-día por canal.
+día por canal (~270 posts/mes).
 
-## Decisión
+**Buffer, descartado (J-2).** Sus API Terms (4.2 n, «Last updated: August 5, 2026») prohíben «cause
+or permit automated queries on the API», que es justo este uso.
+
+Requisitos de Juan (J-2):
+- herramienta de pago;
+- cubre X, el perfil personal de LinkedIn y Bluesky;
+- sus términos permiten **expresamente** publicar por API, con la cita literal verificada;
+- sin cláusulas contra la automatización;
+- hasta ~20 €/mes;
+- el total del producto, por debajo de los 100 € de D6.
+
+## Decisión (propuesta)
 
 1. **Fuente canónica: `/v1/social.atom`**, firmado como el resto del feed. Solo contiene posts
    aprobados.
-2. **Adaptador de una llamada a Buffer** (API GraphQL, `createPost`) en el momento de la aprobación.
-   Plan Free para empezar; Essentials (5 USD por canal y mes, 15 USD/mes con 3 canales) si se queda
-   corto. El adaptador está detrás de una interfaz `SocialPublisher` y se puede cambiar.
-3. **El post de X va sin URL** (el enlace, en la primera respuesta o en el perfil): X cobra
-   0,015 USD por post y 0,20 USD si lleva URL.
+2. **Herramienta recomendada: Zernio** (antes Late; getlate.dev redirige a zernio.com). Adaptador
+   de una llamada detrás de la interfaz `SocialPublisher`, invocado al aprobar cada post.
+3. **El post de X va sin URL** por defecto (0,015 USD frente a 0,20 USD con enlace). El enlace va
+   en el perfil o en una respuesta.
 
-## Comprobación de Buffer (2026-11-25)
+## Comprobación de Zernio (2026-11-25)
 
-Hecha por la sesión de trabajo. Las citas en negrita las comprobé yo con `curl` sobre la página
-original.
+Las citas en negrita las comprobé yo con `curl` sobre la página original.
 
-| Condición | Resultado | Evidencia |
+| Requisito | Resultado | Cita y fuente |
 |---|---|---|
-| ¿Uso permitido para este proyecto? | **Sí, con una salvedad.** No hay restricción a uso personal ni no comercial en el plan Free, y la API está en todos los planes. **Salvedad:** los API Terms (4.2 n) prohíben «**cause or permit automated queries on the API**», y el ToU licencia la API para «**internally use the API** in connection with the Service». Eso choca literalmente con el uso previsto, aunque el centro de ayuda presente la API como algo para «agents, scripts, and apps» | [buffer.com/terms](https://buffer.com/terms) (API Terms, «**Last updated: August 5, 2026**»); [centro de ayuda](https://support.buffer.com/articles/what-is-buffers-api-GtIYIQilz5): «**available on every Buffer plan, including the Free plan**» |
-| ¿Credenciales propias de X? | **No las pide.** Ningún texto de Buffer las exige ni cobra aparte: «it isn't a social network's own API … we still handle publishing». Ayrshare afirma que X las exige a todos los terceros desde el 31-03-2026; Buffer no lo refleja. Riesgo a vigilar, SIN VERIFICAR | [X en Buffer](https://support.buffer.com/articles/using-xtwitter-with-buffer-nA84XnWtuU); [Ayrshare](https://www.ayrshare.com/docs/dashboard/connect-social-accounts/x-twitter-byo-keys) |
-| ¿Posts sin enlace? | Buffer **no acorta por defecto** («By default, links in Buffer are not shortened»), y por API las URL se mantienen completas salvo que se llame a `shortenLink`. Nada indica que añada un enlace a un post que no lo lleva (SIN VERIFICAR como ausencia). Si X cobra distinto a Buffer por posts con URL: SIN VERIFICAR | [enlaces](https://support.buffer.com/articles/shortening-and-unshortening-links-dgev2p41yY); [developers](https://developers.buffer.com/llms-full.txt) |
-| Límites del plan Free | 3 canales (justo X, Bluesky y LinkedIn). Cola de 10 posts programados por canal, que no es un límite diario. API: 1 cliente, 150 peticiones / 15 min, 600 / 24 h y 1.000 por canal cada 30 días. Si `shareNow` cuenta para la cola de 10: SIN VERIFICAR. Hay una contradicción: `pricing.md` dice 5 claves en todos los planes y la documentación, 1 en Free | [plan Free](https://buffer.com/pricing/free); [límites de la API](https://developers.buffer.com/guides/api-limits.html) |
-| LinkedIn personal y Bluesky | Incluidos | [plan Free](https://buffer.com/pricing/free); [LinkedIn](https://support.buffer.com/articles/using-linkedin-with-buffer-K7tRkGD3mH); [Bluesky](https://support.buffer.com/articles/using-bluesky-with-buffer-7f6OcRnzIO) |
-| Límite de X a través de Buffer | 50 posts/24 h en cuentas sin verificar; X no admite posts duplicados | [límites diarios](https://support.buffer.com/articles/daily-posting-limits-kJ0JtpsdvD) |
+| Publicar por API | **Sí.** Es el objeto del servicio | «Zernio **provides APIs and a dashboard for publishing and scheduling** social media content…» ([ToS](https://zernio.com/tos), «**Last updated: November 7, 2026**») |
+| Cláusula contra la automatización | **Ninguna.** Busqué automat, robot, bot, script, scrap y crawl en el texto: solo aparecen la recarga automática del saldo y la aceptación automática del DPA. El uso de la API se limita por cuotas: «Your use of our API is subject to rate limits and usage quotas … **Abuse of the API may result in immediate suspension** of your account» | [ToS](https://zernio.com/tos) |
+| X, perfil personal de LinkedIn y Bluesky | Sí. LinkedIn: «Publish … posts to LinkedIn **personal profiles and organization pages with the Zernio** API» | [LinkedIn](https://docs.zernio.com/platforms/linkedin), [Bluesky](https://docs.zernio.com/platforms/bluesky), [X](https://docs.zernio.com/platforms/twitter) |
+| X sin credenciales propias | Sí: se conecta sin claves propias y X se paga desde un saldo prepago, al precio de X. «A post costs **$0.015 ($0.20 with a link). At a $0 balance, p**osting to X returns insufficient_balance». «We pass through their exact rates with **zero markup**» | [X](https://docs.zernio.com/platforms/twitter), [pricing](https://zernio.com/pricing) |
+| Precio | «Every feature included, no plans, no seats … **1–2 Free 3–10 $6/account/mo**»: 3 canales ≈ **6 USD/mes** más el saldo de X (90 posts sin URL ≈ 1,35 USD/mes; con URL, 18 USD) | [pricing](https://zernio.com/pricing) |
+| Proyecto sin ánimo de lucro | No hay ninguna restricción. El titular es ZERNIO SOFTWARE SL (España) | [ToS](https://zernio.com/tos) |
 
-**Recomendación a Juan:** aceptar Buffer **condicionado a una confirmación por escrito** del soporte
-de desarrolladores de Buffer de que el uso previsto no incumple la 4.2(n). El uso previsto es
-publicar hasta 3 posts/día por canal en cuentas propias, desde un job, mediante `createPost` en el
-momento de una aprobación humana.
-- Mientras tanto, `/v1/social.atom` sigue siendo la fuente canónica y el adaptador queda apagado.
-- Si Buffer no lo confirma, se pasa a Postiz autoalojado o a publicar a mano desde el Atom.
-- El ToU dice que el servicio está «intended for visitors located within the United States»
-  (cláusula 17.7). Es un punto más para la revisión legal de Juan.
+**Matiz que decide Juan.** Los términos de Zernio permiten publicar por API («provides APIs … for
+publishing and scheduling») pero **no usan literalmente la palabra «automatizado»**. La única
+candidata que la usa es Upload-Post, aunque añade una cláusula restrictiva acotada (ver abajo).
+
+**Riesgos.**
+- Cambio de marca reciente (Late → Zernio).
+- Su cláusula 8 permite suspender la cuenta «for any reason whatsoever»: el Atom sigue siendo la
+  fuente canónica y el adaptador se puede cambiar.
+- Hay que mantener saldo para X.
 
 ## Comparativa (2026-11-25)
 
-| Herramienta | Redes | Entrada | Plan mínimo | X | Veredicto |
+| Herramienta | Redes (LinkedIn personal) | Precio para 3 canales | X | Cláusula contra la automatización | Veredicto |
 |---|---|---|---|---|---|
-| Buffer | X, Bluesky, Mastodon, Threads, LinkedIn personal ([pricing](https://buffer.com/pricing)) | API GraphQL ([developers](https://developers.buffer.com)); RSS solo vía Zapier o IFTTT | Free 0 USD; Essentials 15 USD/mes (3 canales) | Coste incluido o no: SIN VERIFICAR | **Recomendada** |
-| Typefully | X, LinkedIn, Bluesky, Mastodon, Threads ([API](https://typefully.com/docs/api)) | API de borradores | Creator ~8 USD/mes (dato de un tercero, SIN VERIFICAR) | SIN VERIFICAR; la API se describe como «para automatizaciones personales» | Equivalente; pendiente de aclarar términos |
-| Postiz (autoalojado) | X, LinkedIn, Bluesky, Mastodon, Threads ([pricing](https://postiz.com/pricing)) | RSS nativo y API | 0 € de licencia (AGPL-3.0, [repo](https://github.com/gitroomhq/postiz-app)) + servidor | App propia de X y pago por uso a X ([doc](https://docs.postiz.com/providers/x-twitter)) | **Alternativa** si se prioriza el control |
-| Ayrshare | Más de 14 redes | API | 149 USD/mes | Credenciales propias obligatorias ([doc](https://www.ayrshare.com/docs/dashboard/connect-social-accounts/x-twitter-byo-keys)) | Descartada: fuera de presupuesto |
-| Make | Bluesky, LinkedIn personal | Escenarios | Free / Core | **Sin X** ([aviso](https://help.make.com/x-formerly-twitter-app-integration-discontinued)) | Descartada |
+| **Zernio** | Sí | ≈ 6 USD/mes + X al precio de X | Sin credenciales propias; saldo prepago | Ninguna | **Recomendada** |
+| Upload-Post (TONVI TECH SL) | Sí ([doc](https://docs.upload-post.com/api/upload-text)) | Basic 24 USD/mes (16 en pago anual); URL en X: +19 USD/mes | Incluido | 3.1 permite «automated posting, scheduling, bulk uploads … and API integrations». 2.2 prohíbe «automated scripts, bots … **beyond normal API usage**», con «immediate termination … without refund» ([ToS](https://www.upload-post.com/terms-of-use/), 02-10-2026) | Segunda opción |
+| Outstand | Probable (SIN VERIFICAR) | 19 USD/mes + X aparte | **Credenciales propias de X obligatorias** ([doc](https://www.outstand.so/docs/getting-started)) | Ninguna | Válida si se aceptan claves de X propias |
+| Typefully | Sí | Plan de pago (SIN VERIFICAR) | SIN VERIFICAR | «processes that run or are activated while you are not logged into the Services» ([ToS](https://support.typefully.com/en/articles/8718440-terms-of-service)) | Descartada: choca con un job de servidor |
+| Publer | Sí (SIN VERIFICAR) | ≈ 24 USD/mes (API solo en Business) | Incluido en el plan de pago | Prohíbe robots «through any means not purposely made available» ([ToS](https://publer.com/terms)): ambigua | Descartada: riesgo y precio |
+| Postiz Cloud | SIN VERIFICAR | 29 USD/mes | Incluido | Ninguna aplicable | Descartada por precio |
+| Ayrshare | Sí | 149 USD/mes | Credenciales propias de X | Ninguna | Descartada por precio |
+| Blotato | — | 29 USD/mes | SIN VERIFICAR | Ninguna | Descartada por precio |
+| SocialBee | — | — | — | No tiene API pública | Descartada |
+| Buffer | Sí | 0–15 USD/mes | Incluido | **4.2(n)** | **Descartada (J-2)** |
 
-## Alternativas descartadas
-
-- Integrar las API de X, LinkedIn y Bluesky directamente: lo excluye P-6 (mantenimiento, cambios de
-  API, revisión de apps).
-- Postiz autoalojado en la plataforma: su compose oficial levanta 9 servicios (Postgres, Redis,
-  Temporal con Elasticsearch…). Cuesta más de operar que el propio producto. Queda como alternativa
-  fuera de la plataforma.
+**Alternativa futura: Postiz autoalojado** (AGPL-3.0, [repo](https://github.com/gitroomhq/postiz-app)).
+Sin dependencia de un proveedor, con RSS nativo que puede leer `/v1/social.atom` y con API. Hoy no
+compensa: su compose levanta 9 servicios y exige apps propias en X y LinkedIn.
 
 ## Consecuencias
 
+- Coste: ≈ 6 USD/mes más 1,35 USD/mes de X sin URL. Cabe en D6 y en el tope de ~20 €/mes de J-2.
 - Lock-in bajo: el Atom es la fuente canónica y el adaptador es una sola llamada.
-- Coste estimado: 0–15 USD/mes de Buffer más 0–1,35 USD/mes de X si hiciera falta pagarlo aparte
-  (90 posts sin URL).
-- Si X exige credenciales propias, el coste de X es el mismo con cualquier herramienta.
+- El job de publicación necesita la clave de API de Zernio en Key Vault (G-19) y una alerta de saldo
+  bajo de X.
 
 ## Evidencia
 
-Las URL de la tabla, consultadas el 2026-11-25. Precio de X: https://docs.x.com/x-api/getting-started/pricing
+Verificado por la sesión principal con `curl` el 2026-11-25:
+- https://zernio.com/tos
+- https://zernio.com/pricing
+- https://docs.zernio.com/platforms/twitter
+- https://docs.zernio.com/platforms/linkedin
+- https://docs.zernio.com/platforms/bluesky
+
+El resto de las URL de la tabla vienen del informe de investigación del mismo día.
