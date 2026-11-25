@@ -52,9 +52,14 @@ versiona); el resumen público de las decisiones está en `docs/journey/00-orige
 
 ## Principios de diseño
 
-- **No se reinventan las fuentes: se consumen.** KEV (CISA, VulnCheck), SSVC, EPSS, OSV, GHSA,
-  Nuclei, Metasploit, Exploit-DB, PoC públicos y avisos de fabricante y de CERT. Antes de usar una
-  fuente se comprueban su estado y sus términos.
+- **No se reinventan las fuentes: se consumen.** CISA KEV, SSVC, EPSS, OSV, GHSA, Nuclei,
+  Metasploit, Exploit-DB, PoC públicos y avisos de fabricante y de CERT. Antes de usar una fuente se
+  comprueban su estado y sus términos, **incluido el uso comercial**; las que no lo admiten se
+  aíslan o se excluyen (ADR-0020; VulnCheck está fuera de la v1).
+- **Feed completo + alertas.** Toda CVE entra en el feed con su nivel; las listas solo deciden la
+  urgencia (ADR-0019).
+- **Open core.** Contrato y ejemplos con Apache-2.0; el motor con FSL-1.1-ALv2 (ADR-0018,
+  propuesto). Hosts, nombre y marca en configuración, nunca en el código (ADR-0016).
 - **Se filtra por peligro, nunca por CVSS.** Reglas en `PLAN.md` §5:
   - **A**: explotación activa confirmada.
   - **B**: exploit público funcional, con impacto mínimo (RCE, bypass de autenticación o de

@@ -25,4 +25,7 @@ jobs:
       - name: Formato
         run: uv run ruff format --check .
       - name: Tests
+        env:
+          # Hosts reales de la marca (ADR-0016); en un secret para no escribirlos en el repo.
+          VS_FORBIDDEN_HOSTS: ${{ secrets.VS_FORBIDDEN_HOSTS }}
         run: uv run pytest

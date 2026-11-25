@@ -71,23 +71,29 @@ tenant) está en `local/ACCESS.md`.
 | ADR-002 | **Container Apps Jobs con cron**, sin Service Bus; la cola es la BD (`FOR UPDATE SKIP LOCKED`) | Volumen bajo; una pieza y un coste menos |
 | ADR-003 | **PostgreSQL Flexible B1ms**, acceso privado | Relacional, con agregados diarios; ~17 €/mes. Azure SQL serverless no se pausa con ingesta cada 5 min ([free offer](https://learn.microsoft.com/en-us/azure/azure-sql/database/free-offer)) |
 | ADR-004 | Origen **sin IP pública**: `cloudflared` como app interna | Ni el WAF ni Access se pueden saltar |
-| ADR-005 | Front en **Workers static assets** | Gratis en estáticos ([doc](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)); es un consumidor de la API (D10) |
+| ADR-005 | Front **React (SPA estática con Vite)** en **Workers static assets** (P-12) | Gratis en estáticos ([doc](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)); es un consumidor de la API (D10) |
 | ADR-006 | **Python 3.13** | Rangos de versión (`univers`, purl), OSV y CSAF |
 | ADR-007 | Feed **OSV 1.9.x extendido** | Cruce directo por purl ([spec 1.9.2](https://ossf.github.io/osv-schema/)). CSAF VEX como exportación posterior (CSAF 2.1 aún es CS01) |
 | ADR-008 | Firma **ES256 (JWS detached)** con clave no exportable en Key Vault | La clave no sale de KV. Ed25519 en KV Standard: **SIN VERIFICAR** |
-| ADR-009 | IA: **Claude en Foundry con identidad gestionada** (depende de G-6) | Preferencia D5, sin secretos. Respaldo: API de Anthropic con clave en KV, a través de un AI Gateway **propio y con autenticación** |
+| ADR-009 | IA: **Claude en Foundry con identidad gestionada** si G-6 funciona (P-1) | Preferencia D5, sin secretos. Si no: API de Anthropic con clave en KV, a través de un AI Gateway **nuevo y con autenticación** |
 | ADR-010 | Agente: **bucle propio con tool use** en un ACA Job | Agent Service no admite Claude; portable; OTel |
-| ADR-011 | Licencia **Apache-2.0**; `NOTICE` con atribuciones de datos | GHSA CC-BY 4.0, EPSS, NVD, CVE ToU, VulnCheck |
+| ADR-011 | ~~Licencia Apache-2.0 para todo~~ → sustituido por ADR-018 | — |
 | ADR-012 | **Carga inicial de referencia** por fuente, sin alertas (R2) | Evitar la avalancha del primer arranque y la de cada fuente nueva |
 | ADR-013 | **B exige impacto mínimo** (R3) | Un exploit de DoS o de fuga de versión no es urgente |
 | ADR-014 | Pipeline con **RBAC Administrator con condición** (R9) | Que el pipeline no pueda darse a sí mismo cualquier rol |
 | ADR-015 | **Continuidad de la suscripción**: al cambiar su modelo de facturación pasa a pago por uso, a cargo de Juan (P-13) | El producto es 24/7; el coste ya está dimensionado para pago por uso (§14) |
+| ADR-016 | **Hosts, nombre y marca en configuración** (P-3) | Objetivo de negocio: migrar a marca y dominio propios cambiando DNS y variables, sin tocar código |
+| ADR-017 | **Redes: feed Atom + herramienta existente** (Buffer recomendada; Postiz autoalojado como alternativa) (P-6) | Sin integrar las API de las redes una a una; lock-in bajo |
+| ADR-018 | **Open core**: contrato, schema, verificador y ejemplos con Apache-2.0; motor con **FSL-1.1-ALv2** (pasa a Apache-2.0 a los 2 años) (P-11) | Proteger la monetización sin cerrar el código |
+| ADR-019 | **Feed completo + feed de alertas**; índice de cambios paginado y páginas selladas en R2 | El consumidor recibe todas las CVE; las listas solo deciden la urgencia |
+| ADR-020 | **Uso comercial de las fuentes**; VulnCheck fuera de la v1; INCIBE y nginx.org solo hechos y enlace (P-5) | Términos comprobados con URL |
 
 ---
 
 ## 3. Contrato del feed (lo más importante)
 
-Base: **OSV 1.9.x**. Una alerta equivale a un registro OSV. Las extensiones van en
+Base: **OSV 1.9.x**. **Toda CVE** vista es un registro OSV con su nivel (`A`, `B`, `C` o `none`);
+las alertas son los registros con nivel A, B o C (ADR-019). Las extensiones van en
 `database_specific.vuln_sentinel` (en la raíz) y en el `database_specific` de cada `affected[]`. Un
 cliente que solo entienda OSV cruza por purl y rango sin leer la extensión.
 
@@ -118,7 +124,7 @@ cliente que solo entienda OSV cruza por purl y rango sin leer la extensión.
     "level_reason": ["B.exposed_product:web-proxy", "B.impact:rce", "B.exploit:E4"],
     "level_history": [ {"level":"C","at":"…","reason":["…"]}, {"level":"B","at":"…","reason":["…"]} ],
     "signals": {
-      "kev":   {"cisa": false, "vulncheck": false, "observed_at": "…"},
+      "kev":   {"cisa": false, "observed_at": "…"},
       "ssvc":  {"exploitation":"none","automatable":"no","technical_impact":"total","source_published_at":"…","observed_at":"…"},
       "epss":  {"score":0.447,"percentile":0.988,"delta_7d":0.44,"model":"v4","date":"2026-11-24"},
       "exploits": [{"rule":"E4","url":"…","kind":"exploit","source_published_at":"…","observed_at":"…"}],
@@ -134,8 +140,22 @@ cliente que solo entienda OSV cruza por purl y rango sin leer la extensión.
 
 - Tipos de cambio: `new`, `level_up`, `kev_added`, `poc_added`, `fix_released`, `epss_jump`,
   `range_completed`, `withdrawn`.
-- Endpoints: `/v1/feed/latest.json`, `/v1/feed/changes?since=`, `/v1/alerts/{id}`,
-  `/v1/digest/{fecha}.json`. Cada uno va acompañado de su `.jws`.
+- **Dos feeds** (ADR-019). Las listas `exposed-products` y `trusted-exploit-authors` **solo deciden
+  la urgencia**, no qué entra:
+
+  | Endpoint | Contenido |
+  |---|---|
+  | `/v1/feed/all/changes?since=<cursor>` | Índice de **todas** las CVE nuevas o cambiadas (`id`, `modified`, `level`, `type`, `sha256`), a los ~5 min de verlas. 1.000 entradas por página |
+  | `/v1/feed/all/changes/{AAAA-MM-DDTHH}.json` | Páginas selladas por hora, inmutables y servidas desde R2; retención de 30 días (después, `410` con el enlace al snapshot) |
+  | `/v1/feed/all/snapshot/{fecha}.zip` | Snapshot diario completo, por ecosistema, con un manifiesto firmado |
+  | `/v1/feed/alerts/changes?since=` y `/v1/feed/alerts/latest.json` | Solo A, B y C: lo que despierta a alguien |
+  | `/v1/vulns/{id}.json` | Registro OSV completo; ETag igual al hash |
+  | `/v1/digest/{fecha}.json` | Resumen diario |
+  | `/v1/social.atom` | Posts aprobados (ADR-017) |
+
+  Volumen medido (ADR-019): 587 CVE nuevas al día de media (pico de 2.077) y 2.140 modificadas
+  (pico de 6.426). El índice ocupa ~0,4 MB al día y ~12 MB en 30 días. Cada documento lleva su
+  `.jws`.
 - Clave pública: `/.well-known/vuln-sentinel/keys.json` (JWKS con `kid` y rotación).
 - Versión del contrato: cabecera `X-VS-Schema: 1.0.0` y `schema/feed-1.0.0.json` en el repo. Un
   cambio incompatible sube la versión mayor y la anterior se sirve 90 días más.
@@ -146,23 +166,29 @@ cliente que solo entienda OSV cruza por purl y rango sin leer la extensión.
 
 ## 4. Fuentes (comprobadas el 2026-11-25)
 
-| Fuente | Aporta | Consumo y frecuencia | Límites y términos | Estado |
-|---|---|---|---|---|
-| [cvelistV5](https://github.com/CVEProject/cvelistV5) | CVE nuevos y cambios; ADP de CISA (SSVC); PURL (5.2) | Commits de GitHub cada 5 min; zip delta horario como respaldo | GitHub 5.000/h con token; aviso de los CVE ToU | Activo |
-| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Explotación (A). **`dateAdded` es una fecha, sin hora** (R4) | JSON cada 15 min, diff por `cveID` | [CC0](https://www.cisa.gov/sites/default/files/licenses/kev/license.txt) | Activo (catálogo 2026.11.24, 1.795) |
-| [VulnCheck KEV](https://docs.vulncheck.com/community/vulncheck-kev/introduction) | Explotación (A) | API v3 cada 15 min | Cuenta community; [atribución visible](https://docs.vulncheck.com/community/vulncheck-kev/attribution) | Activo |
-| [Vulnrichment](https://github.com/cisagov/vulnrichment) | SSVC | A través del ADP de cvelistV5; el repo como respaldo | CC0 | Activo |
-| [EPSS](https://www.first.org/epss/data) | Probabilidad y salto | CSV diario después de las 13:45 UTC | Piden atribución | Modelo v4 |
-| [GHSA](https://docs.github.com/en/rest/security-advisories/global-advisories) | Rangos de ecosistemas | `?modified=` cada 15 min | CC-BY 4.0 | Activo |
-| [OSV.dev](https://google.github.io/osv.dev/data/) | Rangos | `modified_id.csv` | Licencia por fuente: **se excluyen las NC-ND** | Activo |
-| [NVD 2.0](https://nvd.nist.gov/developers/start-here) | CPE/CVSS (solo KEV y software crítico) | Bajo demanda | 50/30 s con key; aviso | [Recortado desde el 15-04-2026](https://www.nist.gov/news-events/news/2026/04/nist-updates-nvd-operations-address-record-cve-growth) |
-| Metasploit | Exploit (E1); el **tipo** de módulo distingue exploit, auxiliary y DoS | `modules_metadata_base.json`, diario | BSD-3 (SIN VERIFICAR) | Activo |
-| [Exploit-DB](https://gitlab.com/exploit-database/exploitdb) | Exploit (E2); el **tipo** (`dos`, `remote`, `webapps`, `local`) | `files_exploits.csv`, diario | GPL-2.0+ | Activo |
-| [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates) | Detectable (señal, no exploit) | `cves.json` cada hora | MIT | Activo |
-| [PoC-in-GitHub](https://github.com/nomi-sec/PoC-in-GitHub) | Candidatos a PoC | JSON por CVE, cada hora | CC0; «Be careful Malware» | Activo |
-| [Búsqueda de GitHub](https://docs.github.com/en/rest/search/search) | PoC recientes de candidatos | Solo candidatos B/C | 30/min con token | — |
-| Fabricantes y CERT | Rangos, fix, «explotado» | RSS/CSAF (nginx.org, Fortinet, Palo Alto, Cisco, MSRC, Red Hat, Siemens, CERT-EU, INCIBE-CERT, CISA) | Varía | F5: sin CSAF; varios **SIN VERIFICAR** |
-| OpenCVE | — | **Descartado** | Free 100/h; BSL | — |
+Columna **«uso comercial»** (ADR-020): comprobada el 2026-11-25 en la URL de los términos. No es
+asesoramiento jurídico: antes de monetizar, Juan hace una revisión legal, que queda fuera de este
+repo. Las fuentes que no lo admiten se marcan y se aíslan (`excluded`, `link_only`, `facts_only`).
+
+| Fuente | Aporta | Consumo y frecuencia | Límites | Uso comercial (términos) | Estado |
+|---|---|---|---|---|---|
+| [cvelistV5](https://github.com/CVEProject/cvelistV5) | CVE nuevos y cambios; ADP de CISA (SSVC); PURL (5.2) | Commits de GitHub cada 5 min; zip delta horario como respaldo | GitHub 5.000/h con token | **Sí**, reproduciendo el aviso de copyright de MITRE ([CVE ToU](https://www.cve.org/Legal/TermsOfUse)) | Activo |
+| [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Explotación (A). **`dateAdded` es una fecha, sin hora** (R4) | JSON cada 15 min, diff por `cveID` | — | **Sí**, CC0; sin logos de CISA ni del DHS ([LICENSE](https://github.com/cisagov/kev-data)) | Activo (catálogo 2026.11.24, 1.795) |
+| VulnCheck KEV | Explotación (A) | — | — | **No en la v1.** Prohíbe ofrecer los datos gratis o con licencia abierta; atribución destacada; sin entrenar IA ni competir ([service-terms](https://vulncheck.com/service-terms), rev. 06-07-2026) | **Excluida** hasta tener permiso por escrito o licencia (ADR-020) |
+| [Vulnrichment](https://github.com/cisagov/vulnrichment) | SSVC | A través del ADP de cvelistV5; el repo como respaldo | — | **Sí**, CC0 | Activo |
+| [EPSS](https://www.first.org/epss/data) | Probabilidad y salto | CSV diario después de las 13:45 UTC | La API no es para volcados masivos | **Sí**, «Is EPSS free to use? Yes»; atribución pedida ([FAQ](https://www.first.org/epss/faq)) | Modelo v4 |
+| [GHSA](https://docs.github.com/en/rest/security-advisories/global-advisories) | Rangos de ecosistemas | `?modified=` cada 15 min | Límites de la API de GitHub | **Sí**, CC-BY 4.0 (enlazar el aviso) ([términos](https://docs.github.com/en/site-policy/github-terms/github-terms-for-additional-products-and-features)) | Activo |
+| [OSV.dev](https://google.github.io/osv.dev/data/) | Rangos | `modified_id.csv` | — | **Con condiciones**: licencia por fuente. **Chainguard/Wolfi excluida** (CC-BY-NC-ND); Ubuntu y Alpine CC-BY-SA, marcadas `share_alike` | Activo |
+| [NVD 2.0](https://nvd.nist.gov/developers/start-here) | CPE/CVSS (solo KEV y software crítico) | Bajo demanda | 50/30 s con key | **Sí**, dominio público; aviso fijo y sin sugerir aval | [Recortado desde el 15-04-2026](https://www.nist.gov/news-events/news/2026/04/nist-updates-nvd-operations-address-record-cve-growth) |
+| [Metasploit](https://github.com/rapid7/metasploit-framework) | Exploit (E1); el **tipo** de módulo distingue exploit, auxiliary y DoS | `modules_metadata_base.json`, diario | — | **Sí**, BSD-3-Clause; conservar el aviso de Rapid7 | Activo |
+| [Exploit-DB](https://gitlab.com/exploit-database/exploitdb) | Exploit (E2); el **tipo** (`dos`, `remote`, `webapps`, `local`) | `files_exploits.csv`, diario | — | **Con condiciones**: GPL-2.0. Solo metadatos (identificador, tipo y enlace); no se redistribuye el CSV. Términos de OffSec: SIN VERIFICAR (403) | Activo |
+| [nuclei-templates](https://github.com/projectdiscovery/nuclei-templates) | Detectable (señal, no exploit) | `cves.json` cada hora | — | **Sí**, MIT | Activo |
+| [PoC-in-GitHub](https://github.com/nomi-sec/PoC-in-GitHub) | Candidatos a PoC | JSON por CVE, cada hora | «Be careful Malware» | **Sí**, CC0; el código de cada PoC conserva su licencia: se enlaza, no se aloja | Activo |
+| [Búsqueda de GitHub](https://docs.github.com/en/rest/search/search) | PoC recientes de candidatos | Solo candidatos B/C | 30/min con token | **Con condiciones**: sin compartir tokens para superar los límites; la reventa a gran volumen puede exigir suscripción ([ToS §H](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service)) | — |
+| CERT-EU | Avisos | RSS | — | **Sí**, CC-BY 4.0 ([legal notice](https://cert.europa.eu/legal-notice)) | Activo |
+| INCIBE-CERT | Avisos | RSS | — | **No** sin autorización: «No se pretenda un uso comercial»; sin transformación ([aviso legal](https://www.incibe.es/aviso-legal)) | **Solo enlace** (`link_only`) |
+| nginx.org y avisos de fabricante sin licencia | Rangos, fix, «explotado» | RSS/CSAF (nginx.org, Fortinet, Palo Alto, Cisco, MSRC, Red Hat, Siemens, CISA) | — | nginx.org: «© F5, Inc. All rights reserved». El resto, por fabricante (SIN VERIFICAR) | **Solo hechos y enlace** (`facts_only`) |
+| OpenCVE | — | **Descartado** | Free 100/h | BSL | — |
 
 **Fail-closed.** Cada ejecución queda en `source_run`. Si la fuente falla o su dato tiene más
 antigüedad que el umbral, pasa a **UNKNOWN**. Nunca se publica «sin novedades».
@@ -191,7 +217,7 @@ antigüedad que el umbral, pasa a **UNKNOWN**. Nunca se publica «sin novedades�
 El nivel solo sube. Bajarlo exige un acto manual de Juan, que queda registrado.
 
 - **A, inmediato**: se cumple cualquiera de estas condiciones:
-  - `kev.cisa` o `kev.vulncheck`;
+  - `kev.cisa` (VulnCheck KEV queda fuera de la v1 por sus términos: ADR-020);
   - `ssvc.exploitation = active`;
   - el agente cita un aviso oficial que dice «explotada» y el verificador comprueba la cita.
 - **B, urgente**: ¬A ∧ `producto_expuesto` ∧ `impacto_minimo` ∧ `exploit_funcional(impacto)`.
@@ -363,6 +389,7 @@ Se calculan sobre la BD y se precalculan cada día en `metric_daily`. Las consul
 |---|---|---|
 | Qué detecta | Embudo | Ingeridas (`vulnerability`) → elegibles (`rule_evaluation.eligible`) → candidatas (expuestas con `impact_class ≠ other`) → A, B o C (`result_level`), por día |
 | | Reparto | Por CWE agrupado, por categoría y por fabricante; cambios por tipo |
+| | **Feed completo frente a alertas** (ADR-019) | CVE publicadas en `all` frente a CVE con nivel A, B o C, por día. Es el embudo visto desde fuera |
 | Qué tan rápido | Tiempo de detección | `alert.first_published_at − min(source_published_at)` de la CVE, p50 y p95 por nivel |
 | | **Ventaja sobre KEV** (R4) | `observed_at` de la señal `kev_cisa` menos la primera alerta B o C de la CVE. **Precisión: ±15 min** (sondeo); `dateAdded` de KEV es solo una fecha y no se usa para restar |
 | | Escalado | De C a B o A, frente al `observed_at` de la señal que lo provocó |
@@ -398,13 +425,20 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 - **Vigilante del vigilante, dentro de Azure**: una alerta de Azure Monitor sobre `SentinelHealth`.
 - **Vigilante externo e independiente de Azure (R8).** Un workflow programado de GitHub Actions cada
   30 min:
-  1. lee `/v1/feed/latest.json` a través de Cloudflare;
+  1. lee la página «head» de `/v1/feed/all/changes` a través de Cloudflare;
   2. verifica la firma JWS con la clave pública;
   3. comprueba que `modified` tenga menos de 30 min y que ninguna fuente lleve más de 2 h en UNKNOWN.
 
-  Si algo falla, el workflow falla y GitHub avisa por correo (gratis). Cubre también Cloudflare, el
-  Tunnel y la clave. Limitación declarada: los cron de Actions pueden retrasarse varios minutos en
-  momentos de carga.
+  Cubre también Cloudflare, el Tunnel y la clave. Limitación declarada: los cron de Actions pueden
+  retrasarse varios minutos en momentos de carga.
+- **Avisos (P-9): correo y ntfy desde los dos vigilantes.**
+  - Azure: el grupo de acciones (G-8) avisa por correo y por webhook al tema de ntfy.
+  - GitHub Actions: el fallo del workflow avisa por correo (nativo de GitHub) y un paso
+    `if: failure()` publica en ntfy.
+
+  El tema de ntfy y su token van en los secrets (regla 8). Se usa ntfy.sh con un tema de nombre
+  aleatorio y con control de acceso, o una instancia propia (SIN VERIFICAR: las condiciones del
+  plan gratuito de ntfy.sh).
 - **Tope de IA en código**: 1,5 USD/día.
 
 ---
@@ -415,20 +449,34 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
   al publicar.
 - **Resumen diario.** A las 07:00 Europe/Madrid, como `/v1/digest/{fecha}.json` y como página del
   portal. Incluye las fuentes en UNKNOWN.
-- **Teams, como consumidor de ejemplo** (`examples/teams-consumer/`). Lo ejecuta el consumidor:
-  1. lee `changes?since=`;
+- **Teams, como consumidor de ejemplo** (`examples/teams-consumer/`, P-8). Lo ejecuta el
+  consumidor:
+  1. lee `/v1/feed/all/changes?since=` o `/v1/feed/alerts/changes?since=`;
   2. verifica la firma;
   3. filtra por su inventario;
-  4. envía una Adaptive Card 1.2 a su webhook de Workflows
+  4. envía una Adaptive Card 1.2 a un webhook de Workflows
      ([MS Learn](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook)).
-- **X, LinkedIn y Bluesky, con aprobación.** El post se redacta con Haiku sobre una plantilla fija.
-  Solo se publican A y B, como máximo 3 al día por canal.
 
-  | Canal | Condiciones |
-  |---|---|
-  | X | 0,20 USD por post con URL ([docs.x.com](https://docs.x.com/x-api/getting-started/pricing)) |
-  | LinkedIn | Perfil personal, self-serve ([MS Learn](https://learn.microsoft.com/en-us/linkedin/consumer/integrations/self-serve/share-on-linkedin)) |
-  | Bluesky | Gratis |
+  **Se prueba contra un receptor de webhook local** (`examples/teams-consumer/receiver/`). Valida
+  el esquema de la tarjeta, el límite de 28 KB y el reintento ante un 429. El primer consumidor
+  real vive en el entorno de quien consume y lee el feed público como cualquier otro: no se
+  construye ni se configura en este repo, y **aquí no se guarda ninguna URL de webhook de
+  terceros**.
+- **Redes: no se integran sus API una a una (P-6, ADR-017).**
+  1. vuln-sentinel redacta el borrador con Haiku sobre una plantilla fija. Solo A y B, como máximo
+     3 al día por canal.
+  2. Juan lo aprueba en Administración.
+  3. El post aprobado se publica en **`/v1/social.atom`**, que es la fuente canónica y va firmada.
+  4. Si la herramienta tiene API, en el momento de la aprobación un adaptador de una sola llamada
+     (`SocialPublisher`) la invoca. Recomendada: **Buffer** (API GraphQL; plan Free o Essentials a
+     15 USD/mes). Alternativa: Postiz autoalojado.
+  5. La herramienta reparte a X, Bluesky y **LinkedIn con el perfil personal** (P-7).
+
+  - El post de X va **sin URL**: 0,015 USD frente a 0,20 USD con URL
+    ([docs.x.com](https://docs.x.com/x-api/getting-started/pricing)).
+  - Para aceptar ADR-017 hay que comprobar antes: el uso comercial del plan de Buffer y si exige
+    credenciales propias de X.
+  - Las plantillas de los posts leen la marca y los hosts de configuración (ADR-016).
 
 ---
 
@@ -443,6 +491,10 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 | Casos de KEV | A al entrar en KEV; ventaja sobre KEV calculada con `observed_at` |
 | **Ruido** | Una USN de kernel con cientos de CVE → 0 alertas A, B o C salvo que alguna esté en KEV |
 | **Fallo de fuente** | Timeout, 500, JSON corrupto o dato viejo → UNKNOWN visible; nunca «sin novedades» |
+| **CVE fuera de las listas → feed completo** (ADR-019) | Una CVE de un producto que no está en ninguna lista aparece en `all` con `level: none` **antes de 10 minutos** |
+| **Fuente excluida → fuera del feed** (ADR-020) | Una fuente con `isolation: excluded` no aporta ningún dato al feed; una `link_only` solo aporta enlaces |
+| Paginación | El cursor es estable con inserciones concurrentes; las páginas selladas no cambian; un cursor de más de 30 días recibe `410` con el enlace al snapshot |
+| Hosts | Ningún host real en el código ni en los fixtures (ADR-016; `VS_FORBIDDEN_HOSTS` en CI) |
 | Monotonía | Tests basados en propiedades: el nivel nunca baja |
 | Contrato | JSON Schema + OSV 1.9; firma verificada con openssl |
 | Métricas | Las consultas de `docs/metrics/queries.sql` se ejecutan contra el esquema en CI (desde F1a) |
@@ -463,13 +515,15 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 | Log Analytics + Sentinel (~1 GB) + reglas | ~6 | 5,59 USD/GB en el precio simplificado ([billing](https://learn.microsoft.com/en-us/azure/sentinel/billing)) |
 | IA: Sonnet 5.5 + Haiku 5.5 | ~33 | Tope de 1,5 USD/día (~41 €) |
 | Cloudflare | 0 | Access gratis hasta 50 usuarios; con Workers Paid, +4,5 € |
-| X (3 posts/día) | ~16 | LinkedIn y Bluesky, 0 |
+| Redes: Buffer + X | ~0–15 | Buffer Free o Essentials (15 USD/mes) ([pricing](https://buffer.com/pricing)); X sin URL ≤ 1,35 USD/mes si hay que pagarlo aparte |
+| Cloudflare R2 (páginas selladas y snapshot) | ~0 | Plan gratuito de 10 GB y salida de datos gratuita; el corpus completo comprimido cabe |
+| ntfy | 0 | Plan gratuito o instancia propia (SIN VERIFICAR) |
 | GitHub Actions (CI y vigilante externo) | 0 | Repo público |
-| **Total** | **≈ 85 €** (peor caso ≈ 98 €) | Cabe en D6 con poco margen |
+| **Total** | **≈ 70–85 €** (peor caso ≈ 98 €) | Cabe en D6 |
 
 Palancas:
-- agente con Haiku (−30 €);
-- 1 post al día en X (−11 €);
+- agente con Haiku si cumple la evaluación (P-2, −30 €);
+- Buffer Free en lugar de Essentials (−13 €);
 - KV sin endpoint privado, que entraría **como ADR** si G-4 se complica, no como atajo.
 
 Alerta de presupuesto a 80 € (G-9).
@@ -480,12 +534,14 @@ Alerta de presupuesto a 80 € (G-9).
 
 | Fase | Contenido | Termina cuando |
 |---|---|---|
-| **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…014; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5). **Sin push** hasta cerrar R1 | `uv run pytest` y `ruff` en verde en local |
-| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; reglas A/B/C con impacto y carga inicial; script que genera la lista de autores (**commit antes del fixture**); colectores de cvelistV5, KEV (×2), nomi-sec, búsqueda de GitHub y nginx.org; feed OSV firmado; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema |
+| **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…020; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5) | `uv run pytest` y `ruff` en verde en local. **Hecho** (commit inicial local) |
+| **Antes del primer push** | Licencias por directorio (ADR-018): `LICENSE` raíz Apache-2.0 con remisión a `src/`, `web/` e `infra/` en FSL-1.1-ALv2; `NOTICE` por directorio; cabeceras SPDX; `license` de `pyproject.toml`; test de cabeceras; `CONTRIBUTING` con CLA (motor) y DCO (resto) | Juan acepta ADR-018 y crea el repo (G-13) |
+| **F1a-0 · listas** | Scripts que generan `exposed-products` y `trusted-exploit-authors` con sus criterios escritos; **PR de revisión de Juan** (P-10). Desde entonces, cada cambio de las listas va por PR | PR aprobado y fusionado **antes** de cualquier fixture de nginx2root (R7). Necesita el repo (G-13) |
+| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema |
 | **F1b · resto del núcleo y en vivo** | El resto de fuentes (EPSS, GHSA, OSV, NVD, Metasploit, Exploit-DB, nuclei, fabricantes y CERT), cada una con su carga inicial; front (5 pantallas, con métricas); despliegue por OIDC (requiere el gate); 72 h en vivo | 72 h sin UNKNOWN no explicados; el portal muestra nginx2root (reconstrucción) con su línea de tiempo |
 | **F2 · IA** | Agente, redacción, verificador de citas, topes, conjunto de evaluación en CI, expediente en el portal | Conjunto de evaluación en verde, incluidos la inyección y el DoS |
 | **F3 · vigilancia** | Latido, reglas de Sentinel, `SentinelHealth`, **vigilante externo en GitHub Actions**, alerta de presupuesto | Se para `ingest` → llega el incidente; se corta el Tunnel → falla el vigilante externo |
-| **F4 · publicación** | Resumen, consumidor de ejemplo para Teams, X, LinkedIn y Bluesky con aprobación | Un post aprobado se publica en cada canal |
+| **F4 · publicación** | Resumen; consumidor de ejemplo para Teams probado contra un receptor local (P-8); cola de aprobación; `/v1/social.atom`; adaptador de la herramienta de redes (ADR-017) | Un post aprobado sale en el Atom y la herramienta lo publica en X, Bluesky y LinkedIn; el consumidor de Teams pasa contra el receptor local |
 | **F5 · arquitectura** | Paquete completo con las versiones de ATLAS y ATT&CK fijadas | Test de IDs en verde y revisión externa |
 
 ---
@@ -521,23 +577,38 @@ Alerta de presupuesto a 80 € (G-9).
 | G-12 | Comprobar el plan de Workers |
 | G-13 | Repo público en el GitHub personal, con reglas de protección. R1 cerrado; lo crea Juan |
 | G-14 | Recordatorio antes de la fecha de cambio de facturación de la suscripción (ADR-015), con margen para revisar costes. Fecha y condiciones solo en `local/` |
+| G-15 | Bucket de Cloudflare R2 para las páginas selladas y el snapshot (ADR-019); token de R2 **limitado a ese bucket**, guardado en el Key Vault del RG; dominio público del bucket detrás de la misma zona y caché |
+| G-16 | Tema de ntfy con control de acceso y su token en los secrets (P-9) |
 
-## Decisiones pendientes de Juan
+## Decisiones de Juan (cerradas el 2026-11-25)
 
-| # | Decisión | Recomendación |
+| # | Decisión | Dónde |
 |---|---|---|
-| P-1 | IA en Foundry con identidad gestionada o API de Anthropic con KV y un AI Gateway propio | Foundry si G-6 funciona |
-| P-2 | Modelo del agente | Sonnet 5.5 en F2; volver a medir |
-| P-3 | Nombres de host | `vuln.` y `api.vuln.` |
-| P-4 | Tunnel o restricción de IP | Tunnel |
-| P-5 | Cuentas: VulnCheck community y token de GitHub sin permisos | Sí |
-| P-6 | X (~16 €/mes) y Bluesky | 3 posts/día como máximo en X, más Bluesky |
-| P-7 | LinkedIn: perfil o página | Perfil |
-| P-8 | Tenant para el ejemplo de Teams | Por decidir |
-| P-9 | Destino de los avisos del vigilante | Correo + ntfy |
-| P-10 | Revisión de las listas `trusted-exploit-authors` (generada con el criterio de la sección 5.3) y `exposed-products` antes de F1a | Sí, por PR |
-| P-11 | Licencia y nombre del repo | Apache-2.0, `vuln-sentinel` |
-| P-12 | Stack | Python 3.13 + FastAPI; front con Astro estático |
-| P-13 | **Resuelta**: pasa a pago por uso, a cargo de Juan (ADR-015, G-14) | — |
-| P-14 | Hallazgo de plataforma anotado en `local/PLATFORM-FINDINGS.md` para el programa de la plataforma | No se toca desde aquí |
-| P-15 | **Resuelta**: las decisiones originales y la revisión pasan a `local/` como histórico privado; resumen público en `docs/journey/00-origen-y-decisiones.md` | — |
+| P-1 | Claude en Foundry con identidad gestionada si G-6 funciona; si no, API de Anthropic con la clave en KV a través de un AI Gateway **nuevo y con autenticación** | ADR-009 (aceptado, condicionado a G-6) |
+| P-2 | Agente con Sonnet 5.5 en F2. El conjunto de evaluación lo compara con Haiku 5.5; si Haiku cumple los umbrales, se cambia | ADR-009, §7 |
+| P-3 | `vuln.` y `api.vuln.` en la zona actual. Objetivo de negocio: migrar a marca y dominio propios y monetizar. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
+| P-4 | Cloudflare Tunnel | ADR-004 (aceptado) |
+| P-5 | Token de GitHub: sí. **VulnCheck: sus términos prohíben ofrecer los datos gratis o con licencia abierta → fuera de la v1**, documentado. Vuelve con un permiso por escrito o una licencia | ADR-020, §4 |
+| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta existente (Buffer recomendada, con dos comprobaciones pendientes; alternativa Postiz) | ADR-017 (propuesto), §12 |
+| P-7 | LinkedIn con el perfil personal | §12 |
+| P-8 | El ejemplo de Teams se prueba contra un receptor de webhook local; no se guarda aquí ninguna URL de terceros | §12 |
+| P-9 | Correo y ntfy desde los dos vigilantes | §11, G-8, G-16 |
+| P-10 | Juan revisa por PR las dos listas antes de F1a; después, cada cambio va por PR. **Cambio de diseño:** feed completo + feed de alertas; las listas solo deciden la urgencia | F1a-0, ADR-019, §3 |
+| P-11 | Open core: Apache-2.0 en contrato, schema, verificador y ejemplos; **FSL-1.1-ALv2** en el motor (comparada con BUSL-1.1). Licencias por directorio antes del primer push | ADR-018 (propuesto) |
+| P-12 | Python 3.13 + FastAPI; front con **React** (SPA con Vite) en Workers static assets | ADR-005, ADR-006 (aceptados) |
+| P-13 | Pago por uso cuando cambie la facturación de la suscripción | ADR-015, G-14 |
+| P-14 | El hallazgo del gateway es de la plataforma; solo en `local/` | — |
+| P-15 | Ficheros privados en `local/`; resumen público en la bitácora | `docs/journey/00` |
+
+**Monetización.** Antes de monetizar, Juan hace una revisión legal (licencias de datos, `share_alike`
+de OSV, términos de Buffer y de X). Queda fuera del alcance de este repo.
+
+## Pendiente de Juan
+
+| # | Qué | Para qué |
+|---|---|---|
+| J-1 | Aceptar ADR-018 (FSL-1.1-ALv2 para el motor) | Dividir las licencias antes del primer push |
+| J-2 | Aceptar ADR-017 tras comprobar el uso comercial del plan de Buffer y si exige credenciales de X | F4 |
+| J-3 | Si quiere VulnCheck: pedir el permiso por escrito o presupuestar la licencia | Volver a incluirlo (ADR-020) |
+| J-4 | Fecha del cambio de facturación (solo en `local/`) | G-14 |
+| J-5 | Crear el repo (G-13) | Push y PR de las listas (F1a-0) |

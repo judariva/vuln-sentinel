@@ -1,0 +1,11 @@
+# Marca y hosts (ADR-0016). Valores FICTICIOS: los reales van en las variables del pipeline.
+# Nada del código debe escribir estos valores a mano; se leen de aquí o de las variables.
+product_name: vuln-sentinel
+hosts:
+  front: vuln.example.org
+  api: api.vuln.example.org
+feed:
+  issuer: https://api.vuln.example.org
+  key_id: example-2026-01
+social:
+  alert_url_template: https://vuln.example.org/alerts/{alert_id}

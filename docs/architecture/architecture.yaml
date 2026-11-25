@@ -70,11 +70,19 @@ components:
     name: traces
     service: Application Insights (OpenTelemetry GenAI)
     status: planned
+  - id: CMP-015
+    name: social-publisher
+    service: Herramienta externa de publicación en redes (Buffer recomendada; ADR-0017)
+    status: planned
+  - id: CMP-016
+    name: feed-archive
+    service: Cloudflare R2 (páginas selladas del feed y snapshot diario; ADR-0019)
+    status: planned
 
 sources:
   - {id: SRC-001, name: cvelistV5}
   - {id: SRC-002, name: CISA KEV}
-  - {id: SRC-003, name: VulnCheck KEV}
+  - {id: SRC-003, name: VulnCheck KEV, status: excluded, note: "términos; ADR-0020"}
   - {id: SRC-004, name: FIRST EPSS}
   - {id: SRC-005, name: GitHub Advisory Database}
   - {id: SRC-006, name: OSV.dev}
@@ -100,6 +108,9 @@ flows:
   - {id: FLW-005, from: CMP-011, to: CMP-002, crosses: [TB-001, TB-002], via: CMP-010}
   - {id: FLW-006, from: CMP-003, to: CMP-012, note: latido}
   - {id: FLW-007, from: CMP-013, to: CMP-011, crosses: [TB-001], note: vigilante externo}
+  - {id: FLW-008, from: CMP-005, to: CMP-016, note: páginas selladas y snapshot (token limitado al bucket)}
+  - {id: FLW-009, from: CMP-005, to: CMP-015, crosses: [TB-001], note: post aprobado (adaptador SocialPublisher)}
+  - {id: FLW-010, from: CMP-011, to: CMP-016, note: servir feed archivado desde caché}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}

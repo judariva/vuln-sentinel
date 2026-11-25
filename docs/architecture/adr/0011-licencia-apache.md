@@ -1,7 +1,7 @@
 ---
 adr: "0011"
 titulo: Licencia Apache-2.0 y NOTICE de datos
-estado: propuesto
+estado: sustituido por 0018
 fecha: 2026-11-25
 afecta: []
 sustituye: null

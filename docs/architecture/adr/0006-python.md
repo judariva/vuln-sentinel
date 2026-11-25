@@ -1,7 +1,7 @@
 ---
 adr: "0006"
 titulo: Python 3.13 para núcleo y API
-estado: propuesto
+estado: aceptado
 fecha: 2026-11-25
 afecta: [CMP-002, CMP-003, CMP-004, CMP-005, CMP-006]
 sustituye: null
@@ -21,7 +21,8 @@ Python 3.13, `uv`, FastAPI, Alembic. `univers` y `packageurl-python` para versio
 
 ## Consecuencias
 
-Un solo lenguaje en el núcleo. El front va aparte (P-12).
+Un solo lenguaje en el núcleo. El front va aparte, en React (ADR-0005). Decisión de Juan (P-12),
+2026-11-25.
 
 ## Evidencia
 

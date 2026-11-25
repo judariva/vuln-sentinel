@@ -1,7 +1,7 @@
 ---
 adr: "0004"
 titulo: Origen sin IP pública con Cloudflare Tunnel
-estado: propuesto
+estado: aceptado
 fecha: 2026-11-25
 afecta: [CMP-002, CMP-010, CMP-011, CTL-008, THR-008]
 sustituye: null
@@ -25,4 +25,4 @@ Una réplica mínima fija para `cloudflared` (~2-3 €/mes). Prueba: un `curl` d
 
 ## Evidencia
 
-Pendiente de la decisión P-4.
+Decisión de Juan (P-4), 2026-11-25: Cloudflare Tunnel.
