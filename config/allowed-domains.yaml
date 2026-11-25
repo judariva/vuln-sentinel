@@ -1,0 +1,14 @@
+# Dominios a los que pueden llamar las herramientas del agente (D14, CTL-004). Solo GET.
+# Cualquier dominio fuera de esta lista se rechaza en código, no en el prompt.
+# Se completa en F2; cada alta lleva motivo en el commit.
+domains:
+  - cveawg.mitre.org
+  - www.cve.org
+  - nvd.nist.gov
+  - services.nvd.nist.gov
+  - www.cisa.gov
+  - api.github.com          # contenidos de repos de PoC: leídos como texto, nunca ejecutados
+  - raw.githubusercontent.com
+  - osv.dev
+  - api.osv.dev
+  - nginx.org

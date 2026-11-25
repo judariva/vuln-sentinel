@@ -1,0 +1,20 @@
+vuln-sentinel
+Copyright 2026 los autores de vuln-sentinel
+
+Este producto incluye software licenciado bajo Apache License 2.0 (ver LICENSE).
+
+Datos de terceros que el feed redistribuye o de los que deriva, con sus condiciones:
+
+- CVE® List (CVE Program / MITRE): CVE Terms of Use. Se reproduce su aviso de copyright.
+- CISA Known Exploited Vulnerabilities Catalog y CISA Vulnrichment: CC0 1.0.
+- VulnCheck KEV: uso libre con atribución visible; los datos llevan la etiqueta «VulnCheck KEV».
+- FIRST EPSS: se atribuye a FIRST (https://www.first.org/epss/).
+- GitHub Advisory Database: CC-BY 4.0.
+- OSV.dev: licencia de cada fuente de origen; se excluyen las fuentes con licencia NC/ND.
+- NVD (NIST): «This product uses the NVD API but is not endorsed or certified by the NVD.»
+- Metasploit Framework metadata (Rapid7): BSD-3-Clause (pendiente de verificar).
+- Exploit-DB (OffSec): GPL-2.0-or-later; solo se usan metadatos, no se redistribuye el código.
+- nuclei-templates (ProjectDiscovery): MIT.
+- PoC-in-GitHub (nomi-sec): CC0.
+
+El feed solo enlaza a código de exploits; no lo aloja ni lo redistribuye.

@@ -1,0 +1,29 @@
+# Productos expuestos a Internet de uso masivo (PLAN.md §5.2, `producto_expuesto`).
+#
+# CRITERIO v1 (antes de mirar ningún caso):
+#   Productos de las categorías de abajo cuyo fabricante tenga al menos 3 entradas en CISA KEV en
+#   los últimos 36 meses en esa categoría, más los servidores web/proxy y de identidad de mayor
+#   despliegue. La lista inicial la propone un script en F1a a partir de KEV y Juan la revisa
+#   (P-10). Cada alta o baja es un commit con su motivo.
+#
+# Formato de cada producto:
+#   - id: estable, nunca se reutiliza
+#     category: una de `categories`
+#     vendor: nombre normalizado
+#     product: nombre normalizado
+#     aliases: [nombres vendor/product tal como aparecen en registros CVE de distintos CNA]
+#     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]
+#     purl: [purl sin versión, si existe]
+criterion_version: 1
+categories:
+  - vpn
+  - firewall
+  - load-balancer
+  - web-proxy
+  - identity
+  - hypervisor
+  - cicd
+  - mail
+  - file-transfer
+  - remote-access
+products: []

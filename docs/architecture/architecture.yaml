@@ -1,0 +1,126 @@
+# Arquitectura de vuln-sentinel como datos (D12).
+# Reglas:
+#   - Los IDs son estables y NUNCA se reutilizan. Un elemento retirado se marca `status: retired`.
+#   - Las vistas (views/*.md) y los ADR solo referencian IDs de este fichero; un test lo comprueba.
+#   - Sin nombres de recursos internos, IDs de tenant/suscripción ni IP (regla 8): los nombres de
+#     servicio son los del producto de Azure/Cloudflare.
+schema_version: 1
+id_prefixes:
+  CMP: componente
+  FLW: flujo
+  TB: frontera de confianza
+  CTL: control
+  THR: amenaza
+  SRC: fuente externa
+
+components:
+  - id: CMP-001
+    name: front
+    service: Cloudflare Workers static assets
+    status: planned
+  - id: CMP-002
+    name: api
+    service: Azure Container Apps (app)
+    status: planned
+  - id: CMP-003
+    name: job-ingest
+    service: Azure Container Apps Jobs (cron */5)
+    status: planned
+  - id: CMP-004
+    name: job-investigate
+    service: Azure Container Apps Jobs (cron */10)
+    status: planned
+  - id: CMP-005
+    name: job-publish
+    service: Azure Container Apps Jobs (cron */10)
+    status: planned
+  - id: CMP-006
+    name: job-daily
+    service: Azure Container Apps Jobs (cron diario)
+    status: planned
+  - id: CMP-007
+    name: database
+    service: Azure Database for PostgreSQL Flexible Server (B1ms)
+    status: planned
+  - id: CMP-008
+    name: key-vault
+    service: Azure Key Vault (clave de firma ES256 no exportable)
+    status: planned
+  - id: CMP-009
+    name: llm
+    service: Claude en Microsoft Foundry (pendiente de G-6)
+    status: planned
+  - id: CMP-010
+    name: tunnel
+    service: Cloudflare Tunnel (cloudflared como app interna)
+    status: planned
+  - id: CMP-011
+    name: edge
+    service: Cloudflare (DNS, WAF, caché, Access)
+    status: planned
+  - id: CMP-012
+    name: heartbeat-sink
+    service: Microsoft Sentinel (Log Analytics, Logs Ingestion API)
+    status: planned
+  - id: CMP-013
+    name: external-watchdog
+    service: GitHub Actions (workflow programado)
+    status: planned
+  - id: CMP-014
+    name: traces
+    service: Application Insights (OpenTelemetry GenAI)
+    status: planned
+
+sources:
+  - {id: SRC-001, name: cvelistV5}
+  - {id: SRC-002, name: CISA KEV}
+  - {id: SRC-003, name: VulnCheck KEV}
+  - {id: SRC-004, name: FIRST EPSS}
+  - {id: SRC-005, name: GitHub Advisory Database}
+  - {id: SRC-006, name: OSV.dev}
+  - {id: SRC-007, name: NVD API 2.0}
+  - {id: SRC-008, name: Metasploit metadata}
+  - {id: SRC-009, name: Exploit-DB}
+  - {id: SRC-010, name: nuclei-templates}
+  - {id: SRC-011, name: PoC-in-GitHub}
+  - {id: SRC-012, name: GitHub search}
+  - {id: SRC-013, name: avisos de fabricante y CERT}
+
+trust_boundaries:
+  - {id: TB-001, name: Internet ↔ borde Cloudflare}
+  - {id: TB-002, name: borde Cloudflare ↔ origen Azure (solo por Tunnel)}
+  - {id: TB-003, name: contenido externo no confiable ↔ agente de IA}
+  - {id: TB-004, name: pipeline de GitHub ↔ Azure/Cloudflare (OIDC, token mínimo)}
+
+flows:
+  - {id: FLW-001, from: SRC-001, to: CMP-003, crosses: [TB-003]}
+  - {id: FLW-002, from: CMP-003, to: CMP-007}
+  - {id: FLW-003, from: CMP-004, to: CMP-009, crosses: [TB-003]}
+  - {id: FLW-004, from: CMP-005, to: CMP-008, note: firma del feed}
+  - {id: FLW-005, from: CMP-011, to: CMP-002, crosses: [TB-001, TB-002], via: CMP-010}
+  - {id: FLW-006, from: CMP-003, to: CMP-012, note: latido}
+  - {id: FLW-007, from: CMP-013, to: CMP-011, crosses: [TB-001], note: vigilante externo}
+
+threats:
+  - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
+  - {id: THR-002, name: la IA baja un nivel o infla el impacto, refs: ["OWASP LLM09"]}
+  - {id: THR-003, name: citas inventadas, refs: ["OWASP LLM09"]}
+  - {id: THR-004, name: exfiltración o SSRF por herramientas del agente, refs: ["OWASP LLM06"]}
+  - {id: THR-005, name: ejecución de código malicioso de un PoC, refs: []}
+  - {id: THR-006, name: consumo desbocado de IA, refs: ["OWASP LLM10"]}
+  - {id: THR-007, name: avalancha de alertas en el primer arranque, refs: []}
+  - {id: THR-008, name: acceso directo al origen saltando WAF y Access, refs: []}
+  - {id: THR-009, name: el monitor deja de funcionar sin que nadie se entere, refs: []}
+  - {id: THR-010, name: escalada de privilegios del pipeline, refs: ["ATT&CK v20.1 T1098"]}
+
+controls:
+  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: test de monotonía}
+  - {id: CTL-002, name: verificador determinista de citas, mitigates: [THR-003], proof: eval citas falsas}
+  - {id: CTL-003, name: contenido externo delimitado y herramientas de solo lectura, mitigates: [THR-001], proof: eval injection-advisory}
+  - {id: CTL-004, name: lista de dominios permitidos y solo GET, mitigates: [THR-004], proof: test de herramienta}
+  - {id: CTL-005, name: código de PoC leído como texto, nunca ejecutado, mitigates: [THR-005], proof: revisión de contenedor en CI}
+  - {id: CTL-006, name: topes de pasos, tokens y coste diario, mitigates: [THR-006], proof: test de bucle simulado}
+  - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: test carga inicial 0 alertas}
+  - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
+  - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
+  - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}

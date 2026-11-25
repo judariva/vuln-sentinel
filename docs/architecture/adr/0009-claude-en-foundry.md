@@ -1,0 +1,30 @@
+---
+adr: "0009"
+titulo: Claude en Microsoft Foundry con identidad gestionada
+estado: propuesto
+fecha: 2026-11-25
+afecta: [CMP-004, CMP-009]
+sustituye: null
+---
+
+## Contexto
+
+D5 prefiere Claude en Foundry. Hay que confirmar que se puede desplegar en la suscripción (G-6).
+
+## Decisión
+
+Haiku 5.5 y Sonnet 5.5 en GlobalStandard, Sweden Central, con autenticación por identidad gestionada.
+
+## Alternativas descartadas
+
+- API de Anthropic con clave: es el respaldo si G-6 falla. La clave iría en Key Vault y el tráfico, por un AI Gateway propio con autenticación.
+
+## Consecuencias
+
+Sin secretos para la IA. Mismo precio por token que la API directa, facturado en CCU.
+
+## Evidencia
+
+- https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models (2026-11-25)
+- https://learn.microsoft.com/en-us/azure/foundry/foundry-models/concepts/claude-models-billing (2026-11-25)
+- https://platform.claude.com/docs/en/about-claude/pricing (2026-11-25)

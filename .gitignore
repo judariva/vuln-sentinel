@@ -1,0 +1,21 @@
+# secretos
+.dev.vars
+.env
+.env.*
+*.pem
+*.key
+# cloudflare / node
+.wrangler/
+node_modules/
+dist/
+# python
+__pycache__/
+.venv/
+# claude
+.claude/settings.local.json
+# material local de la plataforma (postura, accesos): nunca al repo público (regla 8)
+local/
+# herramientas
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
