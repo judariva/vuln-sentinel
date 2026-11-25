@@ -77,16 +77,17 @@ tenant) está en `local/ACCESS.md`.
 | ADR-008 | Firma **ES256 (JWS detached)** con clave no exportable en Key Vault | La clave no sale de KV. Ed25519 en KV Standard: **SIN VERIFICAR** |
 | ADR-009 | IA: **Claude en Foundry con identidad gestionada** si G-6 funciona (P-1) | Preferencia D5, sin secretos. Si no: API de Anthropic con clave en KV, a través de un AI Gateway **nuevo y con autenticación** |
 | ADR-010 | Agente: **bucle propio con tool use** en un ACA Job | Agent Service no admite Claude; portable; OTel |
-| ADR-011 | ~~Licencia Apache-2.0 para todo~~ → sustituido por ADR-018 | — |
+| ADR-011 | Licencia **Apache-2.0 para todo el repo**; `NOTICE` con atribuciones de datos; contribuciones con DCO | El modelo de donaciones pide un proyecto 100 % abierto (ADR-018 rechazado) |
 | ADR-012 | **Carga inicial de referencia** por fuente, sin alertas (R2) | Evitar la avalancha del primer arranque y la de cada fuente nueva |
 | ADR-013 | **B exige impacto mínimo** (R3) | Un exploit de DoS o de fuga de versión no es urgente |
 | ADR-014 | Pipeline con **RBAC Administrator con condición** (R9) | Que el pipeline no pueda darse a sí mismo cualquier rol |
 | ADR-015 | **Continuidad de la suscripción**: al cambiar su modelo de facturación pasa a pago por uso, a cargo de Juan (P-13) | El producto es 24/7; el coste ya está dimensionado para pago por uso (§14) |
 | ADR-016 | **Hosts, nombre y marca en configuración** (P-3) | Objetivo de negocio: migrar a marca y dominio propios cambiando DNS y variables, sin tocar código |
 | ADR-017 | **Redes: feed Atom + herramienta existente** (Buffer recomendada; Postiz autoalojado como alternativa) (P-6) | Sin integrar las API de las redes una a una; lock-in bajo |
-| ADR-018 | **Open core**: contrato, schema, verificador y ejemplos con Apache-2.0; motor con **FSL-1.1-ALv2** (pasa a Apache-2.0 a los 2 años) (P-11) | Proteger la monetización sin cerrar el código |
+| ADR-018 | ~~Open core con FSL-1.1-ALv2~~ → **rechazado** | Sostenibilidad por donaciones, no por venta |
 | ADR-019 | **Feed completo + feed de alertas**; índice de cambios paginado y páginas selladas en R2 | El consumidor recibe todas las CVE; las listas solo deciden la urgencia |
 | ADR-020 | **Uso comercial de las fuentes**; VulnCheck fuera de la v1; INCIBE y nginx.org solo hechos y enlace (P-5) | Términos comprobados con URL |
+| ADR-021 | **Donaciones solo en Bitcoin** (Lightning y on-chain), sin custodia, con una dirección nueva por donación; las recibe Juan como persona física (propuesto) | Sostenibilidad sin vender datos ni acceso; el feed es igual para todos |
 
 ---
 
@@ -166,9 +167,10 @@ cliente que solo entienda OSV cruza por purl y rango sin leer la extensión.
 
 ## 4. Fuentes (comprobadas el 2026-11-25)
 
-Columna **«uso comercial»** (ADR-020): comprobada el 2026-11-25 en la URL de los términos. No es
-asesoramiento jurídico: antes de monetizar, Juan hace una revisión legal, que queda fuera de este
-repo. Las fuentes que no lo admiten se marcan y se aíslan (`excluded`, `link_only`, `facts_only`).
+Columna **«uso comercial»** (ADR-020): comprobada el 2026-11-25 en la URL de los términos. Se
+mantiene aunque el proyecto no se venda: el feed lo puede usar cualquiera y el proyecto recibe
+donaciones. No es asesoramiento jurídico: antes de activar las donaciones, Juan hace una revisión
+legal, que queda fuera de este repo. Las fuentes que no lo admiten se marcan y se aíslan (`excluded`, `link_only`, `facts_only`).
 
 | Fuente | Aporta | Consumo y frecuencia | Límites | Uso comercial (términos) | Estado |
 |---|---|---|---|---|---|
@@ -397,6 +399,7 @@ Se calculan sobre la BD y se precalculan cada día en `metric_daily`. Las consul
 | | **Fallos** | Altas de KEV (posteriores a la carga inicial) en productos expuestos sin alerta B o A previa |
 | | IA | Confirmaciones e intentos de bajar el nivel bloqueados |
 | Salud | Fuentes | Estado y antigüedad de cada fuente; latido; coste de IA por día; publicaciones pendientes |
+| **Transparencia** | **Coste del proyecto** | Coste mensual real (Azure Cost Management por API sobre el RG y facturación de Cloudflare por API, en `cost_daily`) frente a lo recibido en donaciones (`donation_received`: importe en sats, fecha y canal, **sin datos del donante**, leído de la cadena o del servidor de pagos). Con las donaciones desactivadas, solo el coste |
 
 ---
 
@@ -407,6 +410,8 @@ Se calculan sobre la BD y se precalculan cada día en `metric_daily`. Las consul
 | Hoy | Público | Alertas del día por nivel, con los cambios |
 | Detalle de alerta | Público | Productos y rangos, señales, línea de tiempo con las dos marcas de tiempo, fuentes, expediente de IA |
 | Métricas | Público | Catálogo de la sección 9 |
+| **Coste del proyecto** | Público | Coste mensual real frente a lo recibido (§9); con las donaciones desactivadas, solo el coste |
+| Apoya el proyecto | Público, solo con `donations.enabled` | Cómo donar (Lightning y on-chain con una dirección nueva por donación) y reconocimiento a quien dona y lo pide. Nunca da datos antes ni mejores |
 | Fuentes | Access | Salud, ejecuciones y UNKNOWN |
 | Administración | Access | Cola de aprobación, veredicto, coste de IA y trazas |
 
@@ -449,6 +454,9 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
   al publicar.
 - **Resumen diario.** A las 07:00 Europe/Madrid, como `/v1/digest/{fecha}.json` y como página del
   portal. Incluye las fuentes en UNKNOWN.
+- **Enlace «apoya el proyecto»** en el resumen y en los posts, con el mismo interruptor
+  `donations.enabled`. El enlace apunta a la página del portal, nunca a una dirección. Las
+  direcciones, la xpub y los enlaces de donación van en configuración y secrets, nunca en git.
 - **Teams, como consumidor de ejemplo** (`examples/teams-consumer/`, P-8). Lo ejecuta el
   consumidor:
   1. lee `/v1/feed/all/changes?since=` o `/v1/feed/alerts/changes?since=`;
@@ -535,13 +543,14 @@ Alerta de presupuesto a 80 € (G-9).
 | Fase | Contenido | Termina cuando |
 |---|---|---|
 | **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…020; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5) | `uv run pytest` y `ruff` en verde en local. **Hecho** (commit inicial local) |
-| **Antes del primer push** | Licencias por directorio (ADR-018): `LICENSE` raíz Apache-2.0 con remisión a `src/`, `web/` e `infra/` en FSL-1.1-ALv2; `NOTICE` por directorio; cabeceras SPDX; `license` de `pyproject.toml`; test de cabeceras; `CONTRIBUTING` con CLA (motor) y DCO (resto) | Juan acepta ADR-018 y crea el repo (G-13) |
+| **Repo privado** | `gh repo create` privado; protección de `main` (PR obligatorio y CI en verde); `CONTRIBUTING` con DCO. Todo Apache-2.0 (ADR-011) | Hecho tras la búsqueda de fugas sobre el árbol y el historial. **Hacerlo público** es otra decisión de Juan, con otra búsqueda de fugas sobre el historial |
 | **F1a-0 · listas** | Scripts que generan `exposed-products` y `trusted-exploit-authors` con sus criterios escritos; **PR de revisión de Juan** (P-10). Desde entonces, cada cambio de las listas va por PR | PR aprobado y fusionado **antes** de cualquier fixture de nginx2root (R7). Necesita el repo (G-13) |
 | **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema |
 | **F1b · resto del núcleo y en vivo** | El resto de fuentes (EPSS, GHSA, OSV, NVD, Metasploit, Exploit-DB, nuclei, fabricantes y CERT), cada una con su carga inicial; front (5 pantallas, con métricas); despliegue por OIDC (requiere el gate); 72 h en vivo | 72 h sin UNKNOWN no explicados; el portal muestra nginx2root (reconstrucción) con su línea de tiempo |
 | **F2 · IA** | Agente, redacción, verificador de citas, topes, conjunto de evaluación en CI, expediente en el portal | Conjunto de evaluación en verde, incluidos la inyección y el DoS |
 | **F3 · vigilancia** | Latido, reglas de Sentinel, `SentinelHealth`, **vigilante externo en GitHub Actions**, alerta de presupuesto | Se para `ingest` → llega el incidente; se corta el Tunnel → falla el vigilante externo |
 | **F4 · publicación** | Resumen; consumidor de ejemplo para Teams probado contra un receptor local (P-8); cola de aprobación; `/v1/social.atom`; adaptador de la herramienta de redes (ADR-017) | Un post aprobado sale en el Atom y la herramienta lo publica en X, Bluesky y LinkedIn; el consumidor de Teams pasa contra el receptor local |
+| **F4b · donaciones** (ADR-021) | Recepción de donaciones en Bitcoin sin custodia (Lightning y on-chain, con una dirección nueva por donación); lectura de lo recibido sin datos del donante; página de reconocimiento; enlace «apoya el proyecto» en el resumen y en los posts. Todo detrás del interruptor `donations.enabled` (por defecto `false`) | Pruebas en testnet o signet; con el interruptor apagado no aparece ningún enlace ni dato de donaciones. **Se activa al cerrar la fase**, tras la revisión legal de Juan |
 | **F5 · arquitectura** | Paquete completo con las versiones de ATLAS y ATT&CK fijadas | Test de IDs en verde y revisión externa |
 
 ---
@@ -576,7 +585,9 @@ Alerta de presupuesto a 80 € (G-9).
 | G-11 | Tunnel, DNS y app de Access de `/admin` («solo Juan», con Entra) |
 | G-12 | Comprobar el plan de Workers |
 | G-13 | Repo público en el GitHub personal, con reglas de protección. R1 cerrado; lo crea Juan |
-| G-14 | Recordatorio antes de la fecha de cambio de facturación de la suscripción (ADR-015), con margen para revisar costes. Fecha y condiciones solo en `local/` |
+| G-14 | **Recordatorio en septiembre de 2027** del cambio de facturación de la suscripción (ADR-015), con margen para revisar costes. La fecha exacta y las condiciones, solo en `local/`. G-9 sigue valiendo con pago por uso |
+| G-18 | (F4b, ADR-021) Secret en el Key Vault del RG con la lista de direcciones on-chain pregeneradas (o la xpub watch-only), con caducidad y rotación (G-5). Exclusión de logs del endpoint de donación en App Insights y Cloudflare |
+| G-17 | Lectura de costes para la transparencia (§9): rol **Cost Management Reader** sobre el RG para la identidad del job diario; token de Cloudflare con lectura de facturación de la cuenta, guardado en el Key Vault del RG |
 | G-15 | Bucket de Cloudflare R2 para las páginas selladas y el snapshot (ADR-019); token de R2 **limitado a ese bucket**, guardado en el Key Vault del RG; dominio público del bucket detrás de la misma zona y caché |
 | G-16 | Tema de ntfy con control de acceso y su token en los secrets (P-9) |
 
@@ -586,7 +597,7 @@ Alerta de presupuesto a 80 € (G-9).
 |---|---|---|
 | P-1 | Claude en Foundry con identidad gestionada si G-6 funciona; si no, API de Anthropic con la clave en KV a través de un AI Gateway **nuevo y con autenticación** | ADR-009 (aceptado, condicionado a G-6) |
 | P-2 | Agente con Sonnet 5.5 en F2. El conjunto de evaluación lo compara con Haiku 5.5; si Haiku cumple los umbrales, se cambia | ADR-009, §7 |
-| P-3 | `vuln.` y `api.vuln.` en la zona actual. Objetivo de negocio: migrar a marca y dominio propios y monetizar. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
+| P-3 | `vuln.` y `api.vuln.` en la zona actual. Si funciona, puede migrar a marca y dominio propios. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
 | P-4 | Cloudflare Tunnel | ADR-004 (aceptado) |
 | P-5 | Token de GitHub: sí. **VulnCheck: sus términos prohíben ofrecer los datos gratis o con licencia abierta → fuera de la v1**, documentado. Vuelve con un permiso por escrito o una licencia | ADR-020, §4 |
 | P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta existente (Buffer recomendada, con dos comprobaciones pendientes; alternativa Postiz) | ADR-017 (propuesto), §12 |
@@ -594,21 +605,25 @@ Alerta de presupuesto a 80 € (G-9).
 | P-8 | El ejemplo de Teams se prueba contra un receptor de webhook local; no se guarda aquí ninguna URL de terceros | §12 |
 | P-9 | Correo y ntfy desde los dos vigilantes | §11, G-8, G-16 |
 | P-10 | Juan revisa por PR las dos listas antes de F1a; después, cada cambio va por PR. **Cambio de diseño:** feed completo + feed de alertas; las listas solo deciden la urgencia | F1a-0, ADR-019, §3 |
-| P-11 | Open core: Apache-2.0 en contrato, schema, verificador y ejemplos; **FSL-1.1-ALv2** en el motor (comparada con BUSL-1.1). Licencias por directorio antes del primer push | ADR-018 (propuesto) |
+| P-11 | Primero, open core con FSL-1.1-ALv2. **Después, rechazado: todo Apache-2.0**, porque el modelo es de donaciones | ADR-011 (aceptado), ADR-018 (rechazado) |
 | P-12 | Python 3.13 + FastAPI; front con **React** (SPA con Vite) en Workers static assets | ADR-005, ADR-006 (aceptados) |
 | P-13 | Pago por uso cuando cambie la facturación de la suscripción | ADR-015, G-14 |
 | P-14 | El hallazgo del gateway es de la plataforma; solo en `local/` | — |
 | P-15 | Ficheros privados en `local/`; resumen público en la bitácora | `docs/journey/00` |
 
-**Monetización.** Antes de monetizar, Juan hace una revisión legal (licencias de datos, `share_alike`
-de OSV, términos de Buffer y de X). Queda fuera del alcance de este repo.
+**Sostenibilidad: donaciones, no venta** (decisión de Juan, 2026-11-25).
+- El feed es siempre gratis e igual para todos.
+- Quien dona recibe reconocimiento (README o una página), nunca datos antes ni mejores.
+- Las donaciones son solo en Bitcoin (Lightning y on-chain) y las recibe Juan como persona física
+  (ADR-021).
+- Las obligaciones fiscales son de Juan y la revisión legal previa a activarlas queda fuera de este
+  repo.
 
 ## Pendiente de Juan
 
 | # | Qué | Para qué |
 |---|---|---|
-| J-1 | Aceptar ADR-018 (FSL-1.1-ALv2 para el motor) | Dividir las licencias antes del primer push |
-| J-2 | Aceptar ADR-017 tras comprobar el uso comercial del plan de Buffer y si exige credenciales de X | F4 |
+| J-2 | Aceptar o no ADR-017: la comprobación de Buffer ya está hecha y documentada en el ADR | F4 |
 | J-3 | Si quiere VulnCheck: pedir el permiso por escrito o presupuestar la licencia | Volver a incluirlo (ADR-020) |
-| J-4 | Fecha del cambio de facturación (solo en `local/`) | G-14 |
-| J-5 | Crear el repo (G-13) | Push y PR de las listas (F1a-0) |
+| J-6 | Aceptar o no ADR-021 (donaciones en Bitcoin) | F4b |
+| J-7 | Hacer público el repo, cuando lo decida (con otra búsqueda de fugas sobre el historial) | Publicación |

@@ -80,6 +80,27 @@ WHERE s.kind = 'kev_cisa'
         AND h.at < s.observed_at
   );
 
+-- name: cost_vs_donations_monthly
+-- Transparencia: coste real del mes frente a lo recibido. Las donaciones van en sats; la conversión
+-- a EUR, si se muestra, se hace con el precio del día de recepción y se declara como estimación.
+WITH cost AS (
+    SELECT date_trunc('month', day) AS month, sum(amount_eur) AS cost_eur
+    FROM cost_daily
+    GROUP BY 1
+), don AS (
+    SELECT date_trunc('month', received_at) AS month, sum(amount_sats) AS received_sats, count(*) AS donations
+    FROM donation_received
+    GROUP BY 1
+)
+SELECT
+    coalesce(cost.month, don.month) AS month,
+    coalesce(cost.cost_eur, 0)      AS cost_eur,
+    coalesce(don.received_sats, 0)  AS received_sats,
+    coalesce(don.donations, 0)      AS donations
+FROM cost
+FULL OUTER JOIN don ON don.month = cost.month
+WHERE coalesce(cost.month, don.month) = date_trunc('month', CAST(:day AS date));
+
 -- name: ai_blocked_downgrades
 -- IA: intentos de bajar el nivel bloqueados por max(determinista, IA).
 SELECT count(*) AS blocked

@@ -17,7 +17,18 @@ EXPECTED_QUERIES = {
     "lead_over_kev",
     "misses",
     "ai_blocked_downgrades",
+    "cost_vs_donations_monthly",
 }
+
+
+def test_donations_table_has_no_donor_data():
+    """ADR-0021: la tabla de donaciones no guarda nada que identifique al donante."""
+    schema = (METRICS / "schema-draft.sql").read_text(encoding="utf-8")
+    block = schema.split("CREATE TABLE donation_received", 1)[1].split(");", 1)[0].lower()
+    forbidden = ("name", "email", "ip", "address", "message", "memo", "donor", "payer", "from_")
+    columns = [line.strip().split()[0] for line in block.splitlines() if line.strip()[:1].isalpha()]
+    leaked = [c for c in columns if any(f in c for f in forbidden)]
+    assert not leaked, f"Columnas que podrían identificar al donante: {leaked}"
 
 
 def _queries() -> dict[str, str]:

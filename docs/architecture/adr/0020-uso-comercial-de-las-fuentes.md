@@ -9,10 +9,14 @@ sustituye: null
 
 ## Contexto
 
-El producto se monetizará si funciona (P-3). P-5 pide comprobar si los términos de VulnCheck
-admiten un producto de pago. Cada fuente lleva en el plan una columna de «uso comercial» comprobada
-con la URL de sus términos. Las fuentes que no lo admitan se marcan y se aíslan. Antes de
-monetizar, Juan hace una revisión legal, que queda fuera de este repo.
+P-5 pidió comprobar si los términos de VulnCheck admitían un producto de pago. Después, el modelo
+cambió a **donaciones, no venta** (ADR-0021): el feed es gratis y Apache-2.0. La columna de «uso
+comercial» se mantiene por dos motivos:
+- el feed es público y cualquiera puede usarlo, también con fines comerciales;
+- el proyecto recibe donaciones.
+
+Cada fuente se comprueba con la URL de sus términos. Las que no lo admiten se marcan y se aíslan.
+Antes de activar las donaciones, Juan hace una revisión legal, que queda fuera de este repo.
 
 ## Decisión
 

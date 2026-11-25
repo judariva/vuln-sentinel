@@ -1,7 +1,7 @@
 ---
 adr: "0011"
 titulo: Licencia Apache-2.0 y NOTICE de datos
-estado: sustituido por 0018
+estado: aceptado (ADR-0018, que lo sustituía, fue rechazado el 2026-11-25)
 fecha: 2026-11-25
 afecta: []
 sustituye: null
@@ -9,7 +9,8 @@ sustituye: null
 
 ## Contexto
 
-Producto open source (D1). Varias fuentes de datos exigen atribución.
+Producto open source (D1), sostenido con donaciones (ADR-0021): el feed es siempre gratis e igual
+para todos. Varias fuentes de datos exigen atribución.
 
 ## Decisión
 
@@ -18,6 +19,11 @@ Código bajo Apache-2.0. `NOTICE` con la atribución de cada fuente. Se excluyen
 ## Alternativas descartadas
 
 - MIT: sin cláusula de patentes ni un sitio previsto para las atribuciones.
+- Open core con FSL-1.1-ALv2 en el motor (ADR-0018): rechazado; el modelo de donaciones pide un
+  proyecto 100 % abierto.
+
+Contribuciones: **DCO** (`Signed-off-by`) en todo el repo. No hace falta CLA: no se va a
+relicenciar.
 
 ## Consecuencias
 

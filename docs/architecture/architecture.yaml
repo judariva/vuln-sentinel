@@ -78,6 +78,10 @@ components:
     name: feed-archive
     service: Cloudflare R2 (páginas selladas del feed y snapshot diario; ADR-0019)
     status: planned
+  - id: CMP-017
+    name: donations
+    service: Entrega de direcciones on-chain y lectura de cobros, solo lectura (ADR-0021)
+    status: proposed
 
 sources:
   - {id: SRC-001, name: cvelistV5}

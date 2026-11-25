@@ -9,9 +9,9 @@ sustituye: null
 
 ## Contexto
 
-Al principio el producto vive en `vuln.` y `api.vuln.` de la zona actual (P-3). Si funciona, el
-objetivo de negocio es migrarlo a una marca propia, con dominio propio, y monetizarlo. Esa
-migración no debe exigir tocar código.
+Al principio el producto vive en `vuln.` y `api.vuln.` de la zona actual (P-3). Si funciona, puede
+migrar a una marca propia, con dominio propio, sostenida con donaciones (ADR-0021). Esa migración
+no debe exigir tocar código.
 
 ## Decisión
 

@@ -136,6 +136,29 @@ CREATE TABLE verdict (
     at        timestamptz NOT NULL
 );
 
+-- Transparencia de costes (§9). Coste real leído por API de Azure Cost Management (RG) y de la
+-- facturación de Cloudflare.
+CREATE TABLE cost_daily (
+    day        date NOT NULL,
+    provider   text NOT NULL CHECK (provider IN ('azure', 'cloudflare', 'other')),
+    service    text NOT NULL DEFAULT '',
+    amount_eur numeric(12, 4) NOT NULL,
+    source_published_at  timestamptz,
+    observed_at          timestamptz NOT NULL,
+    PRIMARY KEY (day, provider, service)
+);
+
+-- Donaciones recibidas (ADR-0021). SIN datos del donante: ni nombre, ni IP, ni dirección de origen,
+-- ni mensaje. Solo importe, fecha y canal. La referencia externa es opaca (id de factura o txid).
+CREATE TABLE donation_received (
+    id           bigserial PRIMARY KEY,
+    channel      text NOT NULL CHECK (channel IN ('lightning', 'onchain')),
+    amount_sats  bigint NOT NULL CHECK (amount_sats > 0),
+    received_at  timestamptz NOT NULL,
+    observed_at  timestamptz NOT NULL,
+    external_ref text NOT NULL UNIQUE
+);
+
 CREATE TABLE metric_daily (
     day        date NOT NULL,
     metric     text NOT NULL,

@@ -1,0 +1,23 @@
+# Donaciones (ADR-0021). Ejemplo SIN valores reales.
+# Las direcciones, la xpub y los enlaces de donación NUNCA van en git: van en secrets del despliegue.
+# La xpub es configuración sensible: si se filtra, revela todas las direcciones derivadas.
+donations:
+  enabled: false            # interruptor: con false no aparece ningún enlace ni dato de donaciones
+  channels:
+    lightning:
+      enabled: false
+      address_secret: DONATIONS_LN_ADDRESS        # nombre del secret, no su valor
+    lightning_totals: manual                      # Phoenix móvil sin API: Juan registra totales
+    onchain:
+      enabled: false
+      one_address_per_donation: true              # nunca una dirección fija
+      mode: pregenerated_list                     # preferido; alternativa: xpub (watch-only)
+      address_list_secret: DONATIONS_ONCHAIN_ADDRESSES  # nombre del secret, no su valor
+      xpub_secret: DONATIONS_ONCHAIN_XPUB         # solo si mode: xpub
+  public_display:
+    show_txid: false                              # nunca: permite vincular al donante
+    date_granularity: day
+  acknowledgement:
+    page: true              # reconocimiento opcional, solo si el donante lo pide
+  privacy:
+    store_donor_data: false # no se guarda nombre, IP, dirección de origen ni mensaje

@@ -24,13 +24,28 @@ día por canal.
 3. **El post de X va sin URL** (el enlace, en la primera respuesta o en el perfil): X cobra
    0,015 USD por post y 0,20 USD si lleva URL.
 
-**Condiciones para pasar a aceptado** (SIN VERIFICAR el 2026-11-25):
-- los términos de Buffer permiten el uso comercial en el plan elegido;
-- Buffer no obliga a traer credenciales propias de la API de X (Ayrshare afirma que X lo exige a
-  terceros desde el 31-03-2026; X no lo ha confirmado);
-- el límite de 10 posts programados por canal del plan Free no afecta a la publicación inmediata.
+## Comprobación de Buffer (2026-11-25)
 
-Si alguna falla, se pasa a la alternativa.
+Hecha por la sesión de trabajo. Las citas en negrita las comprobé yo con `curl` sobre la página
+original.
+
+| Condición | Resultado | Evidencia |
+|---|---|---|
+| ¿Uso permitido para este proyecto? | **Sí, con una salvedad.** No hay restricción a uso personal ni no comercial en el plan Free, y la API está en todos los planes. **Salvedad:** los API Terms (4.2 n) prohíben «**cause or permit automated queries on the API**», y el ToU licencia la API para «**internally use the API** in connection with the Service». Eso choca literalmente con el uso previsto, aunque el centro de ayuda presente la API como algo para «agents, scripts, and apps» | [buffer.com/terms](https://buffer.com/terms) (API Terms, «**Last updated: August 5, 2026**»); [centro de ayuda](https://support.buffer.com/articles/what-is-buffers-api-GtIYIQilz5): «**available on every Buffer plan, including the Free plan**» |
+| ¿Credenciales propias de X? | **No las pide.** Ningún texto de Buffer las exige ni cobra aparte: «it isn't a social network's own API … we still handle publishing». Ayrshare afirma que X las exige a todos los terceros desde el 31-03-2026; Buffer no lo refleja. Riesgo a vigilar, SIN VERIFICAR | [X en Buffer](https://support.buffer.com/articles/using-xtwitter-with-buffer-nA84XnWtuU); [Ayrshare](https://www.ayrshare.com/docs/dashboard/connect-social-accounts/x-twitter-byo-keys) |
+| ¿Posts sin enlace? | Buffer **no acorta por defecto** («By default, links in Buffer are not shortened»), y por API las URL se mantienen completas salvo que se llame a `shortenLink`. Nada indica que añada un enlace a un post que no lo lleva (SIN VERIFICAR como ausencia). Si X cobra distinto a Buffer por posts con URL: SIN VERIFICAR | [enlaces](https://support.buffer.com/articles/shortening-and-unshortening-links-dgev2p41yY); [developers](https://developers.buffer.com/llms-full.txt) |
+| Límites del plan Free | 3 canales (justo X, Bluesky y LinkedIn). Cola de 10 posts programados por canal, que no es un límite diario. API: 1 cliente, 150 peticiones / 15 min, 600 / 24 h y 1.000 por canal cada 30 días. Si `shareNow` cuenta para la cola de 10: SIN VERIFICAR. Hay una contradicción: `pricing.md` dice 5 claves en todos los planes y la documentación, 1 en Free | [plan Free](https://buffer.com/pricing/free); [límites de la API](https://developers.buffer.com/guides/api-limits.html) |
+| LinkedIn personal y Bluesky | Incluidos | [plan Free](https://buffer.com/pricing/free); [LinkedIn](https://support.buffer.com/articles/using-linkedin-with-buffer-K7tRkGD3mH); [Bluesky](https://support.buffer.com/articles/using-bluesky-with-buffer-7f6OcRnzIO) |
+| Límite de X a través de Buffer | 50 posts/24 h en cuentas sin verificar; X no admite posts duplicados | [límites diarios](https://support.buffer.com/articles/daily-posting-limits-kJ0JtpsdvD) |
+
+**Recomendación a Juan:** aceptar Buffer **condicionado a una confirmación por escrito** del soporte
+de desarrolladores de Buffer de que el uso previsto no incumple la 4.2(n). El uso previsto es
+publicar hasta 3 posts/día por canal en cuentas propias, desde un job, mediante `createPost` en el
+momento de una aprobación humana.
+- Mientras tanto, `/v1/social.atom` sigue siendo la fuente canónica y el adaptador queda apagado.
+- Si Buffer no lo confirma, se pasa a Postiz autoalojado o a publicar a mano desde el Atom.
+- El ToU dice que el servicio está «intended for visitors located within the United States»
+  (cláusula 17.7). Es un punto más para la revisión legal de Juan.
 
 ## Comparativa (2026-11-25)
 

@@ -63,4 +63,12 @@ La primera versión del plan pasó una revisión externa. Salió «aprobado con 
 Además: se fijan las versiones de MITRE ATLAS (5.6.0) y ATT&CK (v20.1), y se citan con URL todos los
 precios.
 
+## Cómo se sostiene: donaciones, no venta
+
+Durante la planificación se valoró un modelo open core: el contrato abierto y el motor con una
+licencia que impidiera ofrecerlo como servicio (ADR-0018). Se rechazó. El feed es siempre gratis e
+igual para todos, y todo el proyecto es Apache-2.0 (ADR-0011). Se sostiene con donaciones en
+Bitcoin, sin custodia (ADR-0021). Quien dona recibe reconocimiento, nunca datos antes ni mejores.
+Una pantalla pública muestra el coste real del proyecto frente a lo recibido.
+
 Siguiente entrada: `F0-arranque.md`.

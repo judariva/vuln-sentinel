@@ -58,8 +58,14 @@ versiona); el resumen público de las decisiones está en `docs/journey/00-orige
   aíslan o se excluyen (ADR-0020; VulnCheck está fuera de la v1).
 - **Feed completo + alertas.** Toda CVE entra en el feed con su nivel; las listas solo deciden la
   urgencia (ADR-0019).
-- **Open core.** Contrato y ejemplos con Apache-2.0; el motor con FSL-1.1-ALv2 (ADR-0018,
-  propuesto). Hosts, nombre y marca en configuración, nunca en el código (ADR-0016).
+- **Todo Apache-2.0** (ADR-0011). Sostenibilidad por **donaciones, no venta**: el feed es siempre
+  gratis e igual para todos, y quien dona solo recibe reconocimiento.
+- **Donaciones solo en Bitcoin, sin custodia** (ADR-0021). Ninguna clave privada en el servidor, el
+  repo ni Azure. Una dirección on-chain nueva por donación. La xpub, las direcciones y los enlaces
+  de donación son configuración sensible: van en secrets, **nunca en git**. Todo va detrás del
+  interruptor `donations.enabled`.
+- **Transparencia de costes.** El coste real y lo recibido se publican, sin datos del donante.
+- Hosts, nombre y marca en configuración, nunca en el código (ADR-0016).
 - **Se filtra por peligro, nunca por CVSS.** Reglas en `PLAN.md` §5:
   - **A**: explotación activa confirmada.
   - **B**: exploit público funcional, con impacto mínimo (RCE, bypass de autenticación o de

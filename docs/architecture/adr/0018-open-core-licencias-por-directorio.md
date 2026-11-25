@@ -1,11 +1,16 @@
 ---
 adr: "0018"
 titulo: Open core con licencias por directorio (Apache-2.0 + FSL-1.1-ALv2)
-estado: propuesto
+estado: rechazado
 fecha: 2026-11-25
 afecta: []
-sustituye: "0011"
+sustituye: null
 ---
+
+> **Rechazado por Juan el 2026-11-25.** El modelo de sostenibilidad es de **donaciones, no de
+> venta**: el feed es siempre gratis e igual para todos. Ese modelo pide un proyecto 100 % abierto,
+> así que todo el repositorio queda con Apache-2.0 y vuelve a valer ADR-0011. El análisis de abajo
+> se conserva como histórico de la decisión.
 
 ## Contexto
 
