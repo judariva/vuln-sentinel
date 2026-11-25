@@ -1,7 +1,7 @@
 ---
 adr: "0021"
 titulo: Donaciones en Bitcoin sin custodia
-estado: propuesto
+estado: aceptado
 fecha: 2026-11-25
 afecta: [CMP-002, CMP-006, CMP-008, CMP-017]
 sustituye: null
@@ -26,7 +26,15 @@ Requisitos duros:
 semilla en ese servidor. Pasa con LND, CLN, phoenixd, Alby Hub y los plugins Breez de BTCPay. Es un
 monedero caliente. **Lightning no puede vivir en Azure** sin romper el primer requisito.
 
-## Decisión (propuesta)
+## Decisión
+
+**Aceptada por Juan el 2026-11-25 (J-6):**
+- on-chain con una lista de direcciones pregenerada offline y guardada como secret;
+- Lightning con Phoenix y los totales apuntados a mano;
+- todo detrás de `donations.enabled`, en la F4b;
+- las recibe Juan.
+
+La opción xpub queda solo como alternativa documentada.
 
 1. **On-chain: una dirección nueva por donación, servida por la API en modo solo lectura.**
    - Opción preferida: **lista de direcciones pregeneradas offline** en el monedero frío de Juan.

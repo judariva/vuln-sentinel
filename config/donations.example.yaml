@@ -11,7 +11,7 @@ donations:
     onchain:
       enabled: false
       one_address_per_donation: true              # nunca una dirección fija
-      mode: pregenerated_list                     # preferido; alternativa: xpub (watch-only)
+      mode: pregenerated_list                     # decidido (ADR-0021); xpub solo como alternativa
       address_list_secret: DONATIONS_ONCHAIN_ADDRESSES  # nombre del secret, no su valor
       xpub_secret: DONATIONS_ONCHAIN_XPUB         # solo si mode: xpub
   public_display:
