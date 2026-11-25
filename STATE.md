@@ -12,7 +12,7 @@ Actualizado: 2026-11-25.
 | Redes | ADR-0017 propuesto: Buffer comprobado; aceptable con confirmación por escrito de su cláusula 4.2(n) |
 | VulnCheck KEV | Fuera de la v1 por sus términos (ADR-0020) |
 | ADR | 0001–0021. Propuestos: 0017 y 0021. Rechazado: 0018 |
-| Repo | Privado en GitHub, `main` protegida (PR y CI). Hacerlo público lo decide Juan, con otra búsqueda de fugas sobre el historial |
+| Repo | Privado en GitHub. CI en verde en el primer push. **`main` sin protección**: GitHub no permite proteger ramas (ni rulesets) en repos privados con el plan gratuito (HTTP 403, «Upgrade to GitHub Pro or make this repository public»). Mientras tanto, todo cambio entra por PR por convención. Se aplica en cuanto haya GitHub Pro o el repo sea público (J-8). Hacerlo público lo decide Juan, con otra búsqueda de fugas sobre el historial |
 
 ## Pendiente de Juan
 
@@ -20,6 +20,9 @@ Actualizado: 2026-11-25.
 - J-3: VulnCheck, solo con permiso por escrito o licencia.
 - J-6: aceptar o no ADR-0021 (donaciones).
 - J-7: hacer público el repo, cuando lo decida.
+- J-8: protección de `main`. Opciones: GitHub Pro (de pago) o esperar a que el repo sea público,
+  donde es gratuita. La configuración (PR obligatorio, check `test` en verde, sin force-push ni
+  borrado, historial lineal) está preparada y se aplica en un minuto.
 
 ## Siguiente: F1a-0 y F1a (sesión nueva)
 
