@@ -1,0 +1,12 @@
+# Instancia pública (ADR-0022). Feed abierto para cualquiera.
+# Solo fuentes redistribuibles: la clase 'restricted' no se admite y no hay licencias.
+# Cargar aquí un conector 'restricted' falla al arrancar, y una fila 'restricted' en el
+# almacenamiento hace fallar la auditoría (tests/test_license_rights.py).
+# Sin secretos: si un conector necesita una clave, su config nombra la variable de entorno.
+instance:
+  name: public
+  kind: public
+  allowed_license_classes: [open]
+  licenses: []
+  # Los conectores reales se añaden en la F1a, cuando existan (cvelistV5, CISA KEV, …).
+  connectors: []

@@ -31,6 +31,29 @@ def test_donations_table_has_no_donor_data():
     assert not leaked, f"Columnas que podrían identificar al donante: {leaked}"
 
 
+LICENSED_TABLES = {"source", "vulnerability", "affected_product", "signal", "ai_call"}
+# Tienen columna `source` pero no guardan datos de la fuente, solo su estado operativo.
+OPERATIONAL_TABLES = {"source_run"}
+
+
+def _table_blocks(schema: str) -> dict[str, str]:
+    return dict(re.findall(r"CREATE TABLE (\w+) \((.*?)\n\);", schema, flags=re.DOTALL))
+
+
+def test_source_data_tables_carry_license():
+    """ADR-0022: toda tabla con datos de fuentes lleva license_class, licensee y su CHECK."""
+    blocks = _table_blocks((METRICS / "schema-draft.sql").read_text(encoding="utf-8"))
+    with_source = {t for t, b in blocks.items() if re.search(r"^\s+source\s", b, re.MULTILINE)}
+    with_source -= OPERATIONAL_TABLES
+    assert with_source <= LICENSED_TABLES, f"Tablas con 'source' sin licencia: {with_source}"
+    for table in LICENSED_TABLES:
+        block = blocks[table]
+        assert re.search(r"^\s+license_class\s+license_class NOT NULL", block, re.MULTILINE), table
+        assert re.search(r"^\s+licensee\s+text,?$", block, re.MULTILINE), table
+        assert f"{table}_license_ck CHECK" in block, table
+        assert "license_class = 'restricted' AND licensee IS NOT NULL" in block, table
+
+
 def _queries() -> dict[str, str]:
     text = (METRICS / "queries.sql").read_text(encoding="utf-8")
     parts = re.split(r"^-- name: (\w+)\s*$", text, flags=re.MULTILINE)

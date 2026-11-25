@@ -1,0 +1,16 @@
+# EJEMPLO FICTICIO de instancia de clientes (ADR-0022). No describe ninguna instancia real.
+# Admite las fuentes abiertas y las de pago con licencia del operador. Cada licencia es un
+# identificador opaco: el contrato no vive aquí.
+# Multi-cliente (feed y clave por cliente) es una fase posterior a la F4: fuera de este fichero.
+instance:
+  name: example-clients
+  kind: clients
+  allowed_license_classes: [open, restricted]
+  licenses:
+    - example-commercial-license      # ficticia
+  # Ejemplo de forma (los conectores no existen todavía):
+  # connectors:
+  #   - name: example-restricted-source
+  #     config:
+  #       api_key_env: EXAMPLE_API_KEY   # nombre de la variable, nunca el valor
+  connectors: []

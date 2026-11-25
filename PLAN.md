@@ -83,11 +83,12 @@ tenant) está en `local/ACCESS.md`.
 | ADR-014 | Pipeline con **RBAC Administrator con condición** (R9) | Que el pipeline no pueda darse a sí mismo cualquier rol |
 | ADR-015 | **Continuidad de la suscripción**: al cambiar su modelo de facturación pasa a pago por uso, a cargo de Juan (P-13) | El producto es 24/7; el coste ya está dimensionado para pago por uso (§14) |
 | ADR-016 | **Hosts, nombre y marca en configuración** (P-3) | Objetivo de negocio: migrar a marca y dominio propios cambiando DNS y variables, sin tocar código |
-| ADR-017 | **Redes: feed Atom + herramienta existente** de pago con API permitida (**Zernio** recomendada; Upload-Post segunda; Postiz autoalojado como alternativa futura; Buffer descartado) (P-6, J-2) | Sin integrar las API de las redes una a una; lock-in bajo |
+| ADR-017 | **Redes: feed Atom + herramienta existente** de pago con API permitida (**Zernio**, **aceptado** por Juan el 2026-11-25; Upload-Post segunda; Postiz autoalojado como alternativa futura; Buffer descartado) (P-6, J-2) | Sin integrar las API de las redes una a una; lock-in bajo |
 | ADR-018 | ~~Open core con FSL-1.1-ALv2~~ → **rechazado** | Sostenibilidad por donaciones, no por venta |
 | ADR-019 | **Feed completo + feed de alertas**; índice de cambios paginado y páginas selladas en R2 | El consumidor recibe todas las CVE; las listas solo deciden la urgencia |
 | ADR-020 | **Uso comercial de las fuentes**; VulnCheck fuera de la v1; INCIBE y nginx.org solo hechos y enlace (P-5) | Términos comprobados con URL |
 | ADR-021 | **Donaciones solo en Bitcoin** (Lightning y on-chain), sin custodia, con una dirección nueva por donación; las recibe Juan como persona física (**aceptado**: lista pregenerada offline + Phoenix con totales manuales) | Sostenibilidad sin vender datos ni acceso; el feed es igual para todos |
+| ADR-022 | **Licencia de los datos e instancias** (propuesto): `license_class` (`open`/`restricted`) y `licensee` en cada dato; conectores como plugins; nivel calculado por feed con las señales permitidas; la instancia pública nunca guarda `restricted` | El mismo código sirve a una instancia pública, a una de clientes y a la de terceros |
 
 ---
 
@@ -191,6 +192,20 @@ legal, que queda fuera de este repo. Las fuentes que no lo admiten se marcan y s
 | INCIBE-CERT | Avisos | RSS | — | **No** sin autorización: «No se pretenda un uso comercial»; sin transformación ([aviso legal](https://www.incibe.es/aviso-legal)) | **Solo enlace** (`link_only`) |
 | nginx.org y avisos de fabricante sin licencia | Rangos, fix, «explotado» | RSS/CSAF (nginx.org, Fortinet, Palo Alto, Cisco, MSRC, Red Hat, Siemens, CISA) | — | nginx.org: «© F5, Inc. All rights reserved». El resto, por fabricante (SIN VERIFICAR) | **Solo hechos y enlace** (`facts_only`) |
 | OpenCVE | — | **Descartado** | Free 100/h | BSL | — |
+| EUVD (ENISA) | Explotación (señal abierta de A, ADR-022) | API, frecuencia por decidir | SIN VERIFICAR | **SIN VERIFICAR**: las páginas de la EUVD no cargaban el 2026-11-25; el aviso general de ENISA autoriza reproducir «provided the source is acknowledged, unless it is stated otherwise» ([legal notice](https://www.enisa.europa.eu/about-enisa/legal-notice)) pero no dice que cubra la EUVD | **Pendiente**: no se activa hasta leer sus condiciones |
+
+**`license_class` por fuente (ADR-022).** Es la clase del dato que se **guarda**, ortogonal al
+aislamiento (`link_only` guarda solo el identificador y el enlace, que son `open`).
+
+| Fuente | Instancia pública | Instancia de clientes |
+|---|---|---|
+| cvelistV5, CISA KEV, Vulnrichment, EPSS, GHSA, NVD, Metasploit, nuclei-templates, PoC-in-GitHub, búsqueda de GitHub, CERT-EU | `open` | `open` |
+| OSV.dev | `open`, **sin** Chainguard/Wolfi (`excluded`, CC-BY-NC-ND) | igual |
+| Exploit-DB | `open`, solo metadatos | igual |
+| INCIBE-CERT | `open`, `link_only` (sin cambio tras releer sus términos con el modelo de donaciones: ADR-022) | igual |
+| nginx.org y avisos de fabricante | `open`, `facts_only` | igual |
+| EUVD (ENISA) | Pendiente (licencia SIN VERIFICAR) | Pendiente |
+| VulnCheck KEV | **Excluida** (ADR-020); el conector no se carga | `restricted`, `licensee` = la licencia comercial, solo si existe |
 
 **Fail-closed.** Cada ejecución queda en `source_run`. Si la fuente falla o su dato tiene más
 antigüedad que el umbral, pasa a **UNKNOWN**. Nunca se publica «sin novedades».
@@ -367,7 +382,7 @@ métricas están en `docs/metrics/` (R5).
 
 | Tabla | Campos clave |
 |---|---|
-| `source` | `name` (PK), `baseline_completed_at`, `freshness_threshold` |
+| `source` | `name` (PK), `baseline_completed_at`, `freshness_threshold`, `license_class`, `licensee` |
 | `source_run` | id, source, `started_at`, `finished_at`, status (ok, partial, unknown), `items_seen`, `items_new`, error, `last_item_published_at` |
 | `vulnerability` | `cve_id` (PK), cna, cvss (vector y fuente), cwe[], `impact_class`, `source_published_at`, `observed_at`, `withdrawn_at`, `baseline` |
 | `affected_product` | id, `cve_id`, vendor, product, cpe, purl, ecosystem, `ranges` (jsonb), `range_source`, `category`, timestamps |
@@ -379,6 +394,12 @@ métricas están en `docs/metrics/` (R5).
 | `publication` | id, `alert_id`, channel, status, `approved_by`, `approved_at`, `sent_at`, `external_ref` |
 | `verdict` | `alert_id`, verdict (útil o ruido), nota, `at` |
 | `metric_daily` | fecha, métrica, dimensión, valor |
+
+**Licencia de los datos (ADR-0022).** `source`, `vulnerability`, `affected_product`, `signal` y
+`ai_call` llevan `license_class` (`open` o `restricted`) y `licensee`, con un `CHECK`: `restricted`
+exige `licensee` y `open` lo prohíbe. `vulnerability` y `affected_product` llevan además `source`.
+La instancia pública nunca guarda filas `restricted` (`src/vs/instance.py`,
+`tests/test_license_rights.py`).
 
 ---
 
@@ -476,7 +497,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
   2. Juan lo aprueba en Administración.
   3. El post aprobado se publica en **`/v1/social.atom`**, que es la fuente canónica y va firmada.
   4. En el momento de la aprobación, un adaptador de una sola llamada (`SocialPublisher`) invoca
-     la API de la herramienta. **Recomendada: Zernio** (ADR-017, propuesto). Sus términos permiten
+     la API de la herramienta: **Zernio** (ADR-017, aceptado por Juan el 2026-11-25). Sus términos permiten
      publicar por API y no tienen ninguna cláusula contra la automatización. Cuesta ~6 USD/mes con
      3 canales, y X se paga al precio de X desde un saldo prepago, sin credenciales propias.
      Segunda opción: Upload-Post. Alternativa futura: Postiz autoalojado. **Buffer, descartado**
@@ -602,7 +623,7 @@ Alerta de presupuesto a 80 € (G-9).
 | P-3 | `vuln.` y `api.vuln.` en la zona actual. Si funciona, puede migrar a marca y dominio propios. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
 | P-4 | Cloudflare Tunnel | ADR-004 (aceptado) |
 | P-5 | Token de GitHub: sí. **VulnCheck: sus términos prohíben ofrecer los datos gratis o con licencia abierta → fuera de la v1**, documentado. Vuelve con un permiso por escrito o una licencia | ADR-020, §4 |
-| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta de pago con API permitida (Zernio recomendada tras descartar Buffer, J-2; alternativa futura Postiz) | ADR-017 (propuesto), §12 |
+| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta de pago con API permitida (Zernio, aceptada tras descartar Buffer, J-2; alternativa futura Postiz) | ADR-017 (aceptado), §12 |
 | P-7 | LinkedIn con el perfil personal | §12 |
 | P-8 | El ejemplo de Teams se prueba contra un receptor de webhook local; no se guarda aquí ninguna URL de terceros | §12 |
 | P-9 | Correo y ntfy desde los dos vigilantes | §11, G-8, G-16 |
@@ -625,7 +646,7 @@ Alerta de presupuesto a 80 € (G-9).
 
 | # | Qué | Para qué |
 |---|---|---|
-| J-2 | Aceptar o no ADR-017 con **Zernio** (Buffer descartado por la 4.2(n)). Matiz: sus términos permiten publicar por API, pero no dicen literalmente «automatizado» | F4 |
+| J-2 | **Cerrada**: ADR-017 aceptado con **Zernio** el 2026-11-25 (Buffer descartado por la 4.2(n)) | F4 |
 | J-3 | **Cerrada**: VulnCheck sigue fuera (cláusula comprobada también por la sesión directora) | ADR-020 |
 | J-6 | **Cerrada**: ADR-021 aceptado | F4b |
 | J-7 | **Repo público al cerrar la F1a**, tras una búsqueda de fugas sobre todo el historial; Juan lo confirma en ese momento | Fin de F1a |

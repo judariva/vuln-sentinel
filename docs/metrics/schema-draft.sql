@@ -5,11 +5,20 @@
 CREATE TYPE alert_level AS ENUM ('none', 'C', 'B', 'A');
 CREATE TYPE impact_class AS ENUM ('rce', 'auth_bypass', 'arbitrary_rw', 'other');
 CREATE TYPE run_status AS ENUM ('ok', 'partial', 'unknown');
+-- ADR-0022: open = redistribuible; restricted = solo para quien tenga la licencia `licensee`.
+-- Toda tabla con datos de fuentes lleva license_class y licensee con el mismo CHECK. La instancia
+-- pública nunca guarda filas 'restricted' (guarda en código y auditoría, tests/test_license_rights).
+CREATE TYPE license_class AS ENUM ('open', 'restricted');
 
 CREATE TABLE source (
     name                   text PRIMARY KEY,
     baseline_completed_at  timestamptz,          -- NULL = la carga inicial aún no ha terminado
-    freshness_threshold    interval NOT NULL
+    freshness_threshold    interval NOT NULL,
+    license_class          license_class NOT NULL,   -- la que declara su conector
+    licensee               text,
+    CONSTRAINT source_license_ck CHECK (
+        (license_class = 'open' AND licensee IS NULL)
+        OR (license_class = 'restricted' AND licensee IS NOT NULL))
 );
 
 CREATE TABLE source_run (
@@ -36,7 +45,13 @@ CREATE TABLE vulnerability (
     source_published_at  timestamptz NOT NULL,
     observed_at          timestamptz NOT NULL,
     withdrawn_at         timestamptz,
-    baseline             boolean NOT NULL DEFAULT false
+    baseline             boolean NOT NULL DEFAULT false,
+    source               text NOT NULL REFERENCES source (name),
+    license_class        license_class NOT NULL,
+    licensee             text,
+    CONSTRAINT vulnerability_license_ck CHECK (
+        (license_class = 'open' AND licensee IS NULL)
+        OR (license_class = 'restricted' AND licensee IS NOT NULL))
 );
 
 CREATE TABLE affected_product (
@@ -51,7 +66,13 @@ CREATE TABLE affected_product (
     range_source         text NOT NULL,
     category             text,                   -- de config/exposed-products.yaml; NULL = no expuesto
     source_published_at  timestamptz NOT NULL,
-    observed_at          timestamptz NOT NULL
+    observed_at          timestamptz NOT NULL,
+    source               text NOT NULL REFERENCES source (name),  -- conector; range_source = quién da el rango
+    license_class        license_class NOT NULL,
+    licensee             text,
+    CONSTRAINT affected_product_license_ck CHECK (
+        (license_class = 'open' AND licensee IS NULL)
+        OR (license_class = 'restricted' AND licensee IS NOT NULL))
 );
 
 -- Solo inserción: el historial de una señal es la propia tabla.
@@ -64,7 +85,12 @@ CREATE TABLE signal (
     url                  text,
     baseline             boolean NOT NULL DEFAULT false,
     source_published_at  timestamptz,            -- NULL si la fuente no da hora (KEV: solo fecha)
-    observed_at          timestamptz NOT NULL
+    observed_at          timestamptz NOT NULL,
+    license_class        license_class NOT NULL,
+    licensee             text,
+    CONSTRAINT signal_license_ck CHECK (
+        (license_class = 'open' AND licensee IS NULL)
+        OR (license_class = 'restricted' AND licensee IS NOT NULL))
 );
 
 -- Una fila por evaluación de reglas (R5): permite el embudo.
@@ -115,7 +141,13 @@ CREATE TABLE ai_call (
     trace_id           text,
     dossier            jsonb,
     blocked_downgrade  boolean NOT NULL DEFAULT false,
-    at                 timestamptz NOT NULL
+    at                 timestamptz NOT NULL,
+    -- El dosier cita fuentes: hereda la clase más restrictiva de lo que leyó el agente.
+    license_class      license_class NOT NULL,
+    licensee           text,
+    CONSTRAINT ai_call_license_ck CHECK (
+        (license_class = 'open' AND licensee IS NULL)
+        OR (license_class = 'restricted' AND licensee IS NOT NULL))
 );
 
 CREATE TABLE publication (

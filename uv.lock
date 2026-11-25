@@ -127,21 +127,23 @@ wheels = [
 name = "vuln-sentinel"
 version = "0.0.1"
 source = { editable = "." }
+dependencies = [
+    { name = "pyyaml" },
+]
 
 [package.dev-dependencies]
 dev = [
     { name = "pglast" },
     { name = "pytest" },
-    { name = "pyyaml" },
     { name = "ruff" },
 ]
 
 [package.metadata]
+requires-dist = [{ name = "pyyaml", specifier = ">=6" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pglast", specifier = ">=7" },
     { name = "pytest", specifier = ">=8" },
-    { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.8" },
 ]

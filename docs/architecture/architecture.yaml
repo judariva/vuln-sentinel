@@ -72,7 +72,7 @@ components:
     status: planned
   - id: CMP-015
     name: social-publisher
-    service: Herramienta externa de publicación en redes (Buffer recomendada; ADR-0017)
+    service: Herramienta externa de publicación en redes (Zernio; ADR-0017 aceptado)
     status: planned
   - id: CMP-016
     name: feed-archive
@@ -81,6 +81,14 @@ components:
   - id: CMP-017
     name: donations
     service: Entrega de direcciones on-chain y lectura de cobros, solo lectura (ADR-0021)
+    status: proposed
+  - id: CMP-018
+    name: connector-registry
+    service: Registro de conectores (plugins) y configuración de instancia con guarda de licencia (src/vs/sources/base.py, src/vs/instance.py; ADR-0022)
+    status: proposed
+  - id: CMP-019
+    name: feed-rights
+    service: Filtro de señales por audiencia y nivel calculado por feed (src/vs/feed/rights.py; ADR-0022)
     status: proposed
 
 sources:
@@ -97,6 +105,7 @@ sources:
   - {id: SRC-011, name: PoC-in-GitHub}
   - {id: SRC-012, name: GitHub search}
   - {id: SRC-013, name: avisos de fabricante y CERT}
+  - {id: SRC-014, name: EUVD (ENISA), status: proposed, note: "licencia de reutilización SIN VERIFICAR; ADR-0022"}
 
 trust_boundaries:
   - {id: TB-001, name: Internet ↔ borde Cloudflare}
@@ -115,6 +124,8 @@ flows:
   - {id: FLW-008, from: CMP-005, to: CMP-016, note: páginas selladas y snapshot (token limitado al bucket)}
   - {id: FLW-009, from: CMP-005, to: CMP-015, crosses: [TB-001], note: post aprobado (adaptador SocialPublisher)}
   - {id: FLW-010, from: CMP-011, to: CMP-016, note: servir feed archivado desde caché}
+  - {id: FLW-011, from: CMP-003, to: CMP-018, note: "el ingest solo carga los conectores que la instancia admite (ADR-0022)"}
+  - {id: FLW-012, from: CMP-005, to: CMP-019, note: "cada feed se genera con las señales que su audiencia puede recibir (ADR-0022)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -127,6 +138,7 @@ threats:
   - {id: THR-008, name: acceso directo al origen saltando WAF y Access, refs: []}
   - {id: THR-009, name: el monitor deja de funcionar sin que nadie se entere, refs: []}
   - {id: THR-010, name: escalada de privilegios del pipeline, refs: ["ATT&CK v20.1 T1098"]}
+  - {id: THR-011, name: un dato con licencia restringida llega a un feed o a una instancia sin esa licencia, refs: []}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: test de monotonía}
@@ -139,3 +151,4 @@ controls:
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
+  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed", mitigates: [THR-011], proof: tests/test_license_rights.py}
