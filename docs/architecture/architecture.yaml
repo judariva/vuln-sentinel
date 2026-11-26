@@ -20,7 +20,7 @@ components:
     status: planned
   - id: CMP-002
     name: api
-    service: Azure Container Apps (app)
+    service: Azure Container Apps (app). FastAPI de solo lectura (src/vs/api/); /admin/* solo con el JWT de Access (esqueleto)
     status: planned
   - id: CMP-003
     name: job-ingest
@@ -152,6 +152,8 @@ flows:
   - {id: FLW-020, from: CMP-021, to: CMP-022, note: "nivel publicado, historial y registros del feed (solo lo que su audiencia puede recibir)"}
   - {id: FLW-021, from: CMP-022, to: CMP-023, note: "bytes exactos de cada documento → JWS detached (.jws)"}
   - {id: FLW-022, from: CMP-023, to: CMP-008, note: "operación sign de Key Vault sobre el resumen SHA-256 (F1a; hoy solo interfaz)"}
+  - {id: FLW-023, from: CMP-002, to: CMP-022, note: "la API sirve el índice «head», latest.json, los registros, el resumen diario y el JWKS de la audiencia public (solo lectura)"}
+  - {id: FLW-024, from: CMP-002, to: CMP-007, note: "SELECT sobre metric_daily (métricas y coste frente a donaciones); nunca escribe"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -166,6 +168,8 @@ threats:
   - {id: THR-010, name: escalada de privilegios del pipeline, refs: ["ATT&CK v20.1 T1098"]}
   - {id: THR-011, name: un dato con licencia restringida llega a un feed o a una instancia sin esa licencia, refs: []}
   - {id: THR-012, name: un documento del feed se altera en el borde, en R2 o en tránsito y el consumidor no lo detecta, refs: []}
+  - {id: THR-013, name: "acceso a /admin/* sin pasar por Access o con un JWT falsificado, caducado o de otra aplicación", refs: ["OWASP API2:2023"]}
+  - {id: THR-014, name: "la API pública modifica datos o expone datos de donaciones con las donaciones desactivadas", refs: []}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado)"}
@@ -178,7 +182,9 @@ controls:
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
-  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador)"}
+  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed; la API pública no arranca con un publicador que admita restricted", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador); tests/test_api.py (ninguna respuesta lleva datos restricted)"}
   - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
   - {id: CTL-013, name: "los conectores solo siguen enlaces bajo la URL base configurada; OSV no lee fuentes sin licencia comprobada", mitigates: [THR-004, THR-011], proof: tests/test_sources.py}
-  - {id: CTL-014, name: "cada documento del feed lleva su JWS detached ES256 sobre los bytes exactos, verificable con openssl y Python; ETag y sha256 del índice iguales al hash del registro", mitigates: [THR-012], proof: "tests/test_feed_sign.py; tests/test_feed.py"}
+  - {id: CTL-014, name: "cada documento del feed lleva su JWS detached ES256 sobre los bytes exactos, verificable con openssl y Python; ETag y sha256 del índice iguales al hash del registro", mitigates: [THR-012], proof: "tests/test_feed_sign.py; tests/test_feed.py; tests/test_api.py (cada documento servido verifica con su .jws)"}
+  - {id: CTL-015, name: "el origen valida el JWT de Access en /admin/* (RS256 con las claves del equipo, iss, aud, exp y nbf); sin configuración, /admin cerrado", mitigates: [THR-013], proof: "tests/test_api.py (sin JWT 401; firma, kid, alg, aud, iss o vigencia malos 403; sin configuración 403)"}
+  - {id: CTL-016, name: "API pública solo GET y sin escritura; los datos donations.* no salen con donations.enabled=false", mitigates: [THR-014], proof: "tests/test_api.py (405 en métodos de escritura; el publicador no cambia; ninguna respuesta lleva donaciones)"}
