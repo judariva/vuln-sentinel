@@ -268,6 +268,10 @@ class RuleEngine:
     def records(self, cve_id: str) -> tuple[Record, ...]:
         return tuple(self._records.get(cve_id, ()))
 
+    def cve_ids(self) -> list[str]:
+        """CVE con algún registro en este feed, ordenadas."""
+        return sorted(self._records)
+
     def _is_new_signal(self, r: Record) -> bool:
         if r.entity is not Entity.SIGNAL or r.baseline:
             return False

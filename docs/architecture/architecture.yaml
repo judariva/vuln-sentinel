@@ -98,6 +98,14 @@ components:
     name: rules-engine
     service: Motor de reglas A/B/C determinista y por feed, con impacto mínimo, E1–E4, carga inicial y monotonía (src/vs/rules/; dentro de CMP-003; PLAN §5, ADR-0012, ADR-0013, ADR-0022)
     status: proposed
+  - id: CMP-022
+    name: feed-builder
+    service: Registro OSV 1.9 extendido por CVE, feed completo y de alertas, índice de cambios con cursor, páginas selladas por hora y 410 por retención (src/vs/feed/osv.py, changes.py, publish.py; schema/feed-1.0.0.json; dentro de CMP-005; ADR-0007, ADR-0019)
+    status: proposed
+  - id: CMP-023
+    name: feed-signer
+    service: Firma JWS detached ES256 (RFC 7797) tras la interfaz Signer; LocalDevSigner para tests y KeyVaultSigner como interfaz (src/vs/feed/sign.py; examples/verify/; ADR-0008)
+    status: proposed
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -141,6 +149,9 @@ flows:
   - {id: FLW-017, from: CMP-020, to: CMP-007, note: "source_run y registros normalizados al modelo"}
   - {id: FLW-018, from: CMP-020, to: CMP-021, note: "registros sellados (observed_at, baseline) que evalúan las reglas"}
   - {id: FLW-019, from: CMP-021, to: CMP-007, note: "rule_evaluation y alert_level_history"}
+  - {id: FLW-020, from: CMP-021, to: CMP-022, note: "nivel publicado, historial y registros del feed (solo lo que su audiencia puede recibir)"}
+  - {id: FLW-021, from: CMP-022, to: CMP-023, note: "bytes exactos de cada documento → JWS detached (.jws)"}
+  - {id: FLW-022, from: CMP-023, to: CMP-008, note: "operación sign de Key Vault sobre el resumen SHA-256 (F1a; hoy solo interfaz)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -154,6 +165,7 @@ threats:
   - {id: THR-009, name: el monitor deja de funcionar sin que nadie se entere, refs: []}
   - {id: THR-010, name: escalada de privilegios del pipeline, refs: ["ATT&CK v20.1 T1098"]}
   - {id: THR-011, name: un dato con licencia restringida llega a un feed o a una instancia sin esa licencia, refs: []}
+  - {id: THR-012, name: un documento del feed se altera en el borde, en R2 o en tránsito y el consumidor no lo detecta, refs: []}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado)"}
@@ -166,6 +178,7 @@ controls:
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
-  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed", mitigates: [THR-011], proof: tests/test_license_rights.py}
+  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador)"}
   - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
   - {id: CTL-013, name: "los conectores solo siguen enlaces bajo la URL base configurada; OSV no lee fuentes sin licencia comprobada", mitigates: [THR-004, THR-011], proof: tests/test_sources.py}
+  - {id: CTL-014, name: "cada documento del feed lleva su JWS detached ES256 sobre los bytes exactos, verificable con openssl y Python; ETag y sha256 del índice iguales al hash del registro", mitigates: [THR-012], proof: "tests/test_feed_sign.py; tests/test_feed.py"}
