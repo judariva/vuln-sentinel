@@ -1,5 +1,5 @@
 # Imagen única del producto: la API y los jobs (PLAN §2). Cada componente cambia solo el módulo
-# que ejecuta: `python -m <módulo>` (infra/main.bicep, parámetro `entrypoints`).
+# que ejecuta: `python -m <módulo>` (infra/terraform/modules/vuln-sentinel/, `args` de cada app y job).
 #
 # Dependencias exactas y con hash: el workflow `images.yml` genera `requirements.lock.txt` con
 # `uv export --locked` (desde uv.lock) antes del build, y pip lo instala con --require-hashes.

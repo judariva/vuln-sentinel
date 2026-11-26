@@ -160,6 +160,14 @@ def test_every_public_endpoint_answers_with_schema_header(client, pub):
         assert "Cache-Control" in resp.headers or path.startswith("/v1/vulns/"), path
 
 
+def test_healthz_for_probes_is_cheap_and_not_cached(client):
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert body(resp) == {"status": "ok"}
+    assert resp.headers["Cache-Control"] == "no-store"
+    assert client.post("/healthz").status_code == 405
+
+
 def test_changes_all_and_alerts(client):
     all_ = body(client.get("/v1/feed/all/changes"))
     alerts = body(client.get("/v1/feed/alerts/changes"))

@@ -15,7 +15,8 @@ import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-AZ_QUIET = ROOT / "infra" / "scripts" / "az-quiet.sh"
+LEGACY = ROOT / "infra" / "bicep-legacy"
+AZ_QUIET = LEGACY / "scripts" / "az-quiet.sh"
 WORKFLOWS = ROOT / ".github" / "workflows"
 SHA_PIN = re.compile(r"^[\w.-]+/[\w.-]+(/[\w.-]+)*@[0-9a-f]{40}$")
 
@@ -136,26 +137,21 @@ def test_images_attest_permissions_only_in_attest_job():
         assert re.search(r"@sha256:[0-9a-f]{64}$", wf["env"][key]), key
 
 
-def test_deploy_verifies_provenance_before_azure_and_hides_az_errors():
-    wf = _workflow("deploy.yml")
-    steps = wf["jobs"]["deploy"]["steps"]
-    names = [s.get("name", "") for s in steps]
-    verify = names.index("Verificar la procedencia de la imagen")
-    login = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("azure/login@"))
-    validate = names.index("Validar la plantilla")
-    assert verify < login < validate
-    verify_run = steps[verify]["run"]
-    assert "gh attestation verify" in verify_run
-    assert "--repo" in verify_run and "--signer-workflow" in verify_run
-    assert "exit 1" in verify_run
-    for name in ("Validar la plantilla", "What-if (recuento de cambios)", "Desplegar"):
-        run = steps[names.index(name)]["run"]
-        assert "infra/scripts/az-quiet.sh" in run, name
-        # Ninguna llamada a az deployment fuera del envoltorio.
-        for line in run.splitlines():
-            if "az deployment" in line:
-                prev = run.splitlines()[run.splitlines().index(line) - 1]
-                assert "az-quiet.sh" in prev, name
+def test_no_workflow_of_this_repo_deploys_to_azure():
+    # ADR-0025: despliega la factoría de la plataforma con sus identidades. Este repo solo
+    # construye y atesta la imagen y valida el módulo; ningún workflow entra en Azure.
+    for path in WORKFLOWS.glob("*.yml"):
+        text = path.read_text(encoding="utf-8")
+        assert "azure/login@" not in text, path.name
+        assert "az deployment" not in text, path.name
+        assert "terraform apply" not in text and "terraform plan" not in text, path.name
+        wf = yaml.safe_load(text)
+        for job_name, job in wf["jobs"].items():
+            assert "id-token" not in job.get("permissions", {}) or path.name == "images.yml", (
+                f"{path.name}:{job_name}"
+            )
+    assert not (WORKFLOWS / "deploy.yml").exists()
+    assert (LEGACY / "workflows" / "deploy.yml").exists()
 
 
 def test_dockerfile_base_pinned_by_digest():
@@ -177,17 +173,16 @@ def test_dependabot_covers_every_ecosystem_weekly():
 
 
 def test_pipeline_condition_restricts_principal_ids():
-    text = (ROOT / "infra" / "platform" / "modules" / "pipeline-identity.bicep").read_text(
-        encoding="utf-8"
-    )
+    # Referencia (ADR-0025): el Bicep ya no se despliega; el diseño de la condición se conserva.
+    text = (LEGACY / "platform" / "modules" / "pipeline-identity.bicep").read_text(encoding="utf-8")
     condition = next(line for line in text.splitlines() if line.startswith("var condition ="))
     for source in ("@Request", "@Resource"):
         for attr in ("RoleDefinitionId", "PrincipalId", "PrincipalType"):
             assert f"{source}[Microsoft.Authorization/roleAssignments:{attr}]" in condition
     assert "{${principalList}}" in condition
     # El pipeline ya no crea identidades: las crea la plataforma y main.bicep las referencia.
-    main = (ROOT / "infra" / "main.bicep").read_text(encoding="utf-8")
+    main = (LEGACY / "main.bicep").read_text(encoding="utf-8")
     assert "modules/identities-existing.bicep" in main
     assert "'modules/identities.bicep'" not in main
-    platform = (ROOT / "infra" / "platform" / "platform.bicep").read_text(encoding="utf-8")
+    platform = (LEGACY / "platform" / "platform.bicep").read_text(encoding="utf-8")
     assert "'../modules/identities.bicep'" in platform

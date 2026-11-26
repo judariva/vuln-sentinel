@@ -8,6 +8,10 @@ afecta: [CTL-010, THR-010, CTL-019, THR-017]
 sustituye: null
 ---
 
+> **Sustituido en parte por ADR-0025 (2026-11-26).** Este repo ya no despliega: el pipeline de
+> `deploy.yml` y su condición quedan como referencia en `infra/bicep-legacy/`. Los roles los
+> concede el vending de la plataforma a partir de `required_platform_grants`.
+
 ## Contexto
 
 El pipeline tiene que asignar roles a las identidades del RG. Contributor + User Access

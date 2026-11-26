@@ -49,8 +49,8 @@ jobs:
       - name: Evaluación del agente (modelo simulado)
         run: uv run python -m vs.agent.eval --model fake
 
-  # Infraestructura como código (T9): compila y pasa el lint de Bicep y valida los workflows.
-  # Sin login en Azure: nada de este job toca la nube.
+  # Workflows (T9): actionlint. El Bicep de infra/bicep-legacy/ es referencia y no se compila
+  # (ADR-0025): la infraestructura es el módulo Terraform del job `terraform`.
   infra:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -59,17 +59,58 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-      - name: Bicep (build y lint)
-        run: |
-          for f in infra/main.bicep infra/platform/platform.bicep; do
-            az bicep build --file "$f" --stdout > /dev/null
-            az bicep lint --file "$f"
-          done
-          for f in infra/main.bicepparam infra/platform/platform.bicepparam; do
-            az bicep lint --file "$f"
-          done
       - name: actionlint
         run: uv run --no-project --with actionlint-py==1.7.12.25 actionlint
+
+  # Módulo Terraform del producto (T16, ADR-0025): fmt, validate, tflint y Checkov, sin
+  # credenciales ni backend. Nada de plan ni apply: despliega la factoría de la plataforma.
+  # Binarios descargados por versión y comprobados por sha256 (leídos en las releases el 2026-11-26).
+  terraform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TF_VERSION: 1.15.7
+      TF_SHA256: 73bbb8f5188ad75d4fb853fd100ae4d7e146ef7af7db18776109642fdb7759d2
+      TFLINT_VERSION: 0.66.0
+      TFLINT_SHA256: 22be11cadc25cd02401e94c0ccc91aa63467debb8485c2a755d98f4c0a9d1e2e
+      CHECKOV_VERSION: 3.4.11
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Instalar terraform y tflint
+        run: |
+          bin="$RUNNER_TEMP/bin"
+          mkdir -p "$bin"
+          cd "$RUNNER_TEMP"
+          curl -sSfL -o terraform.zip "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip"
+          echo "${TF_SHA256}  terraform.zip" | sha256sum -c -
+          curl -sSfL -o tflint.zip "https://github.com/terraform-linters/tflint/releases/download/v${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          echo "${TFLINT_SHA256}  tflint.zip" | sha256sum -c -
+          unzip -q -o terraform.zip -d "$bin"
+          unzip -q -o tflint.zip -d "$bin"
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infra/terraform
+      - name: terraform validate (módulo y ejemplo)
+        run: |
+          # El ejemplo verifica los proveedores contra su lock versionado; el módulo no lleva lock
+          # (lo decide la raíz que lo instancia) y valida con las mismas versiones exactas.
+          terraform -chdir=infra/terraform/examples/golden-dev init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/terraform/examples/golden-dev validate
+          terraform -chdir=infra/terraform/modules/vuln-sentinel init -backend=false -input=false
+          terraform -chdir=infra/terraform/modules/vuln-sentinel validate
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cfg="$PWD/infra/terraform/.tflint.hcl"
+          tflint --init --config "$cfg"
+          tflint --chdir infra/terraform/modules/vuln-sentinel --config "$cfg"
+          tflint --chdir infra/terraform/examples/golden-dev --config "$cfg" --call-module-type=all
+      - name: Checkov
+        run: uv run --no-project --with "checkov==${CHECKOV_VERSION}" checkov -d infra/terraform/modules/vuln-sentinel --framework terraform --compact
 
   # Portal (T8a, ADR-0023): build, lint, tests de componentes y prueba de humo con axe contra la
   # API de T6 con fixtures (`tests/portal_fixture.py`), todo en 127.0.0.1.

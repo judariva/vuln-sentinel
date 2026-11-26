@@ -1,8 +1,9 @@
 name: images
 
 # Construye la imagen del producto y la publica en GHCR (PLAN §2, §14: GHCR, 0 €). La imagen se
-# identifica por digest; el despliegue (`deploy.yml`) solo acepta un digest, nunca una etiqueta, y
-# antes de validar comprueba la atestación de procedencia que firma este workflow (T9b).
+# identifica por digest; el despliegue (la factoría de la plataforma con el módulo Terraform,
+# ADR-0025) solo acepta un digest (`image_digest`), nunca una etiqueta, y antes de aplicar tiene que
+# comprobar la atestación de procedencia que firma este workflow (CTL-026).
 #
 # Dos jobs, para que el token OIDC (id-token) y el permiso de atestar no estén en el job que
 # ejecuta el build:

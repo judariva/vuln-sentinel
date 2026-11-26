@@ -1,6 +1,7 @@
 """Contenido del latido y envío sin tumbar el job.
 
-Las columnas son las de `VsHeartbeat_CL` en `infra/platform/modules/heartbeat.bicep` (un test
+Las columnas son las de `VsHeartbeat_CL` en `infra/bicep-legacy/platform/modules/heartbeat.bicep`,
+esquema de referencia para la tabla que crea la plataforma (ADR-0025; un test
 comprueba que coinciden). `UnknownSources` lleva cada fuente en UNKNOWN y **desde cuándo**, para la
 regla «más de 2 h»; `AiCostUsdToday`, el coste de IA acumulado del día, para la regla «80 % del
 tope» (1,5 USD/día, PLAN §7).

@@ -23,7 +23,9 @@ from vs.sources.health import SourceHealth, source_health, unknown_sources
 from vs.sources.run import RunStatus, SourceRunResult
 
 ROOT = Path(__file__).resolve().parents[1]
-BICEP = ROOT / "infra" / "platform" / "modules" / "heartbeat.bicep"
+# Esquema de referencia de la tabla del latido. La tabla y la DCR las crea la plataforma (ADR-0025);
+# este fichero queda como contrato de columnas en infra/bicep-legacy/.
+BICEP = ROOT / "infra" / "bicep-legacy" / "platform" / "modules" / "heartbeat.bicep"
 T0 = datetime(2099, 3, 1, 12, 0, tzinfo=UTC)
 ENDPOINT = "https://dce.example.invalid"
 DCR = "dcr-" + "0" * 31 + "1"

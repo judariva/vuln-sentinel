@@ -25,5 +25,12 @@ local/
 # descargas de los generadores y cachés del código
 .cache/
 *.egg-info/
+# terraform: proveedores descargados y estado (nunca estado en el repo). El lock del ejemplo sí
+# se versiona; el del módulo no (lo decide la raíz que lo instancia).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/terraform/modules/**/.terraform.lock.hcl
 # generado desde uv.lock en el build de la imagen (images.yml)
 requirements.lock.txt

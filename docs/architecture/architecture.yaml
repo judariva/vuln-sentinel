@@ -112,19 +112,19 @@ components:
     status: proposed
   - id: CMP-025
     name: network
-    service: Azure Virtual Network propia con subredes de ACA (delegada), PostgreSQL (delegada) y endpoints privados, y zonas DNS privadas (infra/modules/network.bicep; G-4)
+    service: "Red de la plataforma (landing zone): subred de ACA (delegada, con NSG), subred de PostgreSQL (delegada) y zona DNS privada de PostgreSQL. El módulo Terraform las recibe como entradas y no crea ninguna (ADR-0025; diseño anterior en infra/bicep-legacy/modules/network.bicep; G-4)"
     status: planned
   - id: CMP-026
     name: managed-identities
-    service: Una identidad gestionada asignada por el usuario por componente (api, cloudflared, ingest, investigate, publish, daily, migrate), con roles sobre el recurso concreto. Las crea la plataforma (infra/platform/platform.bicep con infra/modules/identities.bicep) y main.bicep las referencia (identities-existing.bicep), para que sus principalId entren en la condición del pipeline (G-2, ADR-0014, T9b)
+    service: "Identidades gestionadas asignadas por el usuario de los componentes (api, cloudflared, ingest, investigate, publish, daily, migrate). Las crea el vending de la plataforma y concede sus roles; el módulo Terraform las recibe (variable identities) y publica la lista de roles con su alcance en la salida required_platform_grants (ADR-0025). Una por componente es el objetivo (ADR-0014); si la plataforma da una sola, se comparte (pregunta abierta de T16)"
     status: planned
   - id: CMP-027
     name: job-migrate
-    service: Azure Container Apps Jobs (manual). Migraciones de Alembic; su identidad es el único administrador Entra de PostgreSQL (infra/main.bicep)
+    service: Azure Container Apps Jobs (manual). Migraciones de Alembic; su identidad es el único administrador Entra de PostgreSQL (infra/terraform/modules/vuln-sentinel/postgres.tf y jobs.tf)
     status: planned
   - id: CMP-028
     name: deploy-pipeline
-    service: "GitHub Actions: images.yml (build y publicación por digest en GHCR con SBOM y procedencia firmados) y deploy.yml (workflow_dispatch, entorno prod con aprobación, verificación de la procedencia, OIDC sin secretos de cliente, solo what-if por defecto)"
+    service: "GitHub Actions: images.yml (build y publicación por digest en GHCR con SBOM y procedencia firmados). deploy.yml se retiró (ADR-0025, queda en infra/bicep-legacy/workflows/): despliega CMP-039"
     status: planned
   - id: CMP-029
     name: image-registry
@@ -132,8 +132,8 @@ components:
     status: planned
   - id: CMP-030
     name: product-logs
-    service: Log Analytics propio con tope diario (logs del entorno ACA y base de App Insights; infra/modules/monitoring.bicep)
-    status: planned
+    service: Log Analytics propio con tope diario (logs del entorno ACA y base de App Insights; infra/bicep-legacy/modules/monitoring.bicep). Retirado por ADR-0025 — los diagnósticos allLogs van al workspace de la plataforma (entrada del módulo)
+    status: retired
   - id: CMP-031
     name: agent-harness
     service: "Agente investigador: bucle propio con tool use (fetch_url solo GET y submit_dossier), cliente de modelo tras una interfaz (Anthropic o Foundry por configuración; FakeModel en tests), topes, JSON Schema, verificador de citas, alcance de dominios por CVE desde las referencias vendor-advisory del CNA (scope.py), E5 determinista contra señuelos (e5.py), nivel_final en código, ai_call con license_class y trazas GenAI con exportador nulo (src/vs/agent/; config/agent.yaml; dentro de CMP-004; ADR-0009, ADR-0010, ADR-0013, ADR-0022)"
@@ -162,6 +162,14 @@ components:
     name: local-stack
     service: "Prueba en local con datos reales: compose.yaml (PostgreSQL, migrate, bucle ingest → publish cada 5 min y daily cada hora con vs.jobs.loop, API con el portal en el mismo origen) e infra/compose/Dockerfile; solo desarrollo, no se despliega"
     status: implemented
+  - id: CMP-038
+    name: product-iac-module
+    service: "Módulo Terraform reutilizable del producto (infra/terraform/modules/vuln-sentinel/; azurerm 4.81.0 y azapi 2.14.0 fijados): entorno de ACA interno en VNet, API, jobs, cloudflared opcional, PostgreSQL Flexible privado solo con Entra, clave de firma por ARM y diagnósticos allLogs; no crea identidades, roles, RG, Key Vault ni zonas DNS. Ejemplo en infra/terraform/examples/golden-dev/ (ADR-0025, ADR-0022)"
+    status: implemented
+  - id: CMP-039
+    name: platform-factory
+    service: "Factoría de la plataforma (Golden Tenant), externa a este repo: vending del landing zone (RG, UAMI, Key Vault privado, presupuesto, guardarraíles y roles de required_platform_grants) e instancia de CMP-038 fijado por versión, con sus identidades de CI y plan/apply revisado (ADR-0025)"
+    status: planned
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -218,7 +226,7 @@ flows:
   - {id: FLW-029, from: CMP-024, to: CMP-021, note: "señales exploit (E1, E2, poc_unverified, poc_suspicious) por el ejecutor de fuentes"}
   - {id: FLW-030, from: CMP-001, to: CMP-002, note: "el portal lee la API pública con GET y sin credenciales (feed de alertas, registros y metric_daily); URL base de VITE_API_BASE_URL (ADR-0016, ADR-0023)"}
   - {id: FLW-031, from: CMP-028, to: CMP-029, note: "push de la imagen con el GITHUB_TOKEN del workflow (packages: write solo en images.yml)"}
-  - {id: FLW-032, from: CMP-028, to: CMP-026, crosses: [TB-004], note: "deploy.yml: OIDC → identidad del pipeline; Contributor y RBAC Administrator con condición sobre el RG (ADR-0014)"}
+  - {id: FLW-032, from: CMP-028, to: CMP-026, crosses: [TB-004], status: retired, note: "deploy.yml: OIDC → identidad del pipeline; Contributor y RBAC Administrator con condición sobre el RG (ADR-0014). Retirado por ADR-0025: lo sustituyen FLW-044 y FLW-045"}
   - {id: FLW-033, from: CMP-029, to: CMP-002, note: "ACA descarga la imagen por digest (también para los jobs y migrate)"}
   - {id: FLW-034, from: CMP-010, to: CMP-008, note: "cloudflared lee el token del Tunnel por referencia de Key Vault; Secrets User solo sobre ese secreto"}
   - {id: FLW-035, from: CMP-027, to: CMP-007, note: "migraciones con token de Entra ID como administrador; el resto de componentes no administra la BD"}
@@ -230,6 +238,8 @@ flows:
   - {id: FLW-041, from: SRC-008, to: CMP-035, note: metadata de módulos para trusted-exploit-authors (local, sin IA)}
   - {id: FLW-042, from: SRC-001, to: CMP-035, note: "registros CVE de los productos incluidos: pares vendor/product del CNA y prefijos CPE (local, sin IA)"}
   - {id: FLW-043, from: SRC-015, to: CMP-035, note: "prefijos de 32 ficheros WAT por rango HTTPS anónimo; solo nombres y cuentas agregadas de la cabecera Server (local, sin IA)"}
+  - {id: FLW-044, from: CMP-039, to: CMP-038, note: "la factoría instancia el módulo fijado por versión (ref de git) con las salidas del landing zone"}
+  - {id: FLW-045, from: CMP-039, to: CMP-026, crosses: [TB-004], note: "vending: crea las UAMI y concede los roles de required_platform_grants; plan/apply con las identidades de CI de la plataforma (ADR-0025)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -274,10 +284,12 @@ controls:
   - {id: CTL-016, name: "API pública solo GET y sin escritura; los datos donations.* no salen con donations.enabled=false", mitigates: [THR-014], proof: "tests/test_api.py (405 en métodos de escritura; el publicador no cambia; ninguna respuesta lleva donaciones)"}
   - {id: CTL-017, name: "heurísticas poc_suspicious (binarios, blobs u ofuscación, curl|sh y descargas ajenas, cuenta de menos de 30 días, README sin código, fork) sobre metadatos y la API de contenidos, sin clonar ni ejecutar; un PoC sin inspección completa nunca es limpio; el tipo de módulo o de entrada (auxiliary/dos, dos) se conserva para que no cuente como exploit", mitigates: [THR-005, THR-015], proof: "tests/test_exploit_sources.py (una prueba por heurística con fixtures sintéticos; el inspector solo pide URLs de la API; integración: un módulo DoS no da B)"}
   - {id: CTL-018, name: "el portal solo pone en un href enlaces https (safeUrl), con rel=noopener noreferrer; React escapa el texto y no se usa HTML del feed; referrer no-referrer; un id de alerta mal formado no llega a la API", mitigates: [THR-016], proof: "web/src/test/units.test.tsx (safeUrl); web/src/test/pages.test.tsx (javascript: nunca en href; id mal formado sin petición)"}
-  - {id: CTL-019, name: "una identidad por componente; Crypto User solo sobre la clave de firma, Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; solo migrate administra PostgreSQL (Entra ID, sin contraseña); KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "infra/ (az bicep build y lint en CI); revisión de las asignaciones tras el primer despliegue (F1a)"}
-  - {id: CTL-020, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto", mitigates: [THR-010, THR-018], proof: ".github/workflows/deploy.yml validado con actionlint en CI"}
-  - {id: CTL-021, name: "configuración del despliegue como secrets enmascarados; ningún paso imprime la salida de az (el what-if solo da el recuento); si validate, what-if o create fallan, solo se ve el código de error (infra/scripts/az-quiet.sh)", mitigates: [THR-019], proof: "tests/test_infra.py (un error de ARM con IDs, nombres y rangos solo deja ver los códigos); .github/workflows/deploy.yml"}
-  - {id: CTL-026, name: "cadena de suministro de la imagen: base y BuildKit por digest con Dependabot semanal; SBOM SPDX y procedencia SLSA firmados con Sigstore en un job aparte (id-token y attestations solo ahí); deploy.yml para si gh attestation verify no confirma que la firmó images.yml de este repo", mitigates: [THR-018], proof: "tests/test_infra.py (acciones por SHA, permisos por job, orden verificar → login → validar, FROM por digest, Dependabot); actionlint en CI"}
+  - {id: CTL-019, name: "una identidad por componente; Crypto User solo sobre la clave de firma, Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; solo migrate administra PostgreSQL (Entra ID, sin contraseña); KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "salida required_platform_grants del módulo (alcance por secreto, por clave y por DCR; tests/test_terraform.py); revisión de las asignaciones del vending tras el primer despliegue (F1a)"}
+  - {id: CTL-020, status: retired, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto (retirado por ADR-0025: lo sustituye CTL-031)", mitigates: [THR-010, THR-018], proof: "infra/bicep-legacy/workflows/deploy.yml (referencia)"}
+  - {id: CTL-021, status: retired, name: "configuración del despliegue como secrets enmascarados; si validate, what-if o create fallan, solo se ve el código de error (az-quiet.sh). Retirado por ADR-0025: este repo ya no ejecuta az", mitigates: [THR-019], proof: "tests/test_infra.py (az-quiet.sh en infra/bicep-legacy/scripts/, como referencia)"}
+  - {id: CTL-026, name: "cadena de suministro de la imagen: base y BuildKit por digest con Dependabot semanal; SBOM SPDX y procedencia SLSA firmados con Sigstore en un job aparte (id-token y attestations solo ahí). Verificar la procedencia antes de aplicar pasa a la factoría de la plataforma (ADR-0025, pregunta abierta de T16)", mitigates: [THR-018], proof: "tests/test_infra.py (acciones por SHA, permisos por job, FROM por digest, Dependabot); actionlint en CI"}
+  - {id: CTL-031, name: "ningún workflow de este repo entra en Azure (sin azure/login, az deployment ni terraform plan/apply; id-token solo en el job de atestación de images.yml): despliega la factoría de la plataforma con el módulo fijado por versión, imagen por digest y plan revisado", mitigates: [THR-010, THR-018, THR-019], proof: "tests/test_infra.py (test_no_workflow_of_this_repo_deploys_to_azure); job terraform de la CI sin credenciales"}
+  - {id: CTL-032, name: "controles CORE del módulo: entorno de ACA interno sin ingress externo ni HTTP inseguro, probes, revisión Single y réplicas explícitas, UAMI en cada app y job, secretos solo como referencias de Key Vault, imagen por digest, PostgreSQL sin acceso público y solo Entra ID con TLS, diagnósticos allLogs sin clave compartida del workspace, clave de firma EC P-256 no exportable; el módulo no crea identidades, roles, RG, Key Vault ni zonas DNS", mitigates: [THR-008, THR-017], proof: "tests/test_terraform.py; terraform validate, tflint y Checkov (dos supresiones acotadas y con motivo) en el job terraform de la CI"}
   - {id: CTL-023, name: "vigilante externo fail-closed: sin firma válida no mira el contenido; sin modified o sin sources, modified de 30 min o más (o en el futuro), fuente en UNKNOWN más de 2 h, HTTP no 200 o JWKS vacío dan fallo; la clave fijada detecta una clave publicada cambiada; sin VS_FEED_BASE_URL el job sale «saltado»; nunca imprime la URL del feed; secrets solo por env", mitigates: [THR-009, THR-012, THR-019, THR-020], proof: "tests/test_watchdog.py (firma válida, rota y de otra clave, feed viejo, fuente en UNKNOWN, carrera .json/.jws, forma del workflow); actionlint en CI"}
   - {id: CTL-024, name: "el latido no tumba el job si falla (lo cubre la regla «sin latido en 20 min»); sus columnas son las de la DCR; los errores no llevan el token ni el detalle de la identidad", mitigates: [THR-009], proof: "tests/test_heartbeat.py"}
   - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (fijos de autoridad o hosts vendor-advisory del CNA de esa CVE, nunca un repositorio de PoC) y sobre esa CVE (su identificador en la cita o a ±cve_window_lines líneas); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE (ver CTL-028); el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, exploited-other-cve.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py (cita sobre otra CVE, ventana e identificador con prefijo; sabotaje: el arnés falla si se acepta una cita sobre otra CVE)"}

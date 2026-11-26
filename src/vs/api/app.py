@@ -399,6 +399,14 @@ def create_app(cfg: ApiConfig) -> FastAPI:
         doc = cost_document(rows, start, end, cfg.donations_enabled)
         return send(request, json_document("/v1/metrics/cost.json", doc, HEAD))
 
+    # -- salud (probes de Container Apps) ------------------------------------------------------
+
+    @app.get("/healthz", include_in_schema=False)
+    def healthz():
+        # Liveness y readiness: el proceso responde. No toca la base de datos ni el publicador,
+        # para que una fuente o la BD caídas no reinicien la réplica (fail-closed va en el feed).
+        return Response(b'{"status":"ok"}', media_type=JSON, headers={"Cache-Control": NO_STORE})
+
     # -- administración (esqueleto) -----------------------------------------------------------
 
     @app.api_route("/admin", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])

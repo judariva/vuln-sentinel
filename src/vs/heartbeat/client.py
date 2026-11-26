@@ -113,8 +113,9 @@ class UrllibPostTransport:
 class LogsIngestionClient(HeartbeatClient):
     """Envío a la Logs Ingestion API (DCR `Direct`, tabla `VsHeartbeat_CL`).
 
-    Los tres valores salen de las salidas de `infra/platform/modules/heartbeat.bicep` (variables
-    `VS_HEARTBEAT_ENDPOINT`, `VS_HEARTBEAT_DCR_ID` y el nombre del stream), nunca del código.
+    Los tres valores salen de la DCR que crea la plataforma y llegan por la variable `heartbeat` del
+    módulo Terraform (`VS_HEARTBEAT_ENDPOINT`, `VS_HEARTBEAT_DCR_ID` y `VS_HEARTBEAT_STREAM`), nunca
+    del código.
     """
 
     def __init__(
