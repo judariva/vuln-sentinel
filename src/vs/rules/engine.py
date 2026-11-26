@@ -261,6 +261,31 @@ class RuleEngine:
         if self.baselines.get(source) is None:
             self.baselines[source] = at
 
+    def restore(
+        self,
+        cve_id: str,
+        records: Iterable[Record],
+        level: Level = Level.NONE,
+        history: Iterable[LevelChange] = (),
+    ) -> None:
+        """Carga el estado guardado de una CVE (registros ya evaluados y nivel publicado).
+
+        No evalúa nada: es el estado previo al siguiente `ingest`. Lo usan los jobs, que guardan el
+        estado en la base de datos entre ejecuciones (`vs.store`).
+        """
+        kept = self._records.setdefault(cve_id, [])
+        for r in records:
+            if r.cve_id != cve_id or not self.audience.allows(r):
+                continue
+            key = r.key()
+            if key in self._keys:
+                continue
+            self._keys.add(key)
+            kept.append(r)
+        if level is not Level.NONE:
+            self._published[cve_id] = level
+        self.history.extend(c for c in history if c.cve_id == cve_id)
+
     def level(self, cve_id: str) -> Level:
         """Nivel publicado de la CVE en este feed. Solo sube, salvo acto manual."""
         return self._published.get(cve_id, Level.NONE)

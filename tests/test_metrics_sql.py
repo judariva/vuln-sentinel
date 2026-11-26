@@ -41,8 +41,9 @@ def test_donations_table_has_no_donor_data():
 
 
 LICENSED_TABLES = {"source", "vulnerability", "affected_product", "signal", "ai_call"}
-# Tienen columna `source` pero no guardan datos de la fuente, solo su estado operativo.
-OPERATIONAL_TABLES = {"source_run"}
+# Tienen columna `source` pero no guardan datos de la fuente, solo su estado operativo
+# (`fact_seen` guarda la huella de un hecho, nunca su contenido).
+OPERATIONAL_TABLES = {"source_run", "fact_seen"}
 
 
 def test_source_data_tables_carry_license():

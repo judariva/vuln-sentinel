@@ -1,0 +1,78 @@
+# vuln-sentinel en local, con datos reales: `docker compose up`. Detalle en infra/README.md.
+#
+# - db:      PostgreSQL 17. Sin puerto publicado y sin contraseña: solo lo ve la red de compose.
+# - migrate: aplica las migraciones y termina.
+# - worker:  bucle ingest → publish cada 5 min y daily cada hora (vs.jobs.loop).
+# - api:     la API pública y el portal en el mismo origen: http://127.0.0.1:8080
+#
+# Sin secretos. VS_GITHUB_TOKEN es opcional (GHSA, nomi-sec): se lee del entorno de quien lanza
+# compose, nunca de un fichero del repo. Sin él, esas fuentes van con el límite anónimo de GitHub
+# y, si lo agotan, quedan en UNKNOWN (fail-closed).
+# La firma usa una clave de desarrollo que se genera en el volumen `data` (nunca en git).
+
+name: vuln-sentinel
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: infra/compose/Dockerfile
+  image: vuln-sentinel-local:dev
+  environment: &env
+    VS_DATABASE_URL: postgresql://vs@db:5432/vs
+    VS_SIGNING_KEY: /data/signing/dev-es256.pem
+    VS_FEED_DIR: /data/feed
+    VS_GITHUB_TOKEN: ${VS_GITHUB_TOKEN:-}
+  volumes:
+    - data:/data
+
+services:
+  db:
+    image: postgres:17-bookworm@sha256:1eff563f6c868b9b433566e9f3cf6e5c79fbd3b95bf70ec7277d376cdbfc50d7
+    environment:
+      POSTGRES_USER: vs
+      POSTGRES_DB: vs
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vs -d vs"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    <<: *app
+    command: ["vs.model.migrate", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["vs.jobs.loop"]
+    environment:
+      <<: *env
+      VS_LOOP_INTERVAL: "300"
+      VS_DAILY_INTERVAL: "3600"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    command: ["vs.api.serve"]
+    environment:
+      <<: *env
+      VS_WEB_DIST: /app/web/dist
+      VS_API_PORT: "8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  data:

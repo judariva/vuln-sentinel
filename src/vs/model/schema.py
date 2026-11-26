@@ -23,6 +23,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Interval,
+    LargeBinary,
     MetaData,
     Numeric,
     Text,
@@ -97,6 +98,65 @@ class SourceRun(Base):
     items_new: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     error: Mapped[str | None] = mapped_column(Text)
     last_item_published_at: Mapped[datetime | None] = mapped_column(TZ)
+    # Fecha del dato según la fuente (0002). En una ejecución `ok`, es el cursor de la siguiente.
+    data_as_of: Mapped[datetime | None] = mapped_column(TZ)
+
+
+class FactSeen(Base):
+    """Hechos ya vistos de cada fuente (0002), por la huella de `Record.key()`.
+
+    Hace la ingesta idempotente y guarda **cuándo** se vio un hecho por primera vez, también si
+    su CVE aún no estaba en `vulnerability` (`stored = false`): cuando la CVE llegue, el hecho se
+    guarda con su marca de carga inicial original y no alerta como nuevo. No guarda el dato.
+    """
+
+    __tablename__ = "fact_seen"
+
+    source: Mapped[str] = mapped_column(Text, ForeignKey("source.name"), primary_key=True)
+    fact_key: Mapped[str] = mapped_column(Text, primary_key=True)  # sha256 hex
+    cve_id: Mapped[str] = mapped_column(Text)
+    # Ejecución que lo guardó (o que lo vio, si aún no se ha guardado).
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("source_run.id"), index=True)
+    baseline: Mapped[bool]
+    first_observed_at: Mapped[datetime] = mapped_column(TZ)
+    stored: Mapped[bool]
+
+
+class FeedRecord(Base):
+    """Último registro OSV publicado de cada CVE (0002): los bytes exactos que se firman."""
+
+    __tablename__ = "feed_record"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)  # VS-CVE-…
+    cve_id: Mapped[str] = mapped_column(Text)
+    level: Mapped[str] = mapped_column(ALERT_LEVEL)
+    modified: Mapped[datetime] = mapped_column(TZ)
+    sha256: Mapped[str] = mapped_column(Text)
+    body: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class FeedChange(Base):
+    """Índice de cambios de cada feed (0002, ADR-0019). Solo inserción; se poda por retención."""
+
+    __tablename__ = "feed_change"
+    __table_args__ = (CheckConstraint("feed IN ('all', 'alerts')", name="feed_change_feed_ck"),)
+
+    feed: Mapped[str] = mapped_column(Text, primary_key=True)
+    modified: Mapped[datetime] = mapped_column(TZ, primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    level: Mapped[str] = mapped_column(ALERT_LEVEL)
+    type: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(Text)
+
+
+class JobState(Base):
+    """Estado de cada job entre ejecuciones (0002): marcas de agua y estado del feed."""
+
+    __tablename__ = "job_state"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[Any] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(TZ)
 
 
 class Vulnerability(Licensed, Base):

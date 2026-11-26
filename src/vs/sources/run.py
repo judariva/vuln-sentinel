@@ -61,6 +61,7 @@ class SourceRunResult:
             "items_new": self.items_new,
             "error": self.error,
             "last_item_published_at": self.last_item_published_at,
+            "data_as_of": self.data_as_of,
         }
 
 

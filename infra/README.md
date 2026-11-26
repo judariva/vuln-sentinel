@@ -10,6 +10,49 @@ Infraestructura como código del núcleo en Azure (PLAN §2). Bicep, por módulo
 | `platform/` | Requisitos de plataforma: RG, identidades de los componentes, identidad OIDC del pipeline con RBAC con condición limitada a esas identidades, latido (DCR, tabla y rol de los jobs) y presupuesto | El programa de la plataforma, con aprobación de Juan (gate) |
 | `scripts/az-quiet.sh` | Ejecuta `az` en `deploy.yml` y, si falla, solo enseña el código de error (los logs de Actions serán públicos) | — |
 
+## Probar en local
+
+El producto entero en un equipo, con datos reales y sin nada de Azure ni de Cloudflare
+(`compose.yaml`, `infra/compose/Dockerfile`):
+
+```bash
+docker compose up -d
+docker compose ps                                   # migrate: Exited (0); el resto, Up
+docker compose logs -f worker                       # una línea JSON por ejecución de fuente
+curl -s http://127.0.0.1:8080/v1/feed/all/changes   # índice del feed, con el estado de cada fuente
+```
+
+| Servicio | Qué hace | Punto de entrada |
+|---|---|---|
+| `db` | PostgreSQL 17, sin puerto publicado ni contraseña (solo la red de compose) | — |
+| `migrate` | Migraciones de Alembic y termina | `python -m vs.model.migrate upgrade head` |
+| `worker` | Cada 5 min `ingest` y `publish`; cada hora `daily`. Cada job en su proceso | `python -m vs.jobs.loop` |
+| `api` | API pública y portal (`web/dist`) en el mismo origen, en `127.0.0.1:8080` | `python -m vs.api.serve` |
+
+Los puntos de entrada son los mismos que usa `main.bicep` (`entrypoints`):
+
+| Módulo | Qué hace | Salida |
+|---|---|---|
+| `vs.api.serve` | uvicorn con `create_app`; lee el feed de `feed_record`/`feed_change` y las métricas de `metric_daily` | — |
+| `vs.jobs.ingest` | Una ejecución de cada conector de ingesta de la instancia (cvelistV5 primero), `source_run`, reglas y alertas | 0; 1 si una ejecución no se pudo guardar; 2 configuración |
+| `vs.jobs.publish` | Feed completo y de alertas, firmados con `LocalDevSigner`; escribe en `VS_FEED_DIR` (R2 en la F1b) | 0; 1; 2 |
+| `vs.jobs.daily` | `metric_daily` de ayer y hoy (o de las fechas dadas) | 0; 1; 2 |
+| `vs.jobs.investigate` | Apagado salvo `VS_AGENT_ENABLED=1`; encendido, sale con 3: el agente real llega en la F1b | 0; 3 |
+
+Configuración por entorno: tabla en `src/vs/jobs/settings.py`. Una fuente caída no hace fallar el
+job: queda en UNKNOWN en `source_run` y en el índice del feed (fail-closed).
+
+Notas:
+
+- **Carga inicial.** La primera ejecución de cada fuente no alerta (ADR-0012). Un hecho visto en
+  la carga inicial de su fuente nunca alerta después, aunque su CVE llegue más tarde.
+- **Primer ciclo lento.** cvelistV5 lee las últimas 24 h registro a registro (miles de peticiones);
+  los ciclos siguientes solo leen lo nuevo.
+- **GitHub.** GHSA y nomi-sec usan la API de GitHub. Sin `VS_GITHUB_TOKEN` (opcional, del entorno
+  de quien lanza compose) van con el límite anónimo y pueden salir en UNKNOWN.
+- **Firma.** Clave de desarrollo generada en el volumen `data`. Nunca se usa fuera de local.
+- **Borrar todo:** `docker compose down -v`.
+
 ## Validar en local
 
 Solo compilar y pasar el lint. Ninguna sesión despliega.
@@ -80,6 +123,7 @@ Si la plataforma cambia el prefijo o los nombres de las identidades, `main.bicep
 
 ## Pendiente (F1a)
 
-- Puntos de entrada de la API y de los jobs (`entrypoints` en `main.bicep`).
+- ~~Puntos de entrada de la API y de los jobs (`entrypoints` en `main.bicep`).~~ Hechos en T13
+  (ver «Probar en local»). Falta en Azure: `KeyVaultSigner`, escritura del feed en R2 y el agente.
 - Conexión a PostgreSQL con token de Entra ID y roles de base de datos de cada identidad.
 - Latido por la Logs Ingestion API y trazas OTel con Entra ID.

@@ -25,6 +25,8 @@ COPY LICENSE NOTICE ./
 COPY src ./src
 COPY config ./config
 COPY schema ./schema
+# Consultas de métricas que ejecuta `vs.jobs.daily` (T13).
+COPY docs/metrics ./docs/metrics
 
 # Sin root (UID fijo, sin shell de login). El contenedor no necesita escribir en /app.
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin vs

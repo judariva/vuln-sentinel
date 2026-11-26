@@ -1,0 +1,17 @@
+# Contexto del build local (infra/compose/Dockerfile): solo lo que copia. Nada de local/, .cache/,
+# .env ni node_modules.
+*
+!pyproject.toml
+!uv.lock
+!LICENSE
+!NOTICE
+!src/
+!config/
+!schema/
+!docs/metrics/
+!web/
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+**/__pycache__

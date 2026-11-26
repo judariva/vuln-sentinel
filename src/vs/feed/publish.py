@@ -16,6 +16,7 @@ Todo en memoria: la persistencia (PostgreSQL) y la escritura en R2 quedan fuera 
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -274,6 +275,36 @@ class FeedPublisher:
         self.stats.published += 1
         self.stats.by_type[types[0]] = self.stats.by_type.get(types[0], 0) + 1
         return entry
+
+    def restore(
+        self,
+        records: Iterable[tuple[str, bytes, Level]],
+        entries: Mapping[str, Iterable[ChangeEntry]] | None = None,
+        last_modified: datetime | None = None,
+    ) -> None:
+        """Carga el estado publicado guardado (`vs.store`): registros e índices de cambios.
+
+        `records` son `(id, bytes exactos, nivel)`. Las entradas de cada índice llegan en orden
+        `(modified, id)`. `last_modified` es el último `modified` publicado, aunque no se haya
+        cargado su entrada: el siguiente `modified` será posterior.
+        """
+        for ident, body, level in records:
+            record = json.loads(body)
+            self._records[ident] = _Published(record, bytes(body), sha256_hex(body), level)
+        for feed, items in (entries or {}).items():
+            log = self._log(feed)
+            for e in items:
+                log.append(e)
+        stamps = [log.last_modified for log in self.logs.values() if log.last_modified]
+        if last_modified is not None:
+            stamps.append(last_modified)
+        if stamps:
+            latest = max(stamps)
+            self._last = latest if self._last is None else max(self._last, latest)
+
+    def published_records(self) -> dict[str, tuple[bytes, str, Level]]:
+        """`id → (bytes, sha256, nivel)` de todo lo publicado en memoria (para guardarlo)."""
+        return {i: (p.body, p.sha256, p.level) for i, p in self._records.items()}
 
     def publish_from_engine(
         self, engine: RuleEngine, now: datetime, cve_ids: Iterable[str] | None = None

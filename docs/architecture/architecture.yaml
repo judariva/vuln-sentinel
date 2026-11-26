@@ -154,6 +154,14 @@ components:
     name: list-generators
     service: Scripts reproducibles src/vs/lists (exposed-products y trusted-exploit-authors; F1a-0)
     status: implemented
+  - id: CMP-036
+    name: store
+    service: "Persistencia de los jobs en PostgreSQL (src/vs/store.py, T13): ingesta idempotente por huella (fact_seen), carga inicial sin alertas también para CVE que llegan tarde, reglas con estado guardado y feed publicado (feed_record, feed_change) que comparten el job de publicación y la API; dentro de CMP-002 a CMP-006"
+    status: implemented
+  - id: CMP-037
+    name: local-stack
+    service: "Prueba en local con datos reales: compose.yaml (PostgreSQL, migrate, bucle ingest → publish cada 5 min y daily cada hora con vs.jobs.loop, API con el portal en el mismo origen) e infra/compose/Dockerfile; solo desarrollo, no se despliega"
+    status: implemented
 
 sources:
   - {id: SRC-001, name: cvelistV5}
