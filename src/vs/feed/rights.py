@@ -1,30 +1,34 @@
-"""Feed según derechos (ADR-0022, esbozo).
+"""Feed según derechos (ADR-0022, CMP-019).
 
-Cada feed (público, por cliente) se genera filtrando las señales por lo que su audiencia puede
-recibir, y el nivel se calcula **por feed**, solo con las señales permitidas. Si la única señal de
-A es `restricted`, en el feed público esa CVE sale con el nivel que den las señales abiertas.
+Cada feed (público, por cliente) se genera filtrando los registros por lo que su audiencia puede
+recibir, y el nivel se calcula **por feed**, solo con lo permitido. Si la única señal de A es
+`restricted`, en el feed público esa CVE sale con el nivel que den las señales abiertas.
 
-`toy_level` es un nivel de juguete para probar el filtro. Lo sustituyen las reglas de T4
-(`PLAN.md` §5).
+El nivel lo calculan las reglas reales (`vs.rules`, PLAN.md §5): `level_for_feed` para una
+evaluación suelta y `engine_for_feed` para el motor con estado (carga inicial, alertas, monotonía).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from enum import IntEnum
+from datetime import datetime
 
 from vs.instance import Instance
+from vs.rules.engine import RuleEngine, RulesConfig, assess
+from vs.rules.levels import Level
+from vs.rules.lists import EMPTY_LISTS, RuleLists
 from vs.sources.base import LicenseClass, Record
 
-
-class Level(IntEnum):
-    """Orden de los niveles: el máximo es el más urgente."""
-
-    NONE = 0
-    C = 1
-    B = 2
-    A = 3
+__all__ = [
+    "PUBLIC",
+    "Audience",
+    "Level",
+    "audience_for",
+    "engine_for_feed",
+    "filter_signals",
+    "level_for_feed",
+]
 
 
 @dataclass(frozen=True)
@@ -60,23 +64,29 @@ def filter_signals(signals: Iterable[Record], audience: Audience) -> list[Record
     return [s for s in signals if audience.allows(s)]
 
 
-_A_KINDS = frozenset({"kev_cisa", "kev_vulncheck", "vendor_exploited"})
-
-
-def toy_level(signals: Iterable[Record]) -> Level:
-    """Nivel de juguete: A si hay una señal de explotación; si no, NONE. Lo sustituye T4."""
-    for s in signals:
-        if s.kind in _A_KINDS:
-            return Level.A
-        if s.kind == "ssvc" and s.value.get("exploitation") == "active":
-            return Level.A
-    return Level.NONE
-
-
 def level_for_feed(
-    signals: Iterable[Record],
+    records: Iterable[Record],
     audience: Audience,
-    rules: Callable[[Iterable[Record]], Level] = toy_level,
+    lists: RuleLists = EMPTY_LISTS,
 ) -> Level:
-    """Nivel de una CVE en un feed: las reglas solo ven las señales permitidas a su audiencia."""
-    return rules(filter_signals(signals, audience))
+    """Nivel determinista de una CVE en un feed: las reglas solo ven lo permitido a su audiencia.
+
+    No decide si alerta (eso depende de la carga inicial y del nivel publicado: `RuleEngine`).
+    """
+    allowed = filter_signals(records, audience)
+    cves = {r.cve_id for r in allowed}
+    if len(cves) > 1:
+        raise ValueError(f"level_for_feed evalúa una sola CVE; recibió {sorted(cves)}")
+    if not cves:
+        return Level.NONE
+    return assess(cves.pop(), allowed, lists).level
+
+
+def engine_for_feed(
+    audience: Audience,
+    lists: RuleLists = EMPTY_LISTS,
+    config: RulesConfig | None = None,
+    baselines: Mapping[str, datetime | None] | None = None,
+) -> RuleEngine:
+    """Motor de reglas de un feed: descarta lo que su audiencia no puede recibir."""
+    return RuleEngine(audience, lists, config, baselines)

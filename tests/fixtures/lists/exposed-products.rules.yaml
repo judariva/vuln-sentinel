@@ -1,0 +1,34 @@
+# Lista de FIXTURE para los tests de reglas (T4). Fabricantes y productos FICTICIOS.
+# Mismo formato que config/exposed-products.yaml (generado por vs.lists); no es la lista real.
+criterion_version: 1
+categories:
+  - web-proxy
+  - vpn
+products:
+  - id: examplesoft--exampled
+    category: web-proxy
+    vendor: Examplesoft
+    product: Exampled
+    aliases:
+      - vendor: Examplesoft
+        product: Exampled
+      - vendor: Example Software Inc.
+        product: exampled server
+    cpe:
+      - cpe:2.3:a:examplesoft:exampled
+    purl:
+      - pkg:generic/exampled
+  - id: tunnelcorp--tunnelgate
+    category: vpn
+    vendor: TunnelCorp
+    product: TunnelGate
+    aliases:
+      - vendor: TunnelCorp
+        product: TunnelGate
+    cpe: []
+    purl: []
+needs_review:
+  - id: pendingvendor--pendinggw
+    vendor: PendingVendor
+    product: PendingGW
+below_threshold: []

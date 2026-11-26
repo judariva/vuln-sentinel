@@ -94,6 +94,10 @@ components:
     name: source-connectors
     service: Conectores abiertos (cvelistV5, CISA KEV, EPSS, GHSA, OSV) y ejecutor con source_run y fail-closed (src/vs/sources/; dentro de CMP-003)
     status: proposed
+  - id: CMP-021
+    name: rules-engine
+    service: Motor de reglas A/B/C determinista y por feed, con impacto mínimo, E1–E4, carga inicial y monotonía (src/vs/rules/; dentro de CMP-003; PLAN §5, ADR-0012, ADR-0013, ADR-0022)
+    status: proposed
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -135,6 +139,8 @@ flows:
   - {id: FLW-015, from: SRC-005, to: CMP-020, crosses: [TB-003], note: "API de avisos de GitHub, paginada"}
   - {id: FLW-016, from: SRC-006, to: CMP-020, crosses: [TB-003], note: "modified_id.csv y registros OSV, con política por fuente"}
   - {id: FLW-017, from: CMP-020, to: CMP-007, note: "source_run y registros normalizados al modelo"}
+  - {id: FLW-018, from: CMP-020, to: CMP-021, note: "registros sellados (observed_at, baseline) que evalúan las reglas"}
+  - {id: FLW-019, from: CMP-021, to: CMP-007, note: "rule_evaluation y alert_level_history"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -150,13 +156,13 @@ threats:
   - {id: THR-011, name: un dato con licencia restringida llega a un feed o a una instancia sin esa licencia, refs: []}
 
 controls:
-  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: test de monotonía}
+  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado)"}
   - {id: CTL-002, name: verificador determinista de citas, mitigates: [THR-003], proof: eval citas falsas}
   - {id: CTL-003, name: contenido externo delimitado y herramientas de solo lectura, mitigates: [THR-001], proof: eval injection-advisory}
   - {id: CTL-004, name: lista de dominios permitidos y solo GET, mitigates: [THR-004], proof: test de herramienta}
   - {id: CTL-005, name: código de PoC leído como texto, nunca ejecutado, mitigates: [THR-005], proof: revisión de contenedor en CI}
   - {id: CTL-006, name: topes de pasos, tokens y coste diario, mitigates: [THR-006], proof: test de bucle simulado}
-  - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: test carga inicial 0 alertas}
+  - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: "tests/test_rules.py (carga inicial y fuente nueva: 0 alertas; señal nueva sobre CVE antigua: alerta)"}
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
