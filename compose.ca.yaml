@@ -1,0 +1,18 @@
+# Opcional: para redes con un proxy TLS que reinspecciona el tráfico. Monta en los contenedores el
+# almacén de CA del equipo anfitrión (que ya confía en la raíz del proxy) y lo usa Python.
+# Nunca se desactiva la verificación TLS (CLAUDE.md, regla 6).
+#
+#   docker compose -f compose.yaml -f compose.ca.yaml up -d
+#
+# VS_CA_BUNDLE: ruta del almacén en el anfitrión (por defecto, el de Debian/Ubuntu).
+
+x-ca: &ca
+  environment:
+    SSL_CERT_FILE: /etc/ssl/vs-host-ca.pem
+  volumes:
+    - ${VS_CA_BUNDLE:-/etc/ssl/certs/ca-certificates.crt}:/etc/ssl/vs-host-ca.pem:ro
+
+services:
+  migrate: *ca
+  worker: *ca
+  api: *ca

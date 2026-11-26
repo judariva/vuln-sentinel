@@ -12,21 +12,29 @@ from __future__ import annotations
 
 import gzip
 import json
+import time
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
 DEFAULT_TIMEOUT_S = 30.0
 DEFAULT_MAX_BYTES = 64 * 1024 * 1024
+DEFAULT_RETRIES = 2
+DEFAULT_BACKOFF_S = (1.0, 4.0)
+RETRY_STATUS = frozenset({502, 503, 504})
 # Genérico a propósito: sin hosts ni datos de contacto (ADR-0016).
 USER_AGENT = "vuln-sentinel"
 
 
 class SourceError(RuntimeError):
     """La fuente no ha dado un dato utilizable. Lleva a UNKNOWN."""
+
+
+class NetworkError(SourceError):
+    """Timeout o fallo de conexión o de TLS. Se reintenta un número acotado de veces."""
 
 
 class SourceStale(SourceError):
@@ -58,15 +66,48 @@ class Transport(Protocol):
 
 
 class UrllibTransport:
-    """GET por HTTPS con timeout y tamaño máximo. Sin redirecciones a otros esquemas."""
+    """GET por HTTPS con timeout y tamaño máximo. Sin redirecciones a otros esquemas.
+
+    Un 502, 503 o 504, un timeout o un fallo de conexión o de TLS se reintentan como mucho
+    `retries` veces, con espera creciente (T13): la carga inicial de cvelistV5 u OSV son miles de
+    GET, y un 503 o un timeout suelto la dejaba entera en UNKNOWN. Un certificado no válido se
+    reintenta igual y sigue fallando: la verificación nunca se relaja.
+    Si persiste, se devuelve tal cual y el conector da UNKNOWN. Un 429 o un 403 no se reintentan:
+    son límites de uso y reintentar solo los empeora.
+    """
 
     def __init__(
-        self, *, timeout: float = DEFAULT_TIMEOUT_S, max_bytes: int = DEFAULT_MAX_BYTES
+        self,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_S,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+        retries: int = DEFAULT_RETRIES,
+        backoff: tuple[float, ...] = DEFAULT_BACKOFF_S,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.timeout = timeout
         self.max_bytes = max_bytes
+        self.retries = retries
+        self.backoff = backoff
+        self._sleep = sleep
 
     def get(
+        self, url: str, *, headers: Mapping[str, str] | None = None, timeout: float | None = None
+    ) -> Response:
+        attempt = 0
+        while True:
+            try:
+                resp = self._get_once(url, headers=headers, timeout=timeout)
+            except NetworkError:
+                if attempt >= self.retries:
+                    raise
+            else:
+                if resp.status not in RETRY_STATUS or attempt >= self.retries:
+                    return resp
+            self._sleep(self.backoff[min(attempt, len(self.backoff) - 1)])
+            attempt += 1
+
+    def _get_once(
         self, url: str, *, headers: Mapping[str, str] | None = None, timeout: float | None = None
     ) -> Response:
         if not url.startswith("https://"):
@@ -82,7 +123,7 @@ class UrllibTransport:
         except urllib.error.HTTPError as exc:
             return Response(exc.code, exc.read(self.max_bytes + 1), dict(exc.headers.items()))
         except (TimeoutError, urllib.error.URLError, OSError) as exc:
-            raise SourceError(f"error de red en {url}: {exc}") from exc
+            raise NetworkError(f"error de red en {url}: {exc}") from exc
         if len(body) > self.max_bytes:
             raise SourceError(f"respuesta de más de {self.max_bytes} bytes: {url}")
         return Response(status, body, hdrs)

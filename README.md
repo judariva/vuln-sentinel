@@ -27,6 +27,9 @@ docker compose logs -f worker        # ingest → publish cada 5 min; daily cada
 - El primer ciclo tarda más (cvelistV5 lee las últimas 24 h, registro a registro).
 - Opcional: `VS_GITHUB_TOKEN=<token sin permisos> docker compose up -d` sube el límite de GitHub
   para GHSA y nomi-sec. Sin él, si se agota el límite anónimo, esas fuentes salen en UNKNOWN.
+- Detrás de un proxy TLS que reinspecciona el tráfico (fallos `CERTIFICATE_VERIFY_FAILED`):
+  `docker compose -f compose.yaml -f compose.ca.yaml up -d` usa el almacén de CA del equipo. La
+  verificación TLS nunca se desactiva.
 - Parar: `docker compose down` (conserva los datos); `docker compose down -v` los borra.
 
 Detalle en [infra/README.md](infra/README.md#probar-en-local).

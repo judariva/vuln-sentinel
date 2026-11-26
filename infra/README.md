@@ -50,6 +50,12 @@ Notas:
   los ciclos siguientes solo leen lo nuevo.
 - **GitHub.** GHSA y nomi-sec usan la API de GitHub. Sin `VS_GITHUB_TOKEN` (opcional, del entorno
   de quien lanza compose) van con el límite anónimo y pueden salir en UNKNOWN.
+- **Proxy TLS.** Si la red reinspecciona TLS, las fuentes afectadas salen en UNKNOWN con
+  `CERTIFICATE_VERIFY_FAILED`. `compose.ca.yaml` monta el almacén de CA del anfitrión
+  (`VS_CA_BUNDLE`, por defecto `/etc/ssl/certs/ca-certificates.crt`) y lo usa como
+  `SSL_CERT_FILE`: `docker compose -f compose.yaml -f compose.ca.yaml up -d`. Nunca se desactiva la
+  verificación.
+- **Reintentos.** Un 502/503/504 se reintenta dos veces (1 s y 4 s); un 403 o 429 no.
 - **Firma.** Clave de desarrollo generada en el volumen `data`. Nunca se usa fuera de local.
 - **Borrar todo:** `docker compose down -v`.
 
