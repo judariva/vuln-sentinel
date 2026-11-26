@@ -8,8 +8,7 @@ Sin `--input`, descarga `db/modules_metadata_base.json` de Metasploit Framework 
 
 Implementa solo la parte (i) del criterio: autores de módulos `exploit/` con `disclosure_date` en
 los últimos 24 meses. La parte (ii) (organizaciones acreditadas en `credits` que publican avisos
-propios) exige un juicio que el script no puede hacer de forma determinista: queda como pregunta
-abierta del PR.
+propios) queda fuera de la v1 por decisión de Juan (2026-11-26, revisión del PR #3).
 
 Normalización de nombres (determinista, sin parecidos difusos):
 - se quitan los bloques `<...>` que contienen un correo o una URL, las URL y los correos sueltos
@@ -32,7 +31,7 @@ from pathlib import Path
 from vs.lists.common import ROOT, dump_yaml, fetch, months_before, parse_date, sha256_bytes
 
 GENERATOR = "vs.lists.build_trusted_authors"
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 CRITERION_VERSION = 1
 WINDOW_MONTHS = 24
 MSF_URL = (
@@ -61,10 +60,13 @@ La lista v1 es la unión de:
        (campo `author` de db/modules_metadata_base.json);
   (ii) organizaciones acreditadas como descubridoras (`credits`) en registros CVE publicados en
        los últimos {WINDOW_MONTHS} meses que además publican avisos de vulnerabilidad propios.
-       NO IMPLEMENTADA en v1: decidir si una organización «publica avisos propios» exige un juicio
-       que el script no hace de forma determinista. Pregunta abierta del PR.
+       FUERA DE LA v1 (decisión de Juan, 2026-11-26): decidir si una organización «publica avisos
+       propios» exige un juicio que el script no hace de forma determinista.
 
 Notas de la v1:
+  - E4 en v1 cuenta solo por enlace: el registro CVE o el aviso del fabricante enlazan el
+    repositorio como exploit. Esta lista tiene nombres, no cuentas de GitHub; el mapeo
+    autor → cuenta queda para la v2 (pregunta abierta).
   - La fecha es `disclosure_date` del módulo, no la fecha de aceptación en Metasploit (el metadata
     no la trae y `mod_time` cambia con ediciones masivas).
   - Los correos y URL de los autores se quitan (regla 8). Las variantes de un mismo autor que no

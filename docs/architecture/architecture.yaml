@@ -82,8 +82,8 @@ components:
     name: donations
     service: Entrega de direcciones on-chain y lectura de cobros, solo lectura (ADR-0021)
     status: proposed
-  # CMP-018 y CMP-019 están reservados por la rama night/2026-11-25 (T0), aún sin fusionar.
-  - id: CMP-020
+  # CMP-018 a CMP-034 están reservados por la rama night/2026-11-25, aún sin fusionar.
+  - id: CMP-035
     name: list-generators
     service: Scripts reproducibles src/vs/lists (exposed-products y trusted-exploit-authors; F1a-0)
     status: implemented
@@ -120,9 +120,10 @@ flows:
   - {id: FLW-008, from: CMP-005, to: CMP-016, note: páginas selladas y snapshot (token limitado al bucket)}
   - {id: FLW-009, from: CMP-005, to: CMP-015, crosses: [TB-001], note: post aprobado (adaptador SocialPublisher)}
   - {id: FLW-010, from: CMP-011, to: CMP-016, note: servir feed archivado desde caché}
-  # FLW-011 y FLW-012 están reservados por la rama night/2026-11-25 (T0), aún sin fusionar.
-  - {id: FLW-013, from: SRC-002, to: CMP-020, note: catálogo KEV para exposed-products (local, sin IA)}
-  - {id: FLW-014, from: SRC-008, to: CMP-020, note: metadata de módulos para trusted-exploit-authors (local, sin IA)}
+  # FLW-011 a FLW-039 están reservados por la rama night/2026-11-25, aún sin fusionar.
+  - {id: FLW-040, from: SRC-002, to: CMP-035, note: catálogo KEV para exposed-products (local, sin IA)}
+  - {id: FLW-041, from: SRC-008, to: CMP-035, note: metadata de módulos para trusted-exploit-authors (local, sin IA)}
+  - {id: FLW-042, from: SRC-001, to: CMP-035, note: "registros CVE de los productos incluidos: pares vendor/product del CNA y prefijos CPE (local, sin IA)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
