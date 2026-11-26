@@ -1,0 +1,46 @@
+# Avisos de los dos vigilantes (PLAN §11, P-9, G-8, G-16). Ejemplo SIN valores reales.
+# Aquí solo van NOMBRES de variables y secrets, nunca su valor: la URL del feed, el tema y el token de
+# ntfy y los correos viven en las variables y secrets del repo o en la plataforma (regla 8).
+#
+# Nadie lee este fichero en ejecución: documenta qué hay que crear y dónde. El vigilante externo lee
+# sus valores del entorno (.github/workflows/watchdog.yml); el grupo de acciones de Azure lo crea la
+# plataforma (G-8), no esta sesión ni el pipeline del producto.
+
+external_watchdog:            # GitHub Actions, independiente de Azure (CMP-013)
+  schedule: "7,37 * * * *"    # cada 30 min, fuera del pico del minuto 0
+  checks:
+    head_path: /v1/feed/all/changes
+    max_age_minutes: 30       # `modified` del índice «head»
+    max_unknown_hours: 2      # ninguna fuente en UNKNOWN más tiempo
+    signature: jws-detached-es256
+  config:
+    feed_base_url_var: VS_FEED_BASE_URL   # sin ella el job sale «saltado», nunca verde
+    pinned_jwks_var: VS_FEED_JWKS         # opcional; si falta, se usa el JWKS publicado
+  notify:
+    email:
+      # Nativo de GitHub: «Notifications for scheduled workflows are sent to the user who last
+      # modified the cron syntax in the workflow file» (docs de GitHub, evento `schedule`,
+      # 2026-11-26). Nada que configurar en el repo; sí en las preferencias de esa cuenta.
+      native: true
+    ntfy:
+      server_var: VS_NTFY_SERVER          # p. ej. el servidor público de ntfy o una instancia propia
+      topic_secret: VS_NTFY_TOPIC         # nombre aleatorio, con control de acceso (G-16)
+      token_secret: VS_NTFY_TOKEN         # token con permiso solo de escritura en ese tema
+      priority: high
+
+internal_watchdog:            # Azure (G-7, G-8): los crea la plataforma
+  heartbeat_table: VsHeartbeat_CL
+  rules:
+    - {name: no-ingest-heartbeat, condition: "sin latido de ingest en 20 min"}
+    - {name: source-unknown, condition: "una fuente en UNKNOWN más de 2 h"}
+    - {name: ai-cost, condition: "coste de IA del día > 80 % del tope (1,5 USD/día)"}
+    - {name: sentinel-health, condition: "alerta de Azure Monitor sobre SentinelHealth"}
+  action_group:
+    email_receivers:
+      - name: owner
+        address_setting: VS_ALERT_EMAIL   # nombre del ajuste; el correo real, solo en la plataforma
+    webhook_receivers:
+      - name: ntfy
+        # El webhook del grupo de acciones publica en el mismo tema de ntfy. La URL lleva el tema,
+        # así que es un secreto de la plataforma; aquí solo se nombra.
+        uri_secret: VS_NTFY_WEBHOOK_URI

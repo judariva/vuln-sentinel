@@ -326,6 +326,17 @@
       },
       "additionalProperties": false
     },
+    "source_status": {
+      "description": "Salud de una fuente en el índice «head»: estado actual y desde cuándo (PLAN §11).",
+      "type": "object",
+      "required": ["name", "status", "since"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["ok", "partial", "unknown"] },
+        "since": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
     "changes_page": {
       "type": "object",
       "required": ["schema_version", "kind", "feed", "sealed", "entries"],
@@ -338,11 +349,17 @@
         "generated_at": { "$ref": "#/$defs/timestamp" },
         "entries": { "type": "array", "items": { "$ref": "#/$defs/change_entry" } },
         "next": { "type": ["string", "null"] },
-        "has_more": { "type": "boolean" }
+        "has_more": { "type": "boolean" },
+        "modified": { "$ref": "#/$defs/timestamp" },
+        "sources": { "type": "array", "items": { "$ref": "#/$defs/source_status" } }
       },
       "additionalProperties": false,
+      "dependentRequired": { "modified": ["sources"], "sources": ["modified"] },
       "if": { "properties": { "sealed": { "const": true } } },
-      "then": { "required": ["hour"], "not": { "required": ["next"] } },
+      "then": {
+        "required": ["hour"],
+        "not": { "anyOf": [{ "required": ["next"] }, { "required": ["modified"] }] }
+      },
       "else": { "required": ["generated_at", "next", "has_more"], "not": { "required": ["hour"] } }
     },
     "alerts_latest": {

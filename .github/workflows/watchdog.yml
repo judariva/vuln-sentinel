@@ -1,0 +1,77 @@
+name: watchdog
+
+# Vigilante externo e independiente de Azure (PLAN §11, R8, CMP-013, CTL-023). Cada 30 min lee el
+# índice «head» del feed a través de Cloudflare, verifica su firma JWS y comprueba que `modified`
+# tenga menos de 30 min y que ninguna fuente lleve más de 2 h en UNKNOWN (`python -m vs.watchdog`).
+#
+# Avisos (P-9): si falla, el workflow falla (GitHub avisa por correo a quien modificó por última vez
+# el cron de este fichero) y el último paso publica en ntfy.
+# Limitaciones declaradas (docs de GitHub, evento `schedule`, leídas el 2026-11-26): solo corre en la
+# rama por defecto; con carga se retrasa y algún job puede descartarse; en un repo público se
+# desactiva tras 60 días sin actividad.
+#
+# Configuración (sin ningún valor en el repo, regla 8):
+#   vars.VS_FEED_BASE_URL   URL base pública del feed. Sin ella el job sale «saltado», nunca verde.
+#   vars.VS_FEED_JWKS       JWKS público fijado (opcional). Sin él se usa el JWKS publicado.
+#   vars.VS_NTFY_SERVER     servidor de ntfy (https).
+#   secrets.VS_NTFY_TOPIC   tema de ntfy (nombre aleatorio, con control de acceso; G-16).
+#   secrets.VS_NTFY_TOKEN   token de ntfy con permiso solo de escritura en ese tema.
+
+on:
+  schedule:
+    # Cada 30 min, fuera del minuto 0: GitHub avisa de que el inicio de cada hora es un pico de
+    # carga en el que los cron se retrasan o incluso se descartan.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    # Sin la URL del feed no hay nada que vigilar: «saltado», no un verde falso.
+    if: vars.VS_FEED_BASE_URL != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Actions fijadas por SHA (tag entre comentarios), las mismas que en ci.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Instalar dependencias
+        run: uv sync --locked --no-dev
+      - name: Comprobar el feed
+        env:
+          VS_FEED_BASE_URL: ${{ vars.VS_FEED_BASE_URL }}
+          VS_FEED_JWKS: ${{ vars.VS_FEED_JWKS }}
+        # El script nunca imprime la URL del feed: solo rutas y el motivo del fallo.
+        run: uv run --no-sync python -m vs.watchdog
+      - name: Aviso a ntfy
+        if: failure()
+        env:
+          NTFY_SERVER: ${{ vars.VS_NTFY_SERVER }}
+          NTFY_TOPIC: ${{ secrets.VS_NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.VS_NTFY_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$NTFY_SERVER" ] || [ -z "$NTFY_TOPIC" ] || [ -z "$NTFY_TOKEN" ]; then
+            echo "::warning::ntfy sin configurar: queda solo el correo de GitHub"
+            exit 0
+          fi
+          case "$NTFY_SERVER" in
+            https://*) ;;
+            *) echo "::error::VS_NTFY_SERVER debe ser https"; exit 1 ;;
+          esac
+          curl -fsS --max-time 20 --retry 2 \
+            -H "Authorization: Bearer ${NTFY_TOKEN}" \
+            -H "Title: vuln-sentinel: vigilante externo en rojo" \
+            -H "Priority: high" \
+            -H "Tags: rotating_light" \
+            -H "Click: ${RUN_URL}" \
+            --data-binary "El vigilante externo ha fallado. El motivo está en la ejecución del workflow." \
+            "${NTFY_SERVER%/}/${NTFY_TOPIC}" > /dev/null

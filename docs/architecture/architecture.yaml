@@ -60,11 +60,11 @@ components:
     status: planned
   - id: CMP-012
     name: heartbeat-sink
-    service: Microsoft Sentinel (Log Analytics, Logs Ingestion API)
+    service: Microsoft Sentinel (Log Analytics, Logs Ingestion API; tabla VsHeartbeat_CL y DCR de G-7)
     status: planned
   - id: CMP-013
     name: external-watchdog
-    service: GitHub Actions (workflow programado)
+    service: "GitHub Actions (.github/workflows/watchdog.yml, cada 30 min y manual): python -m vs.watchdog lee el índice «head» por el borde, verifica la firma JWS (clave fijada en VS_FEED_JWKS o la publicada) y comprueba modified < 30 min y ninguna fuente en UNKNOWN > 2 h; sin VS_FEED_BASE_URL el job sale «saltado»"
     status: planned
   - id: CMP-014
     name: traces
@@ -142,6 +142,14 @@ components:
     name: agent-eval
     service: "Conjunto de evaluación del agente con respuestas simuladas, sin red (eval/cases/, python -m vs.agent.eval --model fake en CI); el modo real espera a G-6 y no corre sin configuración explícita"
     status: proposed
+  - id: CMP-033
+    name: heartbeat-client
+    service: "Latido de cada job (job, resultado, fuentes en UNKNOWN desde cuándo, coste de IA del día) tras la interfaz HeartbeatClient; LogsIngestionClient con la identidad gestionada del job (solo interfaz hasta la F1a) y FakeHeartbeatClient en tests; salud de fuentes en src/vs/sources/health.py (src/vs/heartbeat/; dentro de CMP-003 a CMP-006)"
+    status: proposed
+  - id: CMP-034
+    name: ntfy
+    service: "ntfy (servicio público o instancia propia): tema de nombre aleatorio con control de acceso (G-16); recibe los avisos de los dos vigilantes (P-9)"
+    status: planned
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -202,6 +210,9 @@ flows:
   - {id: FLW-034, from: CMP-010, to: CMP-008, note: "cloudflared lee el token del Tunnel por referencia de Key Vault; Secrets User solo sobre ese secreto"}
   - {id: FLW-035, from: CMP-027, to: CMP-007, note: "migraciones con token de Entra ID como administrador; el resto de componentes no administra la BD"}
   - {id: FLW-036, from: CMP-002, to: CMP-014, note: "trazas OTel con Entra ID (App Insights sin clave local)"}
+  - {id: FLW-037, from: CMP-033, to: CMP-012, note: "POST de la fila del latido a la Logs Ingestion API con token de la identidad gestionada (Metrics Publisher solo sobre la DCR)"}
+  - {id: FLW-038, from: CMP-005, to: CMP-022, note: "al terminar cada ejecución, el job fija el estado del índice «head» (modified y salud de las fuentes) que lee el vigilante externo"}
+  - {id: FLW-039, from: CMP-013, to: CMP-034, crosses: [TB-001], note: "si el vigilante falla, paso if: failure() publica en el tema con su token (secrets); el correo lo manda GitHub"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -223,6 +234,7 @@ threats:
   - {id: THR-017, name: "un componente comprometido usa permisos de otro (identidad compartida, rol sobre el vault entero o administración de la BD)", refs: ["ATT&CK v20.1 T1078.004"]}
   - {id: THR-018, name: "un despliegue no revisado o con una imagen o acción alterada llega a producción", refs: ["ATT&CK v20.1 T1195.002"]}
   - {id: THR-019, name: "los logs públicos de Actions exponen IDs, nombres o rangos de la plataforma", refs: []}
+  - {id: THR-020, name: "el vigilante externo da verde con un feed parado, manipulado, con la clave cambiada o sin configurar", refs: []}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado); tests/test_agent.py (el agente nunca deja el nivel por debajo del determinista ni del publicado, con hypothesis; el intento queda en ai_call.blocked_downgrade)"}
@@ -233,7 +245,7 @@ controls:
   - {id: CTL-006, name: "topes de 12 pasos, 60.000 tokens por candidato y 1,5 USD/día (compartido entre candidatos); al superarlos, needs_human", mitigates: [THR-006], proof: "eval/cases/budget-*.yaml; tests/test_agent.py (bucle simulado, tokens y USD/día)"}
   - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: "tests/test_rules.py (carga inicial y fuente nueva: 0 alertas; señal nueva sobre CVE antigua: alerta)"}
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
-  - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
+  - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: "prueba de caos F3; tests/test_heartbeat.py y tests/test_watchdog.py (sin credenciales)"}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
   - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed; la API pública no arranca con un publicador que admita restricted", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador); tests/test_api.py (ninguna respuesta lleva datos restricted)"}
   - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
@@ -246,4 +258,6 @@ controls:
   - {id: CTL-019, name: "una identidad por componente; Crypto User solo sobre la clave de firma, Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; solo migrate administra PostgreSQL (Entra ID, sin contraseña); KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "infra/ (az bicep build y lint en CI); revisión de las asignaciones tras el primer despliegue (F1a)"}
   - {id: CTL-020, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto", mitigates: [THR-010, THR-018], proof: ".github/workflows/deploy.yml validado con actionlint en CI"}
   - {id: CTL-021, name: "configuración del despliegue como secrets enmascarados; ningún paso imprime la salida de az (el what-if solo da el recuento)", mitigates: [THR-019], proof: ".github/workflows/deploy.yml"}
+  - {id: CTL-023, name: "vigilante externo fail-closed: sin firma válida no mira el contenido; sin modified o sin sources, modified de 30 min o más (o en el futuro), fuente en UNKNOWN más de 2 h, HTTP no 200 o JWKS vacío dan fallo; la clave fijada detecta una clave publicada cambiada; sin VS_FEED_BASE_URL el job sale «saltado»; nunca imprime la URL del feed; secrets solo por env", mitigates: [THR-009, THR-012, THR-019, THR-020], proof: "tests/test_watchdog.py (firma válida, rota y de otra clave, feed viejo, fuente en UNKNOWN, carrera .json/.jws, forma del workflow); actionlint en CI"}
+  - {id: CTL-024, name: "el latido no tumba el job si falla (lo cubre la regla «sin latido en 20 min»); sus columnas son las de la DCR; los errores no llevan el token ni el detalle de la identidad", mitigates: [THR-009], proof: "tests/test_heartbeat.py"}
   - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (official_advisory_domains, nunca un repositorio de PoC); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE; el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py"}

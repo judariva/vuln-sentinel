@@ -42,6 +42,7 @@ from vs.rules.engine import AudienceLike, LevelChange, RuleEngine, assess
 from vs.rules.levels import Level
 from vs.rules.lists import EMPTY_LISTS, RuleLists
 from vs.sources.base import Record
+from vs.sources.health import SourceHealth
 
 JSON = "application/json"
 JWS = "application/jose"
@@ -71,6 +72,32 @@ class _Published:
     body: bytes
     sha256: str
     level: Level
+
+
+@dataclass(frozen=True)
+class FeedStatus:
+    """Estado del monitor que lleva el índice «head» para el vigilante externo (PLAN §11).
+
+    `modified` es el final de la última ejecución completa del job de publicación, haya cambiado
+    algo o no: así un día tranquilo no parece un monitor parado. `sources` es la salud de cada
+    fuente (`vs.sources.health`), con las que están en UNKNOWN y desde cuándo.
+    """
+
+    modified: datetime
+    sources: tuple[SourceHealth, ...]
+
+    def __post_init__(self) -> None:
+        if self.modified.tzinfo is None:
+            raise ValueError("modified sin zona horaria")
+        names = [s.source for s in self.sources]
+        if len(names) != len(set(names)):
+            raise ValueError(f"fuentes repetidas en el estado: {names}")
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "modified": ts(self.modified),
+            "sources": [s.to_json() for s in sorted(self.sources, key=lambda s: s.source)],
+        }
 
 
 @dataclass
@@ -156,6 +183,7 @@ class FeedPublisher:
         }
         self._records: dict[str, _Published] = {}
         self._last: datetime | None = None
+        self.status: FeedStatus | None = None
 
     # -- utilidades -----------------------------------------------------------------------------
 
@@ -266,6 +294,12 @@ class FeedPublisher:
     def prune(self, now: datetime) -> int:
         return sum(log.prune(now) for log in self.logs.values())
 
+    def set_status(self, status: FeedStatus) -> None:
+        """Lo fija el job de publicación al terminar cada ejecución. Nunca retrocede."""
+        if self.status is not None and status.modified < self.status.modified:
+            raise ValueError("el estado del feed no puede retroceder en el tiempo")
+        self.status = status
+
     # -- documentos -----------------------------------------------------------------------------
 
     def _json(self, path: str, doc: Any, cache: str | None = None, status: int = 200) -> Document:
@@ -329,6 +363,9 @@ class FeedPublisher:
             "next": nxt,
             "has_more": more,
         }
+        if self.status is not None:
+            # `modified` y `sources` los lee el vigilante externo (PLAN §11, `vs.watchdog`).
+            doc.update(self.status.to_json())
         return self._json(f"/v1/feed/{feed}/changes", doc, HEAD)
 
     def sealed_page(self, feed: str, hour: str, now: datetime) -> Document:
@@ -385,6 +422,7 @@ __all__ = [
     "CursorError",
     "Document",
     "FeedPublisher",
+    "FeedStatus",
     "Gone",
     "PublishStats",
     "classify",
