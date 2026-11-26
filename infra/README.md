@@ -6,8 +6,8 @@ la plataforma pone el landing zone y despliega; este repo pone el módulo del pr
 
 | Ruta | Qué | Quién lo despliega |
 |---|---|---|
-| `terraform/modules/vuln-sentinel/` | Módulo del producto: entorno ACA, API, jobs, cloudflared opcional, PostgreSQL, clave de firma y diagnósticos. Salida `required_platform_grants` con los roles que concede el vending | La factoría de la plataforma, fijado por versión, con aprobación de Juan |
-| `terraform/examples/golden-dev/` | Cómo se instancia en dev (LAB), con valores ficticios | Nadie: solo se valida |
+| `terraform/modules/vuln-sentinel/` | Módulo del producto: entorno ACA, API, jobs, cloudflared opcional, PostgreSQL con endpoint privado y diagnósticos. Salida `required_platform_grants` con los roles que concede el vending a las UAMI `runtime` y `publish` | La factoría de la plataforma, fijado por versión, con aprobación de Juan |
+| `terraform/examples/golden-lab/` | Cómo se instancia en lab (LAB), con valores ficticios, versión exacta y lock | Nadie: solo se valida |
 | `terraform/.tflint.hcl` | tflint con versiones fijadas | — |
 | `bicep-legacy/` | Bicep de T9 y T9b y el `deploy.yml` retirado. Referencia; no se despliega | — |
 | `compose/`, `local/` | Prueba en local | — |
@@ -79,24 +79,24 @@ entorno `prod` ni sus secrets (eran de `deploy.yml`).
       hook `pre-push` local (regla 9 de `CLAUDE.md`); al hacerlo público se aplica aquí.
 - [ ] **Paquete de GHCR** con la **visibilidad del repo** (privado mientras el repo lo sea,
       público después) y con acceso solo para este repo («Manage Actions access»). Si sigue
-      privado al desplegar, ACA necesita credenciales de registro (pregunta abierta de T9; con
-      `image_registry = acr` no aplica).
+      privado al desplegar, ACA necesita credenciales de registro. Con `image_registry = acr`, el
+      valor por defecto desde T16b (D-4), no aplica: GHCR queda para terceros.
 - [ ] Dependabot activado (lee `.github/dependabot.yml`).
 
 ## Orden del primer despliegue (lo ejecuta la plataforma)
 
-1. Vending: landing zone (RG, identidades, Key Vault privado, presupuesto, guardarraíles), red
-   (subredes delegadas y zona DNS privada de PostgreSQL) y la DCR y tabla del latido (esquema de
-   referencia en `bicep-legacy/platform/modules/heartbeat.bicep`).
-2. `images.yml` (build, SBOM y procedencia). La plataforma verifica la procedencia antes de
-   aplicar (CTL-026).
-3. Primer apply del módulo, sin cloudflared ni secretos opcionales: crea la clave de firma y su id
-   sale en `required_platform_grants`. Con `image_registry = acr`, AcrPull tiene que estar
-   concedido antes de este paso (su alcance, `acr_id`, ya se conoce).
-4. Vending: concede los roles de `required_platform_grants` y pone los secretos (token del Tunnel
-   y los opcionales) con caducidad (G-5).
-5. Segundo apply con los ids de los secretos (y cloudflared si se usa).
-6. Job `migrate` (manual).
+1. Vending: landing zone (RG, las dos UAMI `runtime` y `publish`, Key Vault privado, presupuesto,
+   guardarraíles), la **clave de firma** EC P-256 no exportable en ese vault (P-4), la subred de
+   ACA, y la DCR y tabla del latido (esquema de referencia en
+   `bicep-legacy/platform/modules/heartbeat.bicep`). La subred de endpoints compartida y la zona
+   `privatelink.postgres.database.azure.com` ya son de la plataforma.
+2. `images.yml` (build, SBOM y procedencia) y réplica al ACR de la imagen del producto y de
+   cloudflared (D-4). El workflow de la plataforma verifica la procedencia antes de aplicar
+   (CTL-026, requisito para golden en ADR-0025).
+3. Vending: concede los roles de `required_platform_grants` (todos los alcances se conocen antes
+   de aplicar: ACR, secretos, clave, DCR) y pone los secretos con caducidad (G-5).
+4. Apply del módulo.
+5. Job `migrate` (manual).
 
 ## Comprobaciones tras el primer despliegue
 

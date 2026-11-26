@@ -95,10 +95,10 @@ jobs:
         run: terraform fmt -check -recursive -diff infra/terraform
       - name: terraform validate (módulo y ejemplo)
         run: |
-          # El ejemplo verifica los proveedores contra su lock versionado; el módulo no lleva lock
-          # (lo decide la raíz que lo instancia) y valida con las mismas versiones exactas.
-          terraform -chdir=infra/terraform/examples/golden-dev init -backend=false -input=false -lockfile=readonly
-          terraform -chdir=infra/terraform/examples/golden-dev validate
+          # El ejemplo fija la versión exacta y verifica los proveedores contra su lock versionado;
+          # el módulo solo pone el rango (>= con techo de mayor) y no lleva lock (T16b).
+          terraform -chdir=infra/terraform/examples/golden-lab init -backend=false -input=false -lockfile=readonly
+          terraform -chdir=infra/terraform/examples/golden-lab validate
           terraform -chdir=infra/terraform/modules/vuln-sentinel init -backend=false -input=false
           terraform -chdir=infra/terraform/modules/vuln-sentinel validate
       - name: tflint
@@ -108,7 +108,7 @@ jobs:
           cfg="$PWD/infra/terraform/.tflint.hcl"
           tflint --init --config "$cfg"
           tflint --chdir infra/terraform/modules/vuln-sentinel --config "$cfg"
-          tflint --chdir infra/terraform/examples/golden-dev --config "$cfg" --call-module-type=all
+          tflint --chdir infra/terraform/examples/golden-lab --config "$cfg" --call-module-type=all
       - name: Checkov
         run: uv run --no-project --with "checkov==${CHECKOV_VERSION}" checkov -d infra/terraform/modules/vuln-sentinel --framework terraform --compact
 

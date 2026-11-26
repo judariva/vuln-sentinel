@@ -15,14 +15,14 @@ resource "azurerm_container_app_job" "this" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [var.identities[each.key].id]
+    identity_ids = [local.identity[each.key].id]
   }
 
   dynamic "registry" {
     for_each = local.use_acr ? [1] : []
     content {
       server   = var.registry_server
-      identity = var.identities[each.key].id
+      identity = local.identity[each.key].id
     }
   }
 
@@ -30,7 +30,7 @@ resource "azurerm_container_app_job" "this" {
     for_each = each.value.secrets
     content {
       name                = secret.key
-      identity            = var.identities[each.key].id
+      identity            = local.identity[each.key].id
       key_vault_secret_id = secret.value
     }
   }
@@ -63,11 +63,11 @@ resource "azurerm_container_app_job" "this" {
       env {
         # Para DefaultAzureCredential / ManagedIdentityCredential con identidad de usuario.
         name  = "AZURE_CLIENT_ID"
-        value = var.identities[each.key].client_id
+        value = local.identity[each.key].client_id
       }
       env {
         name  = "VS_DATABASE_USER"
-        value = var.identities[each.key].name
+        value = local.identity[each.key].name
       }
       dynamic "env" {
         for_each = merge(local.db_env, local.heartbeat_env, local.traces_env, each.value.env)

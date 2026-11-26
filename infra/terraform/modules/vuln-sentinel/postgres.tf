@@ -1,16 +1,28 @@
 # PostgreSQL Flexible (CMP-007, ADR-0003). CONDICIONAL del patrón de Container Apps: privado y con
 # Entra ID.
-# - Acceso privado por subred delegada y zona DNS privada de la plataforma (entradas): sin acceso
-#   público y sin crear zonas.
-# - Solo Entra ID: sin contraseña de administrador ni autenticación por contraseña. El
-#   administrador Entra es la identidad del job migrate; los demás componentes entran con su
+# - Acceso privado por endpoint privado (D-7) en la subred de endpoints compartida de la plataforma,
+#   con su zona privatelink: sin acceso público, sin subred delegada por workload y sin crear zonas.
+# - Solo Entra ID: sin contraseña de administrador ni autenticación por contraseña. Por defecto el
+#   administrador Entra es la identidad runtime (job migrate); los demás componentes entran con su
 #   identidad y los roles de base de datos que les da la migración.
 # - TLS obligatorio.
+# - Sin prevent_destroy (no admite variables y el contrato de retirada exige poder destruir). En
+#   prod la protección la dan el contrato de retirada de la plataforma y un bloque lifecycle en la
+#   raíz de prod (ADR-0025).
 
+locals {
+  postgres_admin = var.postgres_entra_admin != null ? var.postgres_entra_admin : {
+    principal_id   = var.identities.runtime.principal_id
+    principal_name = var.identities.runtime.name
+    principal_type = "ServicePrincipal"
+  }
+}
+
+# Sin prevent_destroy a propósito (respuesta 7 de Juan, T16b): ver la cabecera.
+# tflint-ignore: azurerm_resources_missing_prevent_destroy
 resource "azurerm_postgresql_flexible_server" "this" {
-  # Supresiones acotadas a este recurso (T16; revisión: al decidir la pregunta de T16 o al pasar a prod):
-  # checkov:skip=CKV2_AZURE_57:Falso positivo. Acceso privado por subred delegada con public_network_access_enabled = false. Azure no admite endpoint privado en ese modo ("The use of private endpoints isn't currently supported on servers created with virtual network integration", learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-networking-private-link, leída el 2026-11-26).
-  # checkov:skip=CKV_AZURE_136:Nivel y coste. geo_redundant_backup es variable (por defecto false, para dev LAB con el backup local de 7 días). Si prod lo activa es una pregunta abierta de T16 (el historial no se reconstruye desde las fuentes).
+  # Supresión acotada a este recurso (T16b):
+  # checkov:skip=CKV_AZURE_136:Geo-backup por entorno, no literal. postgres.geo_redundant_backup null = activado en prod y desactivado en lab, dev y pre (respuesta 4 de Juan, T16b); Checkov no evalúa la expresión.
   name                          = local.names.postgres
   location                      = var.location
   resource_group_name           = var.resource_group.name
@@ -19,9 +31,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   storage_mb                    = var.postgres.storage_mb
   auto_grow_enabled             = false
   backup_retention_days         = var.postgres.backup_retention_days
-  geo_redundant_backup_enabled  = var.postgres.geo_redundant_backup
-  delegated_subnet_id           = var.postgres_subnet_id
-  private_dns_zone_id           = var.postgres_private_dns_zone_id
+  geo_redundant_backup_enabled  = local.postgres_geo_backup
   public_network_access_enabled = false
   tags                          = var.tags
 
@@ -32,22 +42,40 @@ resource "azurerm_postgresql_flexible_server" "this" {
   }
 
   lifecycle {
-    # El historial (observed_at, source_run, alertas enviadas) no se reconstruye desde las fuentes:
-    # ni un destroy ni un cambio que fuerce recrear el servidor pasan sin editar el módulo. La
-    # retirada (destroy de la entrega) lo exige a propósito: pregunta abierta de T16.
-    prevent_destroy = true
     # Azure elige la zona al crear; cambiarla después no es un cambio del módulo.
     ignore_changes = [zone]
   }
 }
 
-resource "azurerm_postgresql_flexible_server_active_directory_administrator" "migrate" {
+resource "azurerm_private_endpoint" "postgres" {
+  name                          = local.names.postgres_pe
+  location                      = var.location
+  resource_group_name           = var.resource_group.name
+  subnet_id                     = var.private_endpoint_subnet_id
+  custom_network_interface_name = "nic-${local.names.postgres_pe}"
+  tags                          = var.tags
+
+  private_service_connection {
+    name                           = "psc-${local.names.postgres}"
+    private_connection_resource_id = azurerm_postgresql_flexible_server.this.id
+    subresource_names              = ["postgresqlServer"]
+    is_manual_connection           = false
+  }
+
+  # Registro A del endpoint en la zona privatelink de la plataforma.
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [var.postgres_private_dns_zone_id]
+  }
+}
+
+resource "azurerm_postgresql_flexible_server_active_directory_administrator" "admin" {
   server_name         = azurerm_postgresql_flexible_server.this.name
   resource_group_name = var.resource_group.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
-  object_id           = var.identities["migrate"].principal_id
-  principal_name      = var.identities["migrate"].name
-  principal_type      = "ServicePrincipal"
+  object_id           = local.postgres_admin.principal_id
+  principal_name      = local.postgres_admin.principal_name
+  principal_type      = local.postgres_admin.principal_type
 }
 
 # TLS obligatorio (ya es el valor por defecto; se fija para no depender de él).
@@ -57,19 +85,17 @@ resource "azurerm_postgresql_flexible_server_configuration" "require_tls" {
   value     = "on"
 }
 
+# Sin prevent_destroy a propósito (respuesta 7 de Juan, T16b): ver la cabecera.
+# tflint-ignore: azurerm_resources_missing_prevent_destroy
 resource "azurerm_postgresql_flexible_server_database" "this" {
   name      = var.postgres.database_name
   server_id = azurerm_postgresql_flexible_server.this.id
   charset   = "UTF8"
   collation = "en_US.utf8"
-
-  lifecycle {
-    prevent_destroy = true
-  }
 }
 
 resource "azurerm_monitor_diagnostic_setting" "postgres" {
-  name                       = "diag-${local.names.postgres}"
+  name                       = local.names.diag_postgres
   target_resource_id         = azurerm_postgresql_flexible_server.this.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 

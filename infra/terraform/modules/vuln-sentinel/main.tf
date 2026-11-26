@@ -3,11 +3,12 @@
 # propio landing zone (ADR-0022).
 #
 # Crea: entorno de ACA en VNet con ingress interno, la API, los jobs (ingest, publish, daily,
-# investigate apagado, migrate), cloudflared opcional, PostgreSQL Flexible privado solo con Entra,
-# la clave de firma del feed en el Key Vault de la plataforma y los diagnósticos allLogs.
+# investigate apagado, migrate), cloudflared opcional, PostgreSQL Flexible solo con Entra y con
+# endpoint privado en la subred compartida, y los diagnósticos allLogs.
 #
-# No crea: RG, identidades, Key Vault, subredes, zonas DNS privadas ni asignaciones de rol. Los
-# roles que necesita cada identidad salen en `required_platform_grants` y los concede el vending.
+# No crea: RG, identidades, Key Vault, la clave de firma, subredes, zonas DNS privadas ni
+# asignaciones de rol. Los roles que necesita cada identidad salen en `required_platform_grants` y
+# los concede el vending.
 #
 # Nunca: ingress externo, secretos en línea, contraseña de PostgreSQL, clave compartida del
 # workspace (logs_destination = azure-monitor), imagen por etiqueta.
@@ -17,6 +18,30 @@ data "azurerm_client_config" "current" {}
 locals {
   use_acr = var.image_registry == "acr"
   image   = "${var.registry_server}/${var.image_repository}@${var.image_digest}"
+
+  # Dos UAMI (D-3): solo el job publish firma el feed; todo lo demás va con runtime.
+  identity_by_key = {
+    runtime = var.identities.runtime
+    publish = var.identities.publish
+  }
+  identity_key = {
+    api         = "runtime"
+    cloudflared = "runtime"
+    ingest      = "runtime"
+    investigate = "runtime"
+    publish     = "publish"
+    daily       = "runtime"
+    migrate     = "runtime"
+  }
+  identity = { for c, k in local.identity_key : c => local.identity_by_key[k] }
+
+  # Clave de firma de la plataforma (P-4). Alcance ARM del rol: <vault>/keys/<nombre>.
+  signing_key_vault = regex("^https://([a-z0-9-]+)\\.vault\\.azure\\.net/", var.signing_key_id)[0]
+  signing_key_name  = regex("/keys/([A-Za-z0-9-]+)$", var.signing_key_id)[0]
+  signing_key_scope = "${var.key_vault_id}/keys/${local.signing_key_name}"
+
+  # Geo-backup: activado en prod y desactivado en el resto, salvo que se fije (respuesta 4).
+  postgres_geo_backup = coalesce(var.postgres.geo_redundant_backup, var.environment == "prod")
 
   # Sufijo de 4 hex para los nombres globales (DNS de PostgreSQL). Estable por RG.
   hash4 = substr(sha1(lower(var.resource_group.id)), 0, 4)
@@ -32,13 +57,14 @@ locals {
     migrate     = "mig"
   }
   names = {
-    environment = "cae-${var.name}-${var.environment}"
-    postgres    = "psql-${var.name}-${var.environment}-${local.hash4}"
-    app         = { for k, c in local.codes : k => "ca-${var.name}-${c}-${var.environment}" }
-    job         = { for k, c in local.codes : k => "caj-${var.name}-${c}-${var.environment}" }
+    environment      = "cae-${var.name}-${var.environment}"
+    postgres         = "psql-${var.name}-${var.environment}-${local.hash4}"
+    postgres_pe      = "pe-psql-${var.name}-${var.environment}"
+    app              = { for k, c in local.codes : k => "ca-${var.name}-${c}-${var.environment}" }
+    job              = { for k, c in local.codes : k => "caj-${var.name}-${c}-${var.environment}" }
+    diag_environment = "${var.diagnostic_setting_prefix}cae-${var.name}-${var.environment}"
+    diag_postgres    = "${var.diagnostic_setting_prefix}psql-${var.name}-${var.environment}"
   }
-
-  signing_key_name = "feed-signing-es256"
 
   # Variables comunes. La conexión a PostgreSQL es con token de Entra ID (sin contraseña): el usuario
   # de base de datos es el nombre de la identidad de cada componente.
@@ -86,7 +112,7 @@ locals {
       timeout    = 580
       secrets    = local.r2_secret
       secret_env = local.r2_env
-      env        = { VS_SIGNING_KEY_URI = azapi_resource.signing_key.output.properties.keyUri }
+      env        = { VS_SIGNING_KEY_URI = var.signing_key_id }
     }
     daily = {
       args       = ["vs.jobs.daily"]
@@ -96,8 +122,8 @@ locals {
       secret_env = {}
       env        = {}
     }
-    # Migraciones: manual. Su identidad es el administrador Entra de PostgreSQL; ningún otro
-    # componente ni el pipeline administran la BD.
+    # Migraciones: manual, con la identidad runtime. Por defecto runtime es el administrador Entra
+    # de PostgreSQL (postgres_entra_admin); el pipeline no administra la BD.
     migrate = {
       args       = ["vs.model.migrate", "upgrade", "head"]
       cron       = null
@@ -142,14 +168,19 @@ resource "azurerm_container_app_environment" "this" {
       error_message = "image_registry = acr exige acr_id (alcance de AcrPull en required_platform_grants)."
     }
     precondition {
-      condition     = !var.cloudflared.enabled || contains(keys(var.identities), "cloudflared")
-      error_message = "cloudflared.enabled exige identities.cloudflared."
+      # Con acr, cloudflared también sale del ACR (replicada) y se extrae con la identidad (D-4).
+      condition     = !var.cloudflared.enabled || !local.use_acr || startswith(var.cloudflared.image, "${var.registry_server}/")
+      error_message = "Con image_registry = acr, cloudflared.image tiene que estar en registry_server (imagen replicada al ACR)."
+    }
+    precondition {
+      condition     = endswith(var.key_vault_id, "/vaults/${local.signing_key_vault}")
+      error_message = "signing_key_id tiene que ser una clave del Key Vault de key_vault_id."
     }
   }
 }
 
 resource "azurerm_monitor_diagnostic_setting" "environment" {
-  name                       = "diag-${local.names.environment}"
+  name                       = local.names.diag_environment
   target_resource_id         = azurerm_container_app_environment.this.id
   log_analytics_workspace_id = var.log_analytics_workspace_id
 
@@ -158,28 +189,5 @@ resource "azurerm_monitor_diagnostic_setting" "environment" {
   }
 }
 
-# ------------------------------------------------------------------------------- clave de firma
-
-# Clave de firma del feed (ADR-0008): EC P-256 (ES256), solo sign y verify, no exportable. Se crea
-# por ARM (plano de control): el vault es privado y el runner no llega a su plano de datos. Que ARM
-# la cree con el acceso público desactivado está SIN VERIFICAR (primer despliegue).
-resource "azapi_resource" "signing_key" {
-  type      = "Microsoft.KeyVault/vaults/keys@2024-11-01"
-  name      = local.signing_key_name
-  parent_id = var.key_vault_id
-
-  body = {
-    properties = {
-      kty       = "EC"
-      curveName = "P-256"
-      keyOps    = ["sign", "verify"]
-      attributes = {
-        enabled    = true
-        exportable = false
-      }
-    }
-  }
-
-  # URI sin versión: el código resuelve la versión vigente y la usa como `kid` (rotación, ADR-0008).
-  response_export_values = ["properties.keyUri"]
-}
+# La clave de firma del feed (ADR-0008) no la crea el módulo: la crea la plataforma (vending, P-4)
+# y llega como signing_key_id. El job publish la usa por su URI sin versión.

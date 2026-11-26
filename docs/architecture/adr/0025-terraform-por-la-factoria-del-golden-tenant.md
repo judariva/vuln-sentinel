@@ -29,23 +29,46 @@ Modelo híbrido (decisión de Juan del 2026-11-26):
   versión (CMP-039, FLW-044, FLW-045).
 - **Producto.** Un módulo Terraform reutilizable en `infra/terraform/modules/vuln-sentinel/`
   (CMP-038): entorno de ACA interno en VNet, API, jobs (ingest, publish, daily, investigate
-  apagado, migrate), cloudflared opcional, PostgreSQL Flexible privado solo con Entra ID, clave de
-  firma creada por ARM en el Key Vault de la plataforma y diagnósticos `allLogs` al workspace de la
-  plataforma. Secretos solo como referencias de Key Vault y probes obligatorios (CTL-032).
-- **Lo que el módulo no hace:** crear identidades, asignar roles, crear RG, Key Vault, redes ni
-  zonas DNS privadas. Publica `required_platform_grants`: cada rol con su identidad y su alcance
-  más estrecho (el secreto, la clave, la DCR), para que lo conceda el vending (CTL-019).
+  apagado, migrate), cloudflared opcional, PostgreSQL Flexible solo con Entra ID y con endpoint
+  privado, y diagnósticos `allLogs` al workspace de la plataforma. Secretos solo como referencias
+  de Key Vault y probes obligatorios (CTL-032).
+- **Lo que el módulo no hace:** crear identidades, asignar roles, crear RG, Key Vault, la clave de
+  firma, redes ni zonas DNS privadas. Publica `required_platform_grants`: cada rol con su
+  identidad y su alcance más estrecho (el secreto, la clave, la DCR), para que lo conceda el
+  vending (CTL-019).
 - **Este repo no entra en Azure.** `images.yml` se queda (build, SBOM, atestación). `deploy.yml`
   se retira (queda en `infra/bicep-legacy/workflows/` como referencia). La CI solo valida el módulo
   sin credenciales (CTL-031).
 - **Bicep:** a `infra/bicep-legacy/`, como referencia de diseño; no se despliega ni se compila.
-- **Imagen:** la variable `image_registry = acr | ghcr` deja las dos rutas abiertas. El patrón de
-  Container Apps de la plataforma espera ACR con pull por identidad; el producto publica en GHCR
-  (público, por digest, con atestación). Lo decide la plataforma.
 
-Versiones fijadas: azurerm 4.81.0 (última 4.x; la plataforma fija `~> 4.0`) y azapi 2.14.0 (solo
-para la clave de firma por el plano de control, porque el runner no llega al plano de datos de un
-vault privado). Detalle y fuentes en `infra/terraform/modules/vuln-sentinel/versions.tf`.
+### Ajustes de T16b (respuestas de Juan a las preguntas de T16, 2026-11-26)
+
+1. **Registro:** `acr` por defecto (D-4): ACR Basic, pull con la identidad y AcrPull del vending.
+   La imagen de cloudflared se replica al mismo ACR y se extrae con la identidad (una precondición
+   lo comprueba). `ghcr` queda como opción para terceros.
+2. **Dos UAMI** (D-3): `runtime` para la API, cloudflared y los jobs ingest, investigate, daily y
+   migrate; `publish` solo para el job publish. `required_platform_grants` da una fila por
+   identidad, rol y alcance: Key Vault Crypto User **sobre la clave** solo para `publish`, AcrPull
+   para las dos y Key Vault Secrets User para `runtime` sobre cada secreto que usa.
+3. **PostgreSQL con endpoint privado** (D-7) en la subred de endpoints compartida, con grupo de
+   zona en la `privatelink.postgres.database.azure.com` de la plataforma. Sin subred delegada.
+4. **Geo-backup:** `postgres.geo_redundant_backup` sin fijar = activado en prod y desactivado en
+   el resto.
+5. **Versiones:** el módulo pone `azurerm >= 4.81.0, < 5.0.0`; la versión exacta y el lock los
+   pone la raíz que lo instancia (el ejemplo `golden-lab` fija 4.81.0 y versiona su lock).
+6. **Diagnostic settings** con la convención de la plataforma: `diag-gt-<recurso>`. El prefijo es
+   una variable para que un tercero ponga el suyo.
+7. **Sin `prevent_destroy`** en PostgreSQL: no admite variables y el contrato de retirada exige
+   poder destruir. La protección de prod la da el contrato de retirada de la plataforma y la raíz
+   de prod. Terraform no admite `lifecycle` en un bloque `module`, así que esa raíz no puede
+   ponerlo sobre el módulo: el mecanismo concreto queda como pregunta (informe de T16b).
+8. **Clave de firma:** la crea la plataforma (vending, P-4). El módulo recibe su `key_id` sin
+   versión (`signing_key_id`) y deriva el alcance ARM del rol. Sin azapi.
+9. **Requisito para golden:** el workflow de la plataforma verifica la procedencia de la imagen
+   (atestación de `images.yml`, `gh attestation verify` sobre el digest) antes de aplicar
+   (CTL-026). El módulo no puede hacerlo.
+
+Versión mínima y fuente en `infra/terraform/modules/vuln-sentinel/versions.tf`.
 
 ## Alternativas descartadas
 
@@ -65,25 +88,31 @@ vault privado). Detalle y fuentes en `infra/terraform/modules/vuln-sentinel/vers
   El hueco de ADR-0014 (credencial federada añadida a una identidad del RG) pasa a depender de qué
   permisos tenga la identidad de apply de la plataforma sobre el RG.
 - Checkov 3.4.11 no tiene checks para Container Apps: los controles CORE se comprueban con
-  `tests/test_terraform.py`. Dos supresiones acotadas al servidor de PostgreSQL y con motivo
-  (CKV2_AZURE_57, falso positivo con subred delegada; CKV_AZURE_136, geo-backup por nivel y coste).
-- PostgreSQL lleva `prevent_destroy`: la retirada de la entrega exige editar el módulo a propósito.
-- La verificación de la procedencia de la imagen antes de aplicar (CTL-026) pasa a la plataforma.
+  `tests/test_terraform.py`. Una supresión acotada al servidor de PostgreSQL y con motivo
+  (CKV_AZURE_136: el geo-backup depende del entorno y Checkov no evalúa la expresión). Con el
+  endpoint privado, CKV2_AZURE_57 pasa. tflint: `azurerm_resources_missing_prevent_destroy`
+  ignorado en el servidor y la base de datos, por el punto 7.
+- Con dos UAMI se recupera la separación que importa (THR-017: solo `publish` firma), pero no la
+  identidad por componente de ADR-0014: la API, cloudflared y los jobs comparten `runtime`. Por
+  defecto `runtime` es además el administrador Entra de PostgreSQL (para el job migrate); la
+  variable `postgres_entra_admin` permite otro principal.
+- La identidad de apply de la plataforma necesita unirse a la subred de endpoints compartida y
+  escribir el registro A en la zona privada de PostgreSQL.
+- La verificación de la procedencia de la imagen antes de aplicar (CTL-026) es un requisito del
+  workflow de golden (punto 9).
 - La tabla del latido (G-7) la crea la plataforma: su esquema de referencia queda en
   `infra/bicep-legacy/platform/modules/heartbeat.bicep` y `tests/test_heartbeat.py` lo contrasta.
-- Preguntas abiertas para la plataforma (informe de T16): registro (acr o ghcr), una identidad por
-  componente o una compartida, PostgreSQL por subred delegada o por endpoint privado, geo-backup en
-  prod, versión exacta en un módulo reutilizable, nombres de los diagnostic settings, retirada
-  con `prevent_destroy`.
 
 ## Evidencia
 
-- Módulo: `infra/terraform/modules/vuln-sentinel/`; ejemplo `infra/terraform/examples/golden-dev/`.
+- Módulo: `infra/terraform/modules/vuln-sentinel/`; ejemplo `infra/terraform/examples/golden-lab/`.
 - `terraform fmt`, `terraform validate` (1.15.7), tflint 0.66.0 con el ruleset azurerm 0.33.0 y
-  Checkov 3.4.11 en verde el 2026-11-26 (job `terraform` de la CI).
-- Versiones de proveedores: https://registry.terraform.io/v1/providers/hashicorp/azurerm/versions
-  y https://registry.terraform.io/v1/providers/Azure/azapi, leídas el 2026-11-26.
-- Endpoint privado y PostgreSQL con integración en VNet: «The use of private endpoints isn't
-  currently supported on servers created with virtual network integration»
-  (https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-networking-private-link,
-  leída el 2026-11-26).
+  Checkov 3.4.11 en verde el 2026-11-26 (T16 y T16b; job `terraform` de la CI).
+- Versiones de proveedores: https://registry.terraform.io/v1/providers/hashicorp/azurerm/versions,
+  leída el 2026-11-26.
+- Por qué T16 no usó endpoint privado: con integración en VNet Azure no lo admite («The use of
+  private endpoints isn't currently supported on servers created with virtual network
+  integration»,
+  https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-networking-private-link,
+  leída el 2026-11-26). T16b cambia el modo de red a acceso público desactivado más endpoint
+  privado; el servidor aún no existe, así que no hay migración.

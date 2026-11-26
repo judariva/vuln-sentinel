@@ -12,16 +12,16 @@ resource "azurerm_container_app" "api" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [var.identities["api"].id]
+    identity_ids = [local.identity["api"].id]
   }
 
-  # ACR: pull con la identidad (AcrPull lo concede la plataforma). GHCR: imagen pública por digest,
-  # sin credenciales (pregunta abierta de T16).
+  # ACR (por defecto, D-4): pull con la identidad y AcrPull del vending. GHCR (solo terceros):
+  # imagen pública por digest, sin credenciales.
   dynamic "registry" {
     for_each = local.use_acr ? [1] : []
     content {
       server   = var.registry_server
-      identity = var.identities["api"].id
+      identity = local.identity["api"].id
     }
   }
 
@@ -49,7 +49,7 @@ resource "azurerm_container_app" "api" {
 
       env {
         name  = "AZURE_CLIENT_ID"
-        value = var.identities["api"].client_id
+        value = local.identity["api"].client_id
       }
       env {
         name  = "VS_API_PORT"
@@ -57,7 +57,7 @@ resource "azurerm_container_app" "api" {
       }
       env {
         name  = "VS_DATABASE_USER"
-        value = var.identities["api"].name
+        value = local.identity["api"].name
       }
       dynamic "env" {
         for_each = merge(local.db_env, local.traces_env)
@@ -101,20 +101,21 @@ resource "azurerm_container_app" "cloudflared" {
 
   identity {
     type         = "UserAssigned"
-    identity_ids = [var.identities["cloudflared"].id]
+    identity_ids = [local.identity["cloudflared"].id]
   }
 
+  # Con acr, la imagen de cloudflared está replicada en el ACR (D-4; lo comprueba una precondición).
   dynamic "registry" {
-    for_each = local.use_acr && var.cloudflared.registry_uses_identity ? [1] : []
+    for_each = local.use_acr ? [1] : []
     content {
       server   = var.registry_server
-      identity = var.identities["cloudflared"].id
+      identity = local.identity["cloudflared"].id
     }
   }
 
   secret {
     name                = "tunnel-token"
-    identity            = var.identities["cloudflared"].id
+    identity            = local.identity["cloudflared"].id
     key_vault_secret_id = var.cloudflared.tunnel_token_secret_id
   }
 

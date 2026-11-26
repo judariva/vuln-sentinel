@@ -49,25 +49,50 @@ variable "tags" {
 }
 
 variable "identities" {
-  type = map(object({
-    id           = string
-    principal_id = string
-    client_id    = string
-    name         = string
-  }))
+  type = object({
+    runtime = object({
+      id           = string
+      principal_id = string
+      client_id    = string
+      name         = string
+    })
+    publish = object({
+      id           = string
+      principal_id = string
+      client_id    = string
+      name         = string
+    })
+  })
   description = <<-EOT
-    UAMI por componente (salida identity del vending). Claves: api, ingest, investigate, publish,
-    daily, migrate y, con cloudflared, cloudflared. Varias claves pueden apuntar a la misma UAMI si
-    la plataforma solo da una, pero se pierde el mínimo privilegio por componente (ADR-0014).
-    `name` es el usuario de PostgreSQL de la identidad (Entra ID).
+    Las dos UAMI del vending (D-3, T16b). `runtime`: la API, cloudflared y los jobs ingest,
+    investigate, daily y migrate. `publish`: solo el job publish, el único que firma el feed
+    (CTL-019, THR-017). `name` es el usuario de PostgreSQL de la identidad (Entra ID).
   EOT
   validation {
-    condition     = alltrue([for k in ["api", "ingest", "investigate", "publish", "daily", "migrate"] : contains(keys(var.identities), k)])
-    error_message = "identities: faltan componentes (api, ingest, investigate, publish, daily, migrate)."
+    condition     = alltrue([for i in [var.identities.runtime, var.identities.publish] : can(regex("/providers/Microsoft.ManagedIdentity/userAssignedIdentities/", i.id))])
+    error_message = "identities: cada id tiene que ser una identidad asignada por el usuario."
   }
   validation {
-    condition     = alltrue([for i in values(var.identities) : can(regex("/providers/Microsoft.ManagedIdentity/userAssignedIdentities/", i.id))])
-    error_message = "identities: cada id tiene que ser una identidad asignada por el usuario."
+    condition     = var.identities.runtime.principal_id != var.identities.publish.principal_id
+    error_message = "identities: runtime y publish tienen que ser identidades distintas (solo publish firma el feed)."
+  }
+}
+
+variable "postgres_entra_admin" {
+  type = object({
+    principal_id   = string
+    principal_name = string
+    principal_type = optional(string, "ServicePrincipal")
+  })
+  description = <<-EOT
+    Administrador Entra de PostgreSQL. null = la identidad runtime, que ejecuta el job migrate
+    (D-3). Con un grupo o una identidad propia de migraciones, la API deja de ser administradora
+    (pregunta abierta de T16b).
+  EOT
+  default     = null
+  validation {
+    condition     = var.postgres_entra_admin == null || contains(["ServicePrincipal", "Group", "User"], try(var.postgres_entra_admin.principal_type, ""))
+    error_message = "postgres_entra_admin.principal_type: ServicePrincipal | Group | User."
   }
 }
 
@@ -82,30 +107,51 @@ variable "container_apps_subnet_id" {
   }
 }
 
-variable "postgres_subnet_id" {
+variable "private_endpoint_subnet_id" {
   type        = string
-  description = "Subred delegada a Microsoft.DBforPostgreSQL/flexibleServers (la crea la plataforma)."
+  description = <<-EOT
+    Subred de endpoints privados compartida de la plataforma (D-7). El endpoint privado de
+    PostgreSQL va en ella; la plataforma no crea una subred por workload. La identidad que aplica
+    necesita join sobre esa subred.
+  EOT
   validation {
-    condition     = can(regex("^/subscriptions/.+/subnets/.+$", var.postgres_subnet_id))
-    error_message = "postgres_subnet_id: id de subred."
+    condition     = can(regex("^/subscriptions/.+/subnets/.+$", var.private_endpoint_subnet_id))
+    error_message = "private_endpoint_subnet_id: id de subred."
   }
 }
 
 variable "postgres_private_dns_zone_id" {
   type        = string
-  description = "Zona DNS privada de PostgreSQL (privatelink.postgres.database.azure.com o <x>.postgres.database.azure.com) de la plataforma, enlazada a la VNet. El módulo no crea zonas."
+  description = <<-EOT
+    Zona privatelink.postgres.database.azure.com de la plataforma, enlazada a las VNet
+    consumidoras. El módulo no crea zonas: el grupo de zona del endpoint escribe en ella el registro
+    A (la identidad que aplica necesita permiso de registros en la zona).
+  EOT
   validation {
-    condition     = can(regex("/providers/Microsoft.Network/privateDnsZones/.+postgres\\.database\\.azure\\.com$", var.postgres_private_dns_zone_id))
-    error_message = "postgres_private_dns_zone_id: id de una zona privada *.postgres.database.azure.com."
+    condition     = can(regex("/providers/Microsoft.Network/privateDnsZones/privatelink\\.postgres\\.database\\.azure\\.com$", var.postgres_private_dns_zone_id))
+    error_message = "postgres_private_dns_zone_id: id de la zona privatelink.postgres.database.azure.com."
   }
 }
 
 variable "key_vault_id" {
   type        = string
-  description = "Key Vault privado del landing zone (RBAC). El módulo crea en él la clave de firma por el plano de control."
+  description = "Key Vault privado del landing zone (RBAC). Alcance de los roles sobre secretos y sobre la clave de firma."
   validation {
     condition     = can(regex("/providers/Microsoft.KeyVault/vaults/[A-Za-z0-9-]+$", var.key_vault_id))
     error_message = "key_vault_id: id de un Key Vault."
+  }
+}
+
+variable "signing_key_id" {
+  type        = string
+  description = <<-EOT
+    Clave de firma del feed (ADR-0008), creada por la plataforma (vending, P-4): EC P-256, solo
+    sign y verify, no exportable. Su key_id SIN versión (https://<vault>.vault.azure.net/keys/<nombre>):
+    el código resuelve la versión vigente y la usa como `kid`. Tiene que estar en key_vault_id.
+  EOT
+  validation {
+    condition     = can(regex("^https://[a-z0-9-]+\\.vault\\.azure\\.net/keys/[A-Za-z0-9-]+$", var.signing_key_id))
+    error_message = "signing_key_id: key_id de Key Vault sin versión (https://<vault>.vault.azure.net/keys/<nombre>)."
   }
 }
 
@@ -118,11 +164,22 @@ variable "log_analytics_workspace_id" {
   }
 }
 
+variable "diagnostic_setting_prefix" {
+  type        = string
+  description = "Prefijo de los diagnostic settings: diag-<ns>-. Por defecto, el espacio de nombres de la plataforma (diag-gt-); un tercero pone el suyo."
+  default     = "diag-gt-"
+  validation {
+    condition     = can(regex("^diag-[a-z0-9]+-$", var.diagnostic_setting_prefix))
+    error_message = "diagnostic_setting_prefix: diag-<ns>- (a-z0-9)."
+  }
+}
+
 # ------------------------------------------------------------------------------- imagen
 
 variable "image_registry" {
   type        = string
-  description = "De dónde sale la imagen: acr (pull con la identidad; AcrPull lo concede la plataforma) o ghcr (público, por digest, con atestación de images.yml). Pendiente de la plataforma (pregunta abierta de T16)."
+  description = "De dónde sale la imagen: acr (por defecto, D-4: pull con la identidad y AcrPull del vending) o ghcr (solo para terceros: público, por digest, con atestación de images.yml)."
+  default     = "acr"
   validation {
     condition     = contains(["acr", "ghcr"], var.image_registry)
     error_message = "image_registry: acr | ghcr."
@@ -214,12 +271,12 @@ variable "cloudflared" {
     image                  = optional(string, "")
     tunnel_token_secret_id = optional(string, "")
     metrics_port           = optional(number, 2000)
-    registry_uses_identity = optional(bool, false)
   })
   description = <<-EOT
-    Conector del Tunnel (CMP-010). Opcional: en dev LAB se usa el conector de la plataforma. Con
+    Conector del Tunnel (CMP-010). Opcional: en LAB se usa el conector de la plataforma. Con
     enabled, la imagen va por digest y el token del Tunnel es un secreto de Key Vault (id sin
-    versión). registry_uses_identity = true si la imagen está en el ACR de registry_server.
+    versión). Con acr, la imagen tiene que estar replicada en ese ACR (D-4) y se extrae con la
+    identidad runtime.
   EOT
   default     = {}
   validation {
@@ -287,10 +344,10 @@ variable "postgres" {
     sku_name              = optional(string, "B_Standard_B1ms")
     storage_mb            = optional(number, 32768)
     backup_retention_days = optional(number, 7)
-    geo_redundant_backup  = optional(bool, false)
+    geo_redundant_backup  = optional(bool) # null = activado en prod y desactivado en el resto
     database_name         = optional(string, "vulnsentinel")
   })
-  description = "PostgreSQL Flexible (CMP-007, ADR-0003): privado por subred delegada, solo Entra ID."
+  description = "PostgreSQL Flexible (CMP-007, ADR-0003): privado por endpoint privado (D-7), solo Entra ID."
   default     = {}
   validation {
     condition     = var.postgres.backup_retention_days >= 7 && var.postgres.backup_retention_days <= 35

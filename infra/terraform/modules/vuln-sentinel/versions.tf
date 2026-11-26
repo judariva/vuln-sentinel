@@ -1,23 +1,17 @@
-# Versiones fijadas (T16). Comprobadas en el registro de Terraform el 2026-11-26:
+# Restricciones mínimas (T16b, respuesta 5 de Juan): módulo reutilizable, `>=` con techo de mayor.
+# Las versiones exactas y el lock van en la raíz que lo instancia (el ejemplo golden-lab las fija).
+# Mínimo comprobado en el registro de Terraform el 2026-11-26:
 # - azurerm 4.81.0, publicada el 2026-07-14: última de la rama 4.x.
 #   https://registry.terraform.io/v1/providers/hashicorp/azurerm/versions
-#   Se queda en 4.x (la 5.x ya existe) porque la plataforma que instancia el módulo fija
-#   azurerm ~> 4.0: con 5.x su `terraform init` no resolvería.
-# - azapi 2.14.0, publicada el 2026-11-17: última.
-#   https://registry.terraform.io/v1/providers/Azure/azapi
-#   Solo para la clave de firma, que se crea por el plano de control (el vault es privado y el
-#   runner no llega a su plano de datos).
+#   Techo < 5.0.0: la plataforma que instancia el módulo fija azurerm ~> 4.0.
+# Sin azapi: la clave de firma la crea la plataforma (respuesta 8) y el módulo solo recibe su id.
 terraform {
   required_version = ">= 1.9.0, < 2.0.0"
 
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "4.81.0"
-    }
-    azapi = {
-      source  = "Azure/azapi"
-      version = "2.14.0"
+      version = ">= 4.81.0, < 5.0.0"
     }
   }
 }

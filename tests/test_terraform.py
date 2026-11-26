@@ -1,7 +1,8 @@
-"""Invariantes del módulo Terraform del producto (T16, ADR-0025).
+"""Invariantes del módulo Terraform del producto (T16, T16b, ADR-0025).
 
 Checkov 3.4.11 no tiene checks para Container Apps (solo CKV_AZURE_136 y CKV2_AZURE_57, de
-PostgreSQL): los controles CORE del patrón de Container Apps de la plataforma se comprueban aquí,
+PostgreSQL): los controles CORE del patrón de Container Apps de la plataforma y las decisiones de
+T16b (dos UAMI, endpoint privado, clave de la plataforma, rangos de versión) se comprueban aquí,
 sobre el texto HCL, sin red ni Terraform.
 """
 
@@ -14,7 +15,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "infra" / "terraform" / "modules" / "vuln-sentinel"
-EXAMPLE = ROOT / "infra" / "terraform" / "examples" / "golden-dev"
+EXAMPLE = ROOT / "infra" / "terraform" / "examples" / "golden-lab"
 
 RESOURCE_RE = re.compile(r'^resource "([\w]+)" "([\w]+)" \{', re.MULTILINE)
 
@@ -59,15 +60,13 @@ def test_module_creates_no_platform_resources(resources):
     # Identidades, roles, RG, Key Vault, redes y zonas DNS son del vending y de la plataforma.
     forbidden = re.compile(
         r"^azurerm_(role_assignment|role_definition|user_assigned_identity|resource_group"
-        r"|key_vault|key_vault_access_policy|private_dns_zone\w*|virtual_network|subnet\w*"
+        r"|key_vault\w*|private_dns_zone\w*|virtual_network|subnet\w*"
         r"|network_security_group\w*|log_analytics_workspace|management_lock)$"
     )
     types = {t for t, _ in resources}
     assert not {t for t in types if forbidden.match(t)}, types
-    for (t, n), body in resources.items():
-        if t == "azapi_resource":
-            assert "Microsoft.Authorization" not in body, n
-            assert "Microsoft.Network/privateDnsZones" not in body, n
+    # La clave de firma la crea la plataforma (P-4): sin azapi ni azurerm_key_vault_key.
+    assert not {t for t in types if t.startswith("azapi_")}, types
 
 
 def test_ingress_is_internal_and_tls_only(resources):
@@ -111,15 +110,36 @@ def test_every_workload_uses_a_managed_identity(resources):
             assert "password_secret_name" not in body and "username" not in body, n
 
 
-def test_postgres_private_and_entra_only(resources):
+def test_postgres_private_endpoint_and_entra_only(resources):
     pg = resources[("azurerm_postgresql_flexible_server", "this")]
     assert re.search(r"public_network_access_enabled\s*=\s*false", pg)
     assert re.search(r"password_auth_enabled\s*=\s*false", pg)
     assert re.search(r"active_directory_auth_enabled\s*=\s*true", pg)
     assert "administrator_password" not in pg and "administrator_login" not in pg
-    assert "prevent_destroy = true" in pg
+    # D-7: endpoint privado en la subred compartida, sin subred delegada.
+    assert "delegated_subnet_id" not in pg and "private_dns_zone_id" not in pg
+    pe = resources[("azurerm_private_endpoint", "postgres")]
+    assert "var.private_endpoint_subnet_id" in pe
+    assert "azurerm_postgresql_flexible_server.this.id" in pe
+    assert re.search(r'subresource_names\s*=\s*\["postgresqlServer"\]', pe)
+    assert "private_dns_zone_group" in pe and "var.postgres_private_dns_zone_id" in pe
     tls = resources[("azurerm_postgresql_flexible_server_configuration", "require_tls")]
     assert '"require_secure_transport"' in tls and '"on"' in tls
+
+
+def test_postgres_without_prevent_destroy(code):
+    # Respuesta 7: prevent_destroy no admite variables y la retirada exige poder destruir. La
+    # protección de prod va fuera del módulo (ADR-0025).
+    assert "prevent_destroy" not in code
+
+
+def test_geo_backup_on_in_prod_off_elsewhere():
+    main = (MODULE / "main.tf").read_text(encoding="utf-8")
+    assert re.search(
+        r"coalesce\(var\.postgres\.geo_redundant_backup, var\.environment == \"prod\"\)", main
+    )
+    pg = (MODULE / "postgres.tf").read_text(encoding="utf-8")
+    assert "geo_redundant_backup_enabled  = local.postgres_geo_backup" in pg
 
 
 def test_diagnostics_all_logs_without_shared_key(resources):
@@ -130,14 +150,60 @@ def test_diagnostics_all_logs_without_shared_key(resources):
     assert set(diags) == {"environment", "postgres"}
     for name, body in diags.items():
         assert re.search(r'category_group\s*=\s*"allLogs"', body), name
+        assert re.search(r"name\s*=\s*local\.names\.diag_", body), name
 
 
-def test_signing_key_is_ec_p256_sign_only_not_exportable(resources):
-    key = resources[("azapi_resource", "signing_key")]
-    assert '"Microsoft.KeyVault/vaults/keys@' in key
-    assert 'kty       = "EC"' in key and '"P-256"' in key
-    assert re.search(r'keyOps\s*=\s*\["sign", "verify"\]', key)
-    assert re.search(r"exportable\s*=\s*false", key)
+def test_diagnostic_names_follow_platform_convention():
+    # Convención de la plataforma: diag-<ns>-...; por defecto el espacio gt (respuesta 6).
+    variables = (MODULE / "variables.tf").read_text(encoding="utf-8")
+    m = re.search(
+        r'variable "diagnostic_setting_prefix" \{.*?default\s*=\s*"([^"]+)"', variables, re.S
+    )
+    assert m and m[1] == "diag-gt-"
+    name = m[1] + "psql-" + "x" * 16 + "-prod"
+    assert re.fullmatch(r"diag-gt-[a-z0-9-]+", name)
+
+
+def test_two_identities_and_only_publish_signs(code):
+    # D-3: dos UAMI. Solo el job publish usa la identidad publish.
+    m = re.search(r"identity_key = \{(.*?)\}", code, re.S)
+    assert m
+    pairs = dict(re.findall(r"(\w+)\s*=\s*\"(\w+)\"", m[1]))
+    assert set(pairs.values()) == {"runtime", "publish"}
+    assert [c for c, k in pairs.items() if k == "publish"] == ["publish"]
+    assert set(pairs) == {
+        "api",
+        "cloudflared",
+        "ingest",
+        "investigate",
+        "publish",
+        "daily",
+        "migrate",
+    }
+    # Las identidades salen del mapa, nunca de var.identities indexado por componente.
+    assert not re.search(r"var\.identities\[", code)
+
+
+def test_signing_key_comes_from_platform(code):
+    # Respuesta 8: la clave la crea el vending; el módulo recibe su key_id sin versión.
+    assert "VS_SIGNING_KEY_URI = var.signing_key_id" in code
+    grants = (MODULE / "outputs.tf").read_text(encoding="utf-8")
+    crypto = re.findall(
+        r'component = "(\w+)"\s*\n\s*role\s*=\s*"Key Vault Crypto User"\s*\n'
+        r"\s*scope\s*=\s*([\w.]+)",
+        grants,
+    )
+    assert crypto == [("publish", "local.signing_key_scope")]
+    assert 'signing_key_scope = "${var.key_vault_id}/keys/${local.signing_key_name}"' in code
+
+
+def test_acr_is_default_and_cloudflared_pulls_from_it():
+    variables = (MODULE / "variables.tf").read_text(encoding="utf-8")
+    m = re.search(r'variable "image_registry" \{.*?default\s*=\s*"(\w+)"', variables, re.S)
+    assert m and m[1] == "acr"
+    assert "registry_uses_identity" not in _tf(MODULE)
+    main = (MODULE / "main.tf").read_text(encoding="utf-8")
+    assert 'startswith(var.cloudflared.image, "${var.registry_server}/")' in main
 
 
 def test_secret_and_image_inputs_are_validated():
@@ -150,22 +216,27 @@ def test_secret_and_image_inputs_are_validated():
 
 def test_names_follow_type_name_env():
     main = (MODULE / "main.tf").read_text(encoding="utf-8")
-    for prefix in ("cae", "psql", "ca", "caj"):
+    for prefix in ("cae", "psql", "pe-psql", "ca", "caj"):
         assert re.search(rf'"{prefix}-\$\{{var\.name\}}-', main), prefix
     # El nombre más largo de ACA (caj-<16>-xxx-prod) cabe en 32 caracteres.
     assert len("caj-" + "x" * 16 + "-inv-prod") <= 32
 
 
-def test_providers_pinned_exactly():
-    for path in (MODULE / "versions.tf", EXAMPLE / "main.tf"):
-        text = path.read_text(encoding="utf-8")
-        # Proveedores (no required_version, que es un rango a propósito).
-        versions = re.findall(r'^\s+version\s*=\s*"([^"]+)"', text, re.MULTILINE)
-        assert versions, path
-        for v in versions:
-            assert re.fullmatch(r"\d+\.\d+\.\d+", v), (path, v)
+def _provider_versions(path: Path) -> list[str]:
+    # Proveedores (no required_version, que es un rango a propósito).
+    text = path.read_text(encoding="utf-8")
+    return re.findall(r'^\s+version\s*=\s*"([^"]+)"', text, re.MULTILINE)
+
+
+def test_module_uses_ranges_and_root_pins_exactly():
+    # Respuesta 5: el módulo pone `>=` con techo de mayor; la raíz, la versión exacta y el lock.
+    module = _provider_versions(MODULE / "versions.tf")
+    assert module == [">= 4.81.0, < 5.0.0"]
+    root = _provider_versions(EXAMPLE / "main.tf")
+    assert root and all(re.fullmatch(r"\d+\.\d+\.\d+", v) for v in root), root
     lock = (EXAMPLE / ".terraform.lock.hcl").read_text(encoding="utf-8")
-    assert 'version     = "4.81.0"' in lock and 'version     = "2.14.0"' in lock
+    assert 'version     = "4.81.0"' in lock
+    assert "azapi" not in lock
 
 
 def test_checkov_suppressions_are_scoped_and_justified():
@@ -178,7 +249,20 @@ def test_checkov_suppressions_are_scoped_and_justified():
                 found.append(m[1])
                 assert re.fullmatch(r"CKV2?_AZURE_\d+", m[1]), line  # nunca comodines (S-24)
                 assert m[2] and len(m[2].strip()) > 20, line  # con motivo
-    assert sorted(found) == ["CKV2_AZURE_57", "CKV_AZURE_136"]
+    # CKV2_AZURE_57 ya no se suprime: con el endpoint privado pasa (T16b).
+    assert sorted(found) == ["CKV_AZURE_136"]
+
+
+def test_tflint_ignores_are_scoped():
+    found = []
+    for path in MODULE.glob("*.tf"):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines):
+            if "tflint-ignore" in line:
+                found.append(line.split(":", 1)[1].strip())
+                assert lines[i - 1].lstrip().startswith("#") and "T16b" in lines[i - 1], line
+                assert lines[i + 1].startswith("resource "), line
+    assert found == ["azurerm_resources_missing_prevent_destroy"] * 2
 
 
 def test_example_uses_only_fictitious_values():

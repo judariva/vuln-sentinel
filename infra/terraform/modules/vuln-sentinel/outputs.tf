@@ -1,11 +1,11 @@
 # Salidas sin secretos.
 
 locals {
-  # Componentes que usan la imagen del producto (AcrPull con acr).
+  # Componentes que extraen imagen del ACR (con acr, también cloudflared: D-4).
   product_components = concat(["api"], keys(local.jobs))
   acr_pullers = !local.use_acr ? [] : concat(
     local.product_components,
-    var.cloudflared.enabled && var.cloudflared.registry_uses_identity ? ["cloudflared"] : [],
+    var.cloudflared.enabled ? ["cloudflared"] : [],
   )
 
   # Quién lee qué secreto. Alcance: el secreto, no el vault (G-2).
@@ -35,7 +35,7 @@ locals {
     [{
       component = "publish"
       role      = "Key Vault Crypto User"
-      scope     = azapi_resource.signing_key.id
+      scope     = local.signing_key_scope
       reason    = "firma del feed con la clave ES256 no exportable (ADR-0008)"
       }, {
       component = "daily"
@@ -62,18 +62,28 @@ locals {
       reason    = "Claude en Foundry: investigador y redacción (ADR-0009)"
     }],
   )
+
+  # Una fila por (identidad, rol, alcance): lo que concede el vending. Los componentes que la
+  # necesitan y los motivos van agregados.
+  grants_keyed = { for g in local.grants_raw : "${local.identity_key[g.component]}|${g.role}|${g.scope}" => g... }
+  grants = [for k in sort(keys(local.grants_keyed)) : {
+    identity     = local.identity_key[local.grants_keyed[k][0].component]
+    principal_id = local.identity[local.grants_keyed[k][0].component].principal_id
+    role         = local.grants_keyed[k][0].role
+    scope        = local.grants_keyed[k][0].scope
+    components   = sort(distinct([for g in local.grants_keyed[k] : g.component]))
+    reason       = join("; ", distinct([for g in local.grants_keyed[k] : g.reason]))
+  }]
 }
 
 output "required_platform_grants" {
   description = <<-EOT
     Roles que el vending debe conceder antes (o en el mismo cambio) para que el producto funcione.
-    El módulo no crea ninguna asignación. Una fila por componente; principal_id ya resuelto (si
-    varias claves comparten UAMI, hay filas repetidas por principal y alcance: se concede una vez).
-    PostgreSQL no aparece: sus roles son de base de datos y los crea el job migrate.
+    El módulo no crea ninguna asignación. Una fila por identidad (runtime | publish), rol y
+    alcance, con el principal_id resuelto y los componentes que lo usan. PostgreSQL no aparece:
+    sus roles son de base de datos y los crea el job migrate.
   EOT
-  value = [for g in local.grants_raw : merge(g, {
-    principal_id = var.identities[g.component].principal_id
-  })]
+  value       = local.grants
 }
 
 output "container_app_environment_id" {
@@ -115,10 +125,12 @@ output "postgres" {
   }
 }
 
-output "signing_key" {
-  description = "Clave de firma: id ARM (alcance del rol) y URI sin versión (VS_SIGNING_KEY_URI)."
-  value = {
-    id  = azapi_resource.signing_key.id
-    uri = azapi_resource.signing_key.output.properties.keyUri
-  }
+output "postgres_private_endpoint_id" {
+  description = "Endpoint privado de PostgreSQL en la subred compartida (D-7)."
+  value       = azurerm_private_endpoint.postgres.id
+}
+
+output "signing_key_scope" {
+  description = "Alcance ARM de la clave de firma de la plataforma (Crypto User de publish)."
+  value       = local.signing_key_scope
 }
