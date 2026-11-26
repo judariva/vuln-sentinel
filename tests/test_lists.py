@@ -1,6 +1,7 @@
 """Generadores de listas (F1a-0, R7): deterministas, con esquema y sin nombres fuera de la regla."""
 
 import datetime as dt
+import gzip
 import json
 import random
 from pathlib import Path
@@ -10,7 +11,7 @@ import yaml
 
 from vs.lists import build_exposed_products as bep
 from vs.lists import build_trusted_authors as bta
-from vs.lists import cvelist, deployment
+from vs.lists import cvelist, deployment, deployment_cc
 from vs.lists.common import months_before
 from vs.lists.schema import EMAIL_RE, validate_authors, validate_exposed
 
@@ -20,6 +21,8 @@ CUTOFF = dt.date(2026, 11, 26)
 KEV = (FIX / "kev_small.json").read_bytes()
 MSF = (FIX / "msf_small.json").read_bytes()
 SURVEY = (FIX / "survey_small.json").read_bytes()
+# Resultado real de `vs.lists.deployment_cc` (CC-MAIN-2026-47): solo nombres y cuentas agregadas.
+CC_SURVEY = (FIX / "survey_cc_main_2026_47.json").read_bytes()
 RECORDS = {
     cve: json.dumps(rec, sort_keys=True).encode()
     for cve, rec in json.loads((FIX / "cvelist_small.json").read_bytes()).items()
@@ -84,11 +87,18 @@ def test_exposed_expected_sections():
         "acme--secure-access",
         "acme--vpn-gateway",
         "vandelay--gateway-thing",
+        "wonka--perimeter-firewall",
     ]
     assert _ids(doc["below_threshold"]) == ["globex--mail-relay", "umbrella--email-firewall"]
     assert _ids(doc["needs_review"]) == ["initech--multiple-products"]
     assert doc["needs_review"][0]["reason"] == "producto genérico en KEV"
-    assert doc["out_of_scope"] == ["hooli--desktop-os", "initech--office-suite", "soylent--widget"]
+    assert doc["out_of_scope"] == [
+        "hooli--desktop-os",
+        "initech--office-suite",
+        "soylent--widget",
+        "stark--multiple-ip-cameras",  # «TestEmail» en la descripción ya no casa `mail` (v3)
+        "tyrell--backup-and-replication",  # R2 v3: la «and» es parte del nombre
+    ]
     vpn = _product(doc, "acme--vpn-gateway")
     assert vpn["vendor"] == "Acme" and vpn["product"] == "VPN Gateway"
     # fuera de ventana (2020) y posterior al corte (2026-12-01) no cuentan
@@ -103,6 +113,30 @@ def test_exposed_expected_sections():
     assert {"vendor": "ACME", "product": "VPN gateway"} in vpn["aliases"]
     umbrella = doc["below_threshold"][1]
     assert umbrella["category"] == "firewall"  # firewall y mail por nombre: gana `precedence`
+
+
+def test_threshold_by_family():
+    """Criterio v3: umbral 2 en firewall, vpn, load-balancer y remote-access; 3 en el resto."""
+    assert bep.THRESHOLDS["firewall"] == bep.THRESHOLDS["vpn"] == 2
+    assert bep.THRESHOLDS["load-balancer"] == bep.THRESHOLDS["remote-access"] == 2
+    assert {bep.THRESHOLDS[c] for c in ("mail", "web-proxy", "identity", "cicd")} == {3}
+    doc = _build()
+    assert doc["threshold"] == bep.THRESHOLDS
+    wonka = _product(doc, "wonka--perimeter-firewall")
+    assert wonka["evidence"]["vendor_category_entries"] == 2
+    relay = next(b for b in doc["below_threshold"] if b["id"] == "globex--mail-relay")
+    assert relay["vendor_category_entries"] == 2 and relay["threshold"] == 3
+    # el esquema rechaza un producto por debajo del umbral de su familia
+    bad = yaml.safe_load(bep.render(doc))
+    bad["threshold"]["firewall"] = 3
+    assert any("por debajo del umbral" in e for e in validate_exposed(bad))
+
+
+def test_description_words_do_not_use_name_only_rules():
+    assert bep.classify("SmarterMail") == ["mail"]
+    assert bep.classify('use the "TestEmail" functionality', brand=False) == []
+    assert bep.classify("contains a flaw in the email gateway", brand=False) == ["mail"]
+    assert bep.classify("Acme PAN-OS", brand=False) == []  # marcas: solo en nombres
 
 
 def test_category_from_descriptions():
@@ -158,21 +192,30 @@ def test_canonicalization_vendor_reassignment_and_generic_resolution():
 
 
 @pytest.mark.parametrize(
-    ("product", "expected"),
+    ("product", "known", "expected"),
     [
-        ("Edge Firewall (EFW) and VPN Gateway", ["Edge Firewall (EFW)", "VPN Gateway"]),
-        ("NetScaler ADC and Gateway", ["NetScaler ADC", "NetScaler Gateway"]),
+        ("Edge Firewall (EFW) and VPN Gateway", (), ["Edge Firewall (EFW)", "VPN Gateway"]),
+        ("NetScaler ADC and Gateway", (), ["NetScaler ADC", "NetScaler Gateway"]),
         (
             "Catalyst SD-WAN Controller and Manager",
+            (),
             ["Catalyst SD-WAN Controller", "Catalyst SD-WAN Manager"],
         ),
-        ("ESXi, Workstation, and Fusion", ["ESXi", "Workstation", "Fusion"]),
-        ("Jira Server and Data Center", ["Jira Server"]),
-        ("Acrobat and Reader", ["Acrobat", "Reader"]),
+        ("ESXi, Workstation, and Fusion", ("esxi",), ["ESXi", "Workstation", "Fusion"]),
+        ("Jira Server and Data Center", (), ["Jira Server"]),
+        ("Acrobat and Reader", ("reader",), ["Acrobat", "Reader"]),
+        # v3: partes de una palabra que el fabricante no tiene solas → la «and» es del nombre
+        ("ESXi, Workstation, and Fusion", (), ["ESXi, Workstation, and Fusion"]),
+        ("Backup and Replication", (), ["Backup and Replication"]),
+        (
+            "Utah, Vancouver, and Washington DC Now Platform",
+            (),
+            ["Utah, Vancouver, and Washington DC Now Platform"],
+        ),
     ],
 )
-def test_split_product(product, expected):
-    assert bep.split_product(product) == expected
+def test_split_product(product, known, expected):
+    assert bep.split_product(product, frozenset(known)) == expected
 
 
 @pytest.mark.parametrize(
@@ -251,6 +294,69 @@ def test_deployment_leg_pending_without_source():
     assert leg["status"] == "pending" and leg["products"] == [] and leg["options_found"]
     doc = yaml.safe_load(bep.render(_build(survey=SURVEY)))
     assert validate_exposed(doc) == []
+    assert doc["deployment_leg"]["pending_parts"][0]["category"] == "identity"
+
+
+def _wat_member(uri: str, server: str | None) -> bytes:
+    headers = {"Content-Type": "text/html"} | ({"Server": server} if server else {})
+    env = {
+        "Envelope": {
+            "WARC-Header-Metadata": {"WARC-Type": "response", "WARC-Target-URI": uri},
+            "Payload-Metadata": {"HTTP-Response-Metadata": {"Headers": headers}},
+        }
+    }
+    record = "WARC/1.0\r\nWARC-Type: metadata\r\n\r\n" + json.dumps(env) + "\r\n\r\n"
+    return gzip.compress(record.encode(), mtime=0)
+
+
+def _wat_prefix(rows, cut_tail=True):
+    data = b"".join(_wat_member(u, s) for u, s in rows)
+    if cut_tail:  # el prefijo por rango corta el último miembro: se descarta
+        data += _wat_member("https://cut.example/", "nginx")[:20]
+    return data
+
+
+def test_deployment_cc_product_and_sample():
+    assert deployment_cc.product_of("Apache/2.4.58 (Ubuntu)") == "apache"
+    assert deployment_cc.product_of("Microsoft-IIS/10.0") == "microsoft-iis"
+    assert deployment_cc.product_of(" cloudflare ") == "cloudflare"
+    assert deployment_cc.host_of("https://WWW.Example.org/a") == "example.org"
+    assert deployment_cc.sample_paths([str(i) for i in range(10)], 4) == ["0", "2", "5", "7"]
+    assert deployment_cc.sample_paths(["a", "b"], 4) == ["a", "b"]
+
+
+def test_deployment_cc_survey_is_deterministic():
+    p1 = _wat_prefix(
+        [
+            ("https://a.example/", "nginx/1.2"),
+            ("https://a.example/x", "Apache"),  # mismo host: cuenta la primera respuesta
+            ("https://b.example/", "Apache/2.4 (Debian)"),
+            ("https://c.example/", "cloudflare"),
+            ("https://d.example/", "cloudflare"),
+            ("https://e.example/", "MysteryServer/1"),
+            ("https://f.example/", None),  # sin cabecera Server: no cuenta
+        ]
+    )
+    p2 = _wat_prefix([("https://g.example/", "nginx"), ("https://www.b.example/", "nginx")])
+    doc = deployment_cc.survey([p1, p2], "CC-MAIN-TEST", ["f1", "f2"])
+    assert doc == deployment_cc.survey([p1, p2], "CC-MAIN-TEST", ["f1", "f2"])
+    assert doc["hosts"] == 6
+    assert [(r["name"], r["hosts"]) for r in doc["ranking"]] == [("nginx", 2), ("apache", 1)]
+    assert [r["name"] for r in doc["excluded"]] == ["cloudflare"]
+    assert [r["name"] for r in doc["needs_review"]] == ["mysteryserver"]
+    doc["survey_date"] = "2026-11-26"
+    leg = deployment.build(json.dumps(doc).encode())
+    assert [p["name"] for p in leg["products"]] == ["nginx", "apache"]
+    # lo que no entra en el ranking y supera la cuota del último que entra se lista aparte
+    assert leg["skipped_above_cut"] == [
+        {"name": "cloudflare", "reason": "servicio o CDN"},
+        {"name": "mysteryserver", "reason": "sin clasificar"},
+    ]
+    assert "files" not in leg["source"]["method"]
+
+
+def test_deployment_cc_lists_are_disjoint():
+    assert not deployment_cc.INSTALLABLE & deployment_cc.SERVICE
 
 
 # --- autores ------------------------------------------------------------------------------------
@@ -343,7 +449,8 @@ def _check_products_follow_rule(doc: dict, kev: dict) -> None:
             ]
             assert 2 * sum(hits) >= len(own), p["id"]
         ev = p["evidence"]
-        assert ev["vendor_category_entries"] >= max(doc["threshold"], len(ev["cves"])), p["id"]
+        limit = doc["threshold"][p["category"]]
+        assert ev["vendor_category_entries"] >= max(limit, len(ev["cves"])), p["id"]
 
 
 def _check_authors_follow_rule(doc: dict, meta: dict) -> None:
@@ -395,12 +502,17 @@ def test_committed_lists_validate_and_carry_hash():
     assert validate_exposed(exposed) == []
     assert validate_authors(authors) == []
     assert exposed["generator_version"] == bep.GENERATOR_VERSION
-    assert exposed["criterion_version"] == bep.CRITERION_VERSION == 2
-    assert exposed["rules_version"] == bep.RULES_VERSION == 2
+    assert exposed["criterion_version"] == bep.CRITERION_VERSION == 3
+    assert exposed["rules_version"] == bep.RULES_VERSION == 3
     assert exposed["rules"] == {
-        c: {"type": list(bep.TYPE_RULES[c]), "brand": list(bep.BRAND_RULES[c])}
+        c: {
+            "type": list(bep.TYPE_RULES[c]),
+            "name": list(bep.NAME_RULES[c]),
+            "brand": list(bep.BRAND_RULES[c]),
+        }
         for c in bep.CATEGORIES
     }
+    assert exposed["threshold"] == bep.THRESHOLDS
     assert [i["name"] for i in exposed["inputs"]] == ["cisa-kev", "cvelistV5"]
     assert authors["generator_version"] == bta.GENERATOR_VERSION
 
@@ -408,7 +520,31 @@ def test_committed_lists_validate_and_carry_hash():
 def test_committed_products_have_cpe_or_reason():
     for p in _committed("exposed-products.yaml")["products"]:
         assert p["cpe"] or p["cpe_missing_reason"], p["id"]
-        assert p["cna"], p["id"]
+        assert p["cna"] or p["cna_missing_reason"], p["id"]
+
+
+def test_committed_deployment_leg_comes_from_survey():
+    leg = _committed("exposed-products.yaml")["deployment_leg"]
+    assert leg == yaml.safe_load(yaml.safe_dump(deployment.build(CC_SURVEY)))
+    assert leg["status"] == "active" and len(leg["products"]) == deployment.N
+    survey = json.loads(CC_SURVEY)
+    assert survey["method"]["version"] == deployment_cc.METHOD_VERSION
+    assert survey["method"]["sample_files"] == deployment_cc.SAMPLE_FILES
+    names = {p["name"] for p in leg["products"]}
+    assert names <= deployment_cc.INSTALLABLE and not names & deployment_cc.SERVICE
+
+
+def test_cc_survey_matches_cached_wat():
+    """Si los prefijos WAT están en `.cache/`, la encuesta se regenera idéntica."""
+    survey = json.loads(CC_SURVEY)
+    cache = ROOT / ".cache" / "lists" / "commoncrawl" / survey["method"]["crawl"] / "wat"
+    files = survey["method"]["files"]
+    targets = [cache / Path(f).name for f in files]
+    if not all(t.exists() for t in targets):
+        pytest.skip("sin prefijos WAT en .cache")
+    doc = deployment_cc.survey([t.read_bytes() for t in targets], survey["method"]["crawl"], files)
+    doc["survey_date"] = survey["survey_date"]
+    assert doc == survey
 
 
 def test_committed_lists_have_no_emails():
@@ -429,7 +565,7 @@ def test_committed_lists_match_cached_inputs():
         if bep.sha256_bytes(data) == doc["inputs"][0]["sha256"] and (
             cvelist.records_hash(records) == doc["inputs"][1]["sha256"]
         ):
-            rendered = bep.render(bep.build(data, cutoff, records))
+            rendered = bep.render(bep.build(data, cutoff, records, CC_SURVEY))
             assert rendered == (ROOT / "config" / "exposed-products.yaml").read_text("utf-8")
             _check_products_follow_rule(doc, json.loads(data))
             checked += 1

@@ -14,9 +14,11 @@ El criterio v2 completo está en `HEADER` (va en la cabecera del YAML). Resumen:
 3. Categoría por producto canónico: palabras clave de tipo y de marca (`TYPE_RULES`,
    `BRAND_RULES`) sobre fabricante y nombres; si no hay, palabras de tipo en las descripciones de
    sus entradas (mayoría). Varias categorías por nombre → la primera de `PRECEDENCE`.
-4. Umbral: el fabricante suma al menos `THRESHOLD` entradas de esa categoría en la ventana.
+4. Umbral por familia (`THRESHOLDS`): el fabricante suma al menos ese número de entradas de esa
+   categoría en la ventana (2 en firewall, vpn, load-balancer y remote-access; 3 en el resto).
 5. CPE y pares del CNA desde cvelistV5 (`vs.lists.cvelist`).
-6. Pata de despliegue (`vs.lists.deployment`): pendiente de fuente.
+6. Pata de despliegue (`vs.lists.deployment`, `--survey`): web-proxy desde Common Crawl
+   (`vs.lists.deployment_cc`); identidad/SSH pendiente.
 """
 
 from __future__ import annotations
@@ -32,11 +34,14 @@ from vs.lists import cvelist, deployment
 from vs.lists.common import ROOT, dump_yaml, fetch, months_before, parse_date, sha256_bytes, slug
 
 GENERATOR = "vs.lists.build_exposed_products"
-GENERATOR_VERSION = "2.0.0"
-CRITERION_VERSION = 2
-RULES_VERSION = 2
+GENERATOR_VERSION = "3.0.0"
+CRITERION_VERSION = 3
+RULES_VERSION = 3
 WINDOW_MONTHS = 36
-THRESHOLD = 3
+# Umbral por familia (criterio v3, decisión de Juan del 2026-11-26): 2 para los productos de borde
+# de red y de acceso remoto, 3 para el resto.
+THRESHOLD_DEFAULT = 3
+THRESHOLD_BY_FAMILY = {"firewall": 2, "vpn": 2, "load-balancer": 2, "remote-access": 2}
 KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 OUTPUT = ROOT / "config" / "exposed-products.yaml"
 
@@ -53,6 +58,8 @@ CATEGORIES = (
     "file-transfer",
     "remote-access",
 )
+THRESHOLDS = {c: THRESHOLD_BY_FAMILY.get(c, THRESHOLD_DEFAULT) for c in CATEGORIES}
+THRESHOLD_BY_FAMILY_TEXT = ", ".join(f"{c} {n}" for c, n in THRESHOLD_BY_FAMILY.items())
 # Si el nombre de un producto casa con varias categorías, gana la primera de esta lista (de la
 # función más específica a la más general).
 PRECEDENCE = (
@@ -116,7 +123,9 @@ TYPE_RULES: dict[str, tuple[str, ...]] = {
         r"artifact repository",
         r"repository manager",
     ),
-    "mail": (r"\w*mail\w*", r"groupware", r"mail server"),
+    # v3: `\w*mail\w*` casaba nombres de función en las descripciones («TestEmail» de Reolink). Pasa
+    # a NAME_RULES (solo nombre de producto); aquí quedan palabras enteras.
+    "mail": (r"e-?mail", r"webmail", r"mail", r"groupware", r"mail server"),
     "file-transfer": (
         r"file transfer",
         r"managed file transfer",
@@ -170,6 +179,13 @@ BRAND_RULES: dict[str, tuple[str, ...]] = {
     "remote-access": (r"screenconnect", r"simplehelp", r"n-central"),
 }
 
+# Palabras de TIPO que solo se aplican al NOMBRE del producto (v3): palabras compuestas cuyo
+# significado depende de que sean un nombre de producto y no una función o un parámetro citado en
+# la descripción.
+NAME_RULES: dict[str, tuple[str, ...]] = {c: () for c in CATEGORIES} | {
+    "mail": (r"\w*mail\w*",),
+}
+
 # Reglas de canonicalización v2 (documentadas en el YAML; cambiar una exige subir RULES_VERSION).
 CANON_RULES = [
     "R1 fabricante: si el producto de KEV empieza por el nombre de OTRO fabricante de KEV "
@@ -180,7 +196,11 @@ CANON_RULES = [
     "conductor) hereda el prefijo de la primera parte si esta acaba en palabra genérica o en "
     "sigla («NetScaler ADC and Gateway» → NetScaler ADC, NetScaler Gateway). Una parte que solo "
     "nombra el despliegue (server, data center, cloud, on-prem) se descarta («Jira Server and "
-    "Data Center» → Jira Server).",
+    "Data Center» → Jira Server). v3: si alguna parte es de una sola palabra (sin abreviatura) y "
+    "ninguna parte es un producto que el fabricante tiene solo en otra entrada de la ventana, ni "
+    "el nombre del fabricante, ni es solo de edición (R4), la «and» es parte del nombre y no se "
+    "separa («Backup and "
+    "Replication», «Utah, Vancouver, and Washington DC Now Platform»).",
     "R3 el contenido entre paréntesis es una abreviatura del producto («Adaptive Security "
     "Appliance (ASA)»): se guarda aparte y no forma parte de la clave.",
     "R4 se quita el nombre del propio fabricante al principio («WordPress Core» → Core), salvo que "
@@ -188,7 +208,7 @@ CANON_RULES = [
     "tiene palabras de edición (community, enterprise, edition(s), ce, ee) es el producto con el "
     "nombre del fabricante.",
     "R5 clave = nombre normalizado sin los sufijos genéricos finales (software, device(s), "
-    "series); «appliances» se normaliza a «appliance».",
+    "series); «appliances» y «gateways» (v3) se normalizan al singular.",
     "R6 producto genérico: si el producto de KEV es el nombre del fabricante y ese fabricante "
     "tiene otros productos en la ventana, o empieza por «Multiple», se busca al principio del "
     "nombre de la vulnerabilidad un producto conocido del fabricante (el más largo). Si no hay, "
@@ -203,7 +223,7 @@ INHERIT_WORDS = frozenset(
     | {"conductor"}
 )
 SUFFIX_WORDS = ("software", "device", "devices", "series")
-PLURALS = {"appliances": "appliance"}
+PLURALS = {"appliances": "appliance", "gateways": "gateway"}
 DEPLOYMENT_TOKENS = frozenset({"server", "data", "center", "cloud", "on", "prem", "premise"})
 EDITION_TOKENS = frozenset({"community", "enterprise", "edition", "editions", "ce", "ee"})
 KEEP_IF_ONLY = frozenset({"server", "servers", "software"})
@@ -225,6 +245,7 @@ def _compile(rules: dict[str, tuple[str, ...]]) -> dict[str, list[tuple[str, re.
 
 
 _TYPE = _compile(TYPE_RULES)
+_NAME = _compile(NAME_RULES)
 _BRAND = _compile(BRAND_RULES)
 
 HEADER = f"""\
@@ -241,14 +262,18 @@ de mirar ningún caso; R7):
   2. Canonicalización: un producto por (fabricante, producto) con las variantes de KEV en
      `aliases`, según las reglas de `canonicalization.rules`. Cada reasignación y fusión aplicada
      se lista en `canonicalization`.
-  3. Categoría (`rules`): palabras de tipo (`type`) y de marca (`brand`) sobre el fabricante y los
-     nombres del producto canónico. Si casan varias, gana la primera de `precedence`. Si no casa
-     ninguna, palabras de tipo sobre vulnerabilityName y shortDescription de sus entradas: la
+  3. Categoría (`rules`): palabras de tipo (`type`), de tipo solo para nombres (`name`) y de marca
+     (`brand`) sobre el fabricante y los nombres del producto canónico. Si casan varias, gana la
+     primera de `precedence`. Si no casa ninguna, SOLO las palabras de tipo (`type`) sobre
+     vulnerabilityName y shortDescription de sus entradas: la
      categoría más frecuente, si es única y casa en al menos la mitad de las entradas.
-  4. Entra en `products` si su fabricante suma al menos {THRESHOLD} entradas de KEV de esa categoría
-     en la ventana (una entrada cuenta una vez por categoría). Si no, `below_threshold`.
+  4. Entra en `products` si su fabricante suma al menos `threshold[categoría]` entradas de KEV de
+     esa categoría en la ventana (una entrada cuenta una vez por categoría). Si no,
+     `below_threshold`. Umbral por familia (v3, decisión de Juan del 2026-11-26):
+     {THRESHOLD_BY_FAMILY_TEXT}; {THRESHOLD_DEFAULT} para el resto.
   5. `needs_review` (NUNCA `products`), con su motivo: productos genéricos de KEV («Multiple
-     Products») que casan alguna regla en su nombre o sus descripciones, y empates en las
+     Products») que casan alguna regla en su nombre o alguna palabra de tipo en sus descripciones
+     (v3: antes también las de marca), y empates en las
      descripciones. Si ninguna regla casa por nombre y ninguna categoría llega a la mitad de las
      descripciones: `out_of_scope` (solo se listan los ids).
   6. `cpe` y `cna` salen de los registros cvelistV5 de las entradas del producto: prefijos
@@ -264,7 +289,7 @@ Formato de cada producto:
     category / category_source (name | descriptions) / matched (reglas que casaron)
     vendor / product: forma más frecuente; names: nombres canónicos; abbreviations
     aliases: [{{vendor, product}} tal como aparecen en KEV]
-    cna: [{{vendor, product}} tal como aparecen en cvelistV5]
+    cna: [{{vendor, product}} tal como aparecen en cvelistV5]; cna_missing_reason si vacío
     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]; cpe_rule; cpe_missing_reason si vacío
     purl: [purl sin versión] (vacío en v2: los productos de borde no tienen purl)
     evidence: entradas de KEV que justifican el alta
@@ -275,15 +300,19 @@ Formato de cada producto:
 
 
 def classify(text: str, brand: bool = True) -> list[str]:
-    """Categorías cuyas reglas casan con `text`, en el orden de CATEGORIES."""
-    tables = [_TYPE, _BRAND] if brand else [_TYPE]
+    """Categorías cuyas reglas casan con `text`, en el orden de CATEGORIES.
+
+    `brand=True`: `text` es un nombre de producto (tipo, solo nombre y marca). `brand=False`: es
+    una descripción (solo tipo).
+    """
+    tables = [_TYPE, _NAME, _BRAND] if brand else [_TYPE]
     return [c for c in CATEGORIES if any(p.search(text) for t in tables for _, p in t[c])]
 
 
 def matched_rules(text: str) -> list[str]:
     """Reglas que casan con `text`, como «tipo:categoría:patrón»."""
     out = []
-    for kind, table in (("type", _TYPE), ("brand", _BRAND)):
+    for kind, table in (("type", _TYPE), ("name", _NAME), ("brand", _BRAND)):
         for cat in CATEGORIES:
             out += [f"{kind}:{cat}:{raw}" for raw, p in table[cat] if p.search(text)]
     return out
@@ -301,9 +330,15 @@ def _toks(text: str) -> list[str]:
     return s.split("-") if s else []
 
 
-def split_product(product: str) -> list[str]:
-    """R2: «X and Y» → [X, Y]; una parte genérica de una palabra hereda el prefijo de la primera."""
+def split_product(product: str, known: frozenset[str] = frozenset()) -> list[str]:
+    """R2: «X and Y» → [X, Y]; una parte genérica de una palabra hereda el prefijo de la primera.
+
+    `known`: claves (R5) de los productos que el fabricante tiene solos en otras entradas. Si queda
+    alguna parte de una palabra sin abreviatura y ninguna de ellas está en `known`, no se separa.
+    """
     parts = [p.strip() for p in SPLIT_RE.split(product) if p and p.strip()]
+    if len(parts) < 2:
+        return [product]
     out = []
     first = parts[0].split() if parts else []
     head_last = first[-1] if first else ""
@@ -317,6 +352,14 @@ def split_product(product: str) -> list[str]:
         elif i > 0 and set(_toks(part)) <= DEPLOYMENT_TOKENS:
             continue
         out.append(part)
+    single = [p for p in out if len(p.split()) == 1 and not PAREN_RE.search(p)]
+
+    def resolvable(p: str) -> bool:
+        toks = set(_toks(parse_part(p)[0]))
+        return key_of(parse_part(p)[0]) in known or bool(toks and toks <= EDITION_TOKENS)
+
+    if len(out) > 1 and single and not any(resolvable(p) for p in out):
+        return [product]
     return out or [product]
 
 
@@ -397,6 +440,7 @@ def canonicalize(entries: list[dict], all_vendors: dict[str, str]) -> dict:
     # Paso 1: fabricante y partes de cada entrada.
     parsed = []  # (entry, vkey, vendor_display, [(key, name, abbrs)], generic)
     vendor_by_len = sorted(all_vendors.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    stage1 = []  # (entry, vendor KEV, vkey, vendor_display, producto tras R1)
     for e in entries:
         vendor, product = e["vendorProject"].strip(), e["product"].strip()
         vkey, vdisp = slug(vendor), vendor
@@ -415,9 +459,23 @@ def canonicalize(entries: list[dict], all_vendors: dict[str, str]) -> dict:
                 )
                 vkey, vdisp, product = okey, oname, m.group(1).strip()
                 break
+        stage1.append((e, vendor, vkey, vdisp, product))
+    # R2 v3: productos que cada fabricante tiene solos (sin «and» ni comas) en la ventana.
+    # El nombre del propio fabricante cuenta como producto suyo («MongoDB and MongoDB Server»).
+    alone: dict[str, set[str]] = defaultdict(set)
+    for _e, _vendor, vkey, _vdisp, _product in stage1:
+        alone[vkey].add(vkey)
+    for _e, vendor, vkey, vdisp, product in stage1:
+        if len([p for p in SPLIT_RE.split(product) if p and p.strip()]) == 1:
+            name, abbrs = parse_part(product)
+            variants = [*_vendor_variants(vdisp), *_vendor_variants(vendor)]
+            alone[vkey].add(key_of(name))
+            alone[vkey].add(key_of(strip_vendor(name, variants, vdisp)))
+            alone[vkey].update(slug(a) for a in abbrs if slug(a))
+    for e, vendor, vkey, vdisp, product in stage1:
         generic = bool(MULTIPLE_RE.match(product)) or slug(product) == vkey
         parts = []
-        for raw in split_product(product):
+        for raw in split_product(product, frozenset(alone[vkey])):
             name, abbrs = parse_part(raw)
             name = strip_vendor(name, [*_vendor_variants(vdisp), *_vendor_variants(vendor)], vdisp)
             parts.append((key_of(name), name, abbrs))
@@ -605,6 +663,13 @@ def match_cpe(p: dict, vkey: str, parsed: dict[str, dict]) -> dict:
     cpe, cpe_rule = pick_items({c: parsed[c]["cpe"] for c in cves}, cpe_toks)
     cna, _rule = pick_items({c: [tuple(x) for x in parsed[c]["cna"]] for c in cves}, cna_toks)
     out = {"cpe": cpe, "cna": [{"vendor": v, "product": q} for v, q in cna], "cpe_rule": cpe_rule}
+    if not cna:
+        has_pairs = any(parsed[c]["cna"] for c in cves)
+        out["cna_missing_reason"] = (
+            "los registros traen pares del CNA, pero ninguno casa con los nombres del producto"
+            if has_pairs
+            else "el CNA publica vendor/product «n/a» o vacíos en todos sus registros"
+        )
     if not cpe:
         has_any = any(parsed[c]["cpe"] for c in cves)
         out["cpe_missing_reason"] = (
@@ -651,7 +716,8 @@ def categorize(p: dict) -> dict:
         descs = [
             f"{e.get('vulnerabilityName', '')} {e.get('shortDescription', '')}" for e in entries
         ]
-        hits = sorted({c for d in descs for c in classify(d)} | set(classify(text)))
+        # v3: en las descripciones solo valen las palabras de tipo, como en el resto del criterio.
+        hits = sorted({c for d in descs for c in classify(d, False)} | set(classify(text)))
         if hits:
             return {"status": "review", "reason": "producto genérico en KEV", "matched": hits}
         return {"status": "out"}
@@ -713,7 +779,8 @@ def included_cves(kev_bytes: bytes, cutoff: dt.date) -> list[str]:
     out = set()
     for key, p in sel["canon"]["products"].items():
         c = sel["cat_of"][key]
-        if c["status"] == "ok" and sel["vendor_cat"][(key[0], c["category"])] >= THRESHOLD:
+        cat = c.get("category")
+        if c["status"] == "ok" and sel["vendor_cat"][(key[0], cat)] >= THRESHOLDS[cat]:
             out.update(p["entries"])
     return sorted(out)
 
@@ -749,13 +816,14 @@ def build(
             )
             continue
         n_cat = sel["vendor_cat"][(vkey, c["category"])]
-        if n_cat < THRESHOLD:
+        if n_cat < THRESHOLDS[c["category"]]:
             below.append(
                 {
                     "id": pid,
                     "product": _display(p["product"]),
                     "category": c["category"],
                     "vendor_category_entries": n_cat,
+                    "threshold": THRESHOLDS[c["category"]],
                 }
             )
             continue
@@ -821,12 +889,17 @@ def build(
         "rules_version": RULES_VERSION,
         "cutoff_date": cutoff.isoformat(),
         "window": {"months": WINDOW_MONTHS, "from_exclusive": sel["start"].isoformat()},
-        "threshold": THRESHOLD,
+        "threshold": dict(THRESHOLDS),
         "inputs": inputs,
         "categories": list(CATEGORIES),
         "precedence": list(PRECEDENCE),
         "rules": {
-            c: {"type": list(TYPE_RULES[c]), "brand": list(BRAND_RULES[c])} for c in CATEGORIES
+            c: {
+                "type": list(TYPE_RULES[c]),
+                "name": list(NAME_RULES[c]),
+                "brand": list(BRAND_RULES[c]),
+            }
+            for c in CATEGORIES
         },
         "canonicalization": sel["canon"]["log"],
         "stats": {

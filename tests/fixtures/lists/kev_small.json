@@ -2,7 +2,7 @@
   "title": "Fixture sintético con la forma del catálogo CISA KEV (fabricantes ficticios)",
   "catalogVersion": "2026.11.25",
   "dateReleased": "2026-11-25T00:00:00.0000Z",
-  "count": 27,
+  "count": 31,
   "vulnerabilities": [
     {"cveID": "CVE-2026-90001", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Command Injection Vulnerability", "shortDescription": "Acme VPN Gateway contains a command injection vulnerability.", "dateAdded": "2026-10-01"},
     {"cveID": "CVE-2025-90002", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Authentication Bypass Vulnerability", "shortDescription": "Acme VPN Gateway contains an authentication bypass vulnerability.", "dateAdded": "2025-03-10"},
@@ -30,6 +30,10 @@
     {"cveID": "CVE-2026-90024", "vendorProject": "Vandelay", "product": "Gateway Thing", "vulnerabilityName": "Vandelay Gateway Thing Code Injection Vulnerability", "shortDescription": "Vandelay Gateway Thing, a reverse proxy, contains a code injection vulnerability.", "dateAdded": "2026-09-01"},
     {"cveID": "CVE-2026-90025", "vendorProject": "Vandelay", "product": "Gateway Thing", "vulnerabilityName": "Vandelay Gateway Thing Path Traversal Vulnerability", "shortDescription": "Vandelay Gateway Thing contains a path traversal vulnerability in its proxy module.", "dateAdded": "2026-09-02"},
     {"cveID": "CVE-2026-90026", "vendorProject": "Vandelay", "product": "Gateway Thing", "vulnerabilityName": "Vandelay Gateway Thing Authentication Bypass Vulnerability", "shortDescription": "Vandelay Gateway Thing contains an authentication bypass vulnerability.", "dateAdded": "2026-09-03"},
-    {"cveID": "CVE-2026-90027", "vendorProject": "Acme", "product": "Edge Firewall", "vulnerabilityName": "Acme Edge Firewall Heap Overflow Vulnerability", "shortDescription": "Acme Edge Firewall contains a heap overflow vulnerability.", "dateAdded": "2026-06-04"}
+    {"cveID": "CVE-2026-90027", "vendorProject": "Acme", "product": "Edge Firewall", "vulnerabilityName": "Acme Edge Firewall Heap Overflow Vulnerability", "shortDescription": "Acme Edge Firewall contains a heap overflow vulnerability.", "dateAdded": "2026-06-04"},
+    {"cveID": "CVE-2026-90028", "vendorProject": "Wonka", "product": "Perimeter Firewall", "vulnerabilityName": "Wonka Perimeter Firewall Command Injection Vulnerability", "shortDescription": "Wonka Perimeter Firewall contains a command injection vulnerability.", "dateAdded": "2026-05-01"},
+    {"cveID": "CVE-2025-90029", "vendorProject": "Wonka", "product": "Perimeter Firewall", "vulnerabilityName": "Wonka Perimeter Firewall Authentication Bypass Vulnerability", "shortDescription": "Wonka Perimeter Firewall contains an authentication bypass vulnerability.", "dateAdded": "2025-05-01"},
+    {"cveID": "CVE-2026-90030", "vendorProject": "Stark", "product": "Multiple IP Cameras", "vulnerabilityName": "Stark Multiple IP Cameras OS Command Injection Vulnerability", "shortDescription": "Stark IP cameras contain an OS command injection vulnerability that allows an admin to use the \"TestEmail\" functionality to run commands.", "dateAdded": "2026-05-02"},
+    {"cveID": "CVE-2026-90031", "vendorProject": "Tyrell", "product": "Backup and Replication", "vulnerabilityName": "Tyrell Backup and Replication Path Traversal Vulnerability", "shortDescription": "Tyrell Backup and Replication contains a path traversal vulnerability.", "dateAdded": "2026-05-03"}
   ]
 }

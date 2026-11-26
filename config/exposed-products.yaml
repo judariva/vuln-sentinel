@@ -5,20 +5,24 @@
 # en el script, se regenera y se revisa por PR (P-10). `manual_changes` solo como excepción, con
 # motivo y PR.
 #
-# CRITERIO v2, reglas v2 (el criterio de partida se fijó en F0, antes
+# CRITERIO v3, reglas v3 (el criterio de partida se fijó en F0, antes
 # de mirar ningún caso; R7):
 #   1. Entradas de CISA KEV con `dateAdded` en los últimos 36 meses hasta `cutoff_date`.
 #   2. Canonicalización: un producto por (fabricante, producto) con las variantes de KEV en
 #      `aliases`, según las reglas de `canonicalization.rules`. Cada reasignación y fusión aplicada
 #      se lista en `canonicalization`.
-#   3. Categoría (`rules`): palabras de tipo (`type`) y de marca (`brand`) sobre el fabricante y los
-#      nombres del producto canónico. Si casan varias, gana la primera de `precedence`. Si no casa
-#      ninguna, palabras de tipo sobre vulnerabilityName y shortDescription de sus entradas: la
+#   3. Categoría (`rules`): palabras de tipo (`type`), de tipo solo para nombres (`name`) y de marca
+#      (`brand`) sobre el fabricante y los nombres del producto canónico. Si casan varias, gana la
+#      primera de `precedence`. Si no casa ninguna, SOLO las palabras de tipo (`type`) sobre
+#      vulnerabilityName y shortDescription de sus entradas: la
 #      categoría más frecuente, si es única y casa en al menos la mitad de las entradas.
-#   4. Entra en `products` si su fabricante suma al menos 3 entradas de KEV de esa categoría
-#      en la ventana (una entrada cuenta una vez por categoría). Si no, `below_threshold`.
+#   4. Entra en `products` si su fabricante suma al menos `threshold[categoría]` entradas de KEV de
+#      esa categoría en la ventana (una entrada cuenta una vez por categoría). Si no,
+#      `below_threshold`. Umbral por familia (v3, decisión de Juan del 2026-11-26):
+#      firewall 2, vpn 2, load-balancer 2, remote-access 2; 3 para el resto.
 #   5. `needs_review` (NUNCA `products`), con su motivo: productos genéricos de KEV («Multiple
-#      Products») que casan alguna regla en su nombre o sus descripciones, y empates en las
+#      Products») que casan alguna regla en su nombre o alguna palabra de tipo en sus descripciones
+#      (v3: antes también las de marca), y empates en las
 #      descripciones. Si ninguna regla casa por nombre y ninguna categoría llega a la mitad de las
 #      descripciones: `out_of_scope` (solo se listan los ids).
 #   6. `cpe` y `cna` salen de los registros cvelistV5 de las entradas del producto: prefijos
@@ -34,19 +38,29 @@
 #     category / category_source (name | descriptions) / matched (reglas que casaron)
 #     vendor / product: forma más frecuente; names: nombres canónicos; abbreviations
 #     aliases: [{vendor, product} tal como aparecen en KEV]
-#     cna: [{vendor, product} tal como aparecen en cvelistV5]
+#     cna: [{vendor, product} tal como aparecen en cvelistV5]; cna_missing_reason si vacío
 #     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]; cpe_rule; cpe_missing_reason si vacío
 #     purl: [purl sin versión] (vacío en v2: los productos de borde no tienen purl)
 #     evidence: entradas de KEV que justifican el alta
-criterion_version: 2
+criterion_version: 3
 generator: vs.lists.build_exposed_products
-generator_version: 2.0.0
-rules_version: 2
+generator_version: 3.0.0
+rules_version: 3
 cutoff_date: '2026-11-26'
 window:
   months: 36
   from_exclusive: '2023-11-26'
-threshold: 3
+threshold:
+  vpn: 2
+  firewall: 2
+  load-balancer: 2
+  web-proxy: 3
+  identity: 3
+  hypervisor: 3
+  cicd: 3
+  mail: 3
+  file-transfer: 3
+  remote-access: 2
 inputs:
 - name: cisa-kev
   url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
@@ -63,9 +77,9 @@ inputs:
     derivative works of, publicly display, publicly perform, sublicense, and distribute Common Vulnerabilities
     and Exposures (CVE). Any copy you make for such purposes is authorized provided that you reproduce
     MITRE''s copyright designation and this license in any such copy.»'
-  records: 131
+  records: 145
   records_missing: []
-  sha256: sha256:464750ed687e9cb4a4652e6f50c476140b82047bf21095376a75607284027998
+  sha256: sha256:fa0e94dfc16d1af903ff77a35986fa35afa19a517743e36681858de922a99dbe
 categories:
 - vpn
 - firewall
@@ -97,6 +111,7 @@ rules:
     - secure mobile access
     - access gateway
     - remote access vpn
+    name: []
     brand:
     - connect secure
     - policy secure
@@ -115,6 +130,7 @@ rules:
     - utm
     - next[- ]generation firewall
     - ngfw
+    name: []
     brand:
     - pan-os
     - fortios
@@ -132,6 +148,7 @@ rules:
     - adc
     - application delivery\w*
     - traffic manager
+    name: []
     brand:
     - big-ip
     - loadmaster
@@ -143,6 +160,7 @@ rules:
     - web server
     - http server
     - \w*httpd
+    name: []
     brand:
     - fortiproxy
   identity:
@@ -156,12 +174,14 @@ rules:
     - federation
     - adfs
     - radius
+    name: []
     brand: []
   hypervisor:
     type:
     - hypervisor
     - virtualization
     - virtual machine manager
+    name: []
     brand:
     - esxi?
     - vcenter
@@ -175,6 +195,7 @@ rules:
     - devops
     - artifact repository
     - repository manager
+    name: []
     brand:
     - teamcity
     - jenkins
@@ -184,9 +205,13 @@ rules:
     - gogs
   mail:
     type:
-    - \w*mail\w*
+    - e-?mail
+    - webmail
+    - mail
     - groupware
     - mail server
+    name:
+    - \w*mail\w*
     brand:
     - exchange server
     - zimbra
@@ -198,6 +223,7 @@ rules:
     - mft
     - file sharing
     - file server
+    name: []
     brand:
     - serv-u
     - centrestack
@@ -212,6 +238,7 @@ rules:
     - remote management
     - remote monitoring
     - rmm
+    name: []
     brand:
     - screenconnect
     - simplehelp
@@ -221,18 +248,21 @@ canonicalization:
   - 'R1 fabricante: si el producto de KEV empieza por el nombre de OTRO fabricante de KEV (catálogo completo),
     el producto pasa a ese fabricante sin el prefijo (p. ej. «Broadcom | VMware vCenter» → VMware vCenter).
     Cada reasignación se lista en `canonicalization`.'
-  - R2 «X and Y», «X, Y, and Z» → un producto por parte. Una parte de una sola palabra genérica (manager,
+  - 'R2 «X and Y», «X, Y, and Z» → un producto por parte. Una parte de una sola palabra genérica (manager,
     gateway, controller, server, client, console, director, router, conductor) hereda el prefijo de la
     primera parte si esta acaba en palabra genérica o en sigla («NetScaler ADC and Gateway» → NetScaler
     ADC, NetScaler Gateway). Una parte que solo nombra el despliegue (server, data center, cloud, on-prem)
-    se descarta («Jira Server and Data Center» → Jira Server).
+    se descarta («Jira Server and Data Center» → Jira Server). v3: si alguna parte es de una sola palabra
+    (sin abreviatura) y ninguna parte es un producto que el fabricante tiene solo en otra entrada de la
+    ventana, ni el nombre del fabricante, ni es solo de edición (R4), la «and» es parte del nombre y no
+    se separa («Backup and Replication», «Utah, Vancouver, and Washington DC Now Platform»).'
   - 'R3 el contenido entre paréntesis es una abreviatura del producto («Adaptive Security Appliance (ASA)»):
     se guarda aparte y no forma parte de la clave.'
   - R4 se quita el nombre del propio fabricante al principio («WordPress Core» → Core), salvo que el producto
     se llame igual que el fabricante o solo quede server/software. Un nombre que solo tiene palabras de
     edición (community, enterprise, edition(s), ce, ee) es el producto con el nombre del fabricante.
   - R5 clave = nombre normalizado sin los sufijos genéricos finales (software, device(s), series); «appliances»
-    se normaliza a «appliance».
+    y «gateways» (v3) se normalizan al singular.
   - 'R6 producto genérico: si el producto de KEV es el nombre del fabricante y ese fabricante tiene otros
     productos en la ventana, o empieza por «Multiple», se busca al principio del nombre de la vulnerabilidad
     un producto conocido del fabricante (el más largo). Si no hay, «Multiple…» va a `needs_review` si
@@ -279,10 +309,22 @@ canonicalization:
     to: microsoft--exchange-server
     rule: R6
   merges:
+  - id: apple--ios-and-ipados
+    merged:
+    - ios-and-ipados
+    - ipados
+    rules:
+    - R7 sufijo
   - id: asus--routers
     merged:
     - routers
     - rt-ax55-routers
+    rules:
+    - R7 sufijo
+  - id: check-point--security-gateway
+    merged:
+    - quantum-security-gateway
+    - security-gateway
     rules:
     - R7 sufijo
   - id: cisco--adaptive-security-appliance
@@ -344,14 +386,63 @@ canonicalization:
 stats:
   kev_entries_total: 1805
   kev_entries_in_window: 765
-  products_in_window: 380
-  products: 35
-  products_with_cpe: 15
-  needs_review: 8
-  below_threshold: 48
-  out_of_scope: 289
+  products_in_window: 370
+  products: 45
+  products_with_cpe: 18
+  needs_review: 7
+  below_threshold: 37
+  out_of_scope: 281
 manual_changes: []
 products:
+- id: array-networks--ag-vxag-arrayos
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:arrayos
+  vendor: Array Networks
+  product: AG/vxAG ArrayOS
+  names:
+  - AG/vxAG ArrayOS
+  abbreviations: []
+  aliases:
+  - vendor: Array Networks
+    product: AG/vxAG ArrayOS
+  cpe:
+  - cpe:2.3:o:arraynetworks:arrayos_ag
+  cna: []
+  cpe_rule: tokens
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2023-28461
+- id: array-networks--arrayos-ag
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:arrayos
+  vendor: Array Networks
+  product: ArrayOS AG
+  names:
+  - ArrayOS AG
+  abbreviations: []
+  aliases:
+  - vendor: Array Networks
+    product: ArrayOS AG
+  cpe: []
+  cna:
+  - vendor: Array Networks
+    product: ArrayOS AG
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-66644
 - id: beyondtrust--privileged-remote-access
   category: remote-access
   category_source: name
@@ -419,6 +510,35 @@ products:
     - CVE-2024-12686
     - CVE-2026-102764
     - CVE-2026-1731
+- id: check-point--security-gateway
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:(?<!email )security gateways?
+  vendor: Check Point
+  product: Quantum Security Gateways
+  names:
+  - Quantum Security Gateways
+  - Security Gateway
+  abbreviations: []
+  aliases:
+  - vendor: Check Point
+    product: Quantum Security Gateways
+  - vendor: Check Point
+    product: Security Gateway
+  cpe:
+  - cpe:2.3:o:checkpoint:quantum_security_gateway_firmware
+  cna:
+  - vendor: checkpoint
+    product: Quantum Security Gateway
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-24919
+    - CVE-2026-50751
 - id: cisco--adaptive-security-appliance
   category: firewall
   category_source: name
@@ -753,6 +873,56 @@ products:
     - CVE-2024-4040
     - CVE-2025-31161
     - CVE-2025-54309
+- id: f5--big-ip
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:big-ip
+  vendor: F5
+  product: BIG-IP
+  names:
+  - BIG-IP
+  abbreviations: []
+  aliases:
+  - vendor: F5
+    product: BIG-IP
+  cpe: []
+  cna:
+  - vendor: F5
+    product: BIG-IP
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-53521
+- id: f5--big-ip-apm
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:big-ip
+  vendor: F5
+  product: BIG-IP APM
+  names:
+  - BIG-IP APM
+  abbreviations: []
+  aliases:
+  - vendor: F5
+    product: BIG-IP APM
+  cpe: []
+  cna:
+  - vendor: F5
+    product: BIG-IP
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2026-94127
 - id: fortinet--fortios
   category: firewall
   category_source: name
@@ -979,7 +1149,7 @@ products:
     - CVE-2024-21893
     - CVE-2025-0282
     - CVE-2025-22457
-- id: ivanti--zta-gateways
+- id: ivanti--zta-gateway
   category: vpn
   category_source: name
   matched:
@@ -1178,11 +1348,41 @@ products:
     - CVE-2026-0257
     - CVE-2026-0300
     - CVE-2026-0322
+- id: progress--loadmaster
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:loadmaster
+  vendor: Progress
+  product: Kemp LoadMaster
+  names:
+  - Kemp LoadMaster
+  - LoadMaster
+  abbreviations: []
+  aliases:
+  - vendor: Progress
+    product: Kemp LoadMaster
+  - vendor: Progress
+    product: LoadMaster
+  cpe:
+  - cpe:2.3:a:kemptechnologies:loadmaster
+  cna:
+  - vendor: Progress Software
+    product: LoadMaster
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-1212
+    - CVE-2026-8037
 - id: roundcube--webmail
   category: mail
   category_source: name
   matched:
-  - type:mail:\w*mail\w*
+  - type:mail:webmail
+  - name:mail:\w*mail\w*
   vendor: Roundcube
   product: Webmail
   names:
@@ -1240,7 +1440,7 @@ products:
   category: mail
   category_source: name
   matched:
-  - type:mail:\w*mail\w*
+  - name:mail:\w*mail\w*
   vendor: SmarterTools
   product: SmarterMail
   names:
@@ -1322,6 +1522,32 @@ products:
     - CVE-2026-15410
     - CVE-2026-83548
     - CVE-2026-83549
+- id: sonicwall--sonicos
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:sonicos
+  vendor: SonicWall
+  product: SonicOS
+  names:
+  - SonicOS
+  abbreviations: []
+  aliases:
+  - vendor: SonicWall
+    product: SonicOS
+  cpe: []
+  cna:
+  - vendor: SonicWall
+    product: SonicOS
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-40766
+    - CVE-2024-53704
 - id: sonicwall--sonicos-sslvpn
   category: vpn
   category_source: name
@@ -1348,6 +1574,54 @@ products:
     vendor_category_entries: 9
     cves:
     - CVE-2026-19868
+- id: sophos--cyberoamos
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:cyberoamos
+  vendor: Sophos
+  product: CyberoamOS
+  names:
+  - CyberoamOS
+  abbreviations: []
+  aliases:
+  - vendor: Sophos
+    product: CyberoamOS
+  cpe: []
+  cna: []
+  cpe_rule: null
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2020-29574
+- id: sophos--xg-firewall
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  vendor: Sophos
+  product: XG Firewall
+  names:
+  - XG Firewall
+  abbreviations: []
+  aliases:
+  - vendor: Sophos
+    product: XG Firewall
+  cpe: []
+  cna: []
+  cpe_rule: null
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2020-15069
 - id: synacor--zimbra-collaboration-suite
   category: mail
   category_source: name
@@ -1485,6 +1759,32 @@ products:
     - CVE-2024-38813
     - CVE-2026-123890
     - CVE-2026-59310
+- id: watchguard--firebox
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:firebox
+  vendor: WatchGuard
+  product: Firebox
+  names:
+  - Firebox
+  abbreviations: []
+  aliases:
+  - vendor: WatchGuard
+    product: Firebox
+  cpe: []
+  cna:
+  - vendor: WatchGuard
+    product: Fireware OS
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-14733
+    - CVE-2025-9242
 needs_review:
 - id: barracuda-networks--multiple-products
   vendor: Barracuda Networks
@@ -1534,10 +1834,7 @@ needs_review:
   product: Multiple Products
   reason: producto genérico en KEV
   matched:
-  - firewall
   - identity
-  - mail
-  - web-proxy
   kev_entries: 6
   cves:
   - CVE-2024-23113
@@ -1546,15 +1843,6 @@ needs_review:
   - CVE-2025-59718
   - CVE-2025-61624
   - CVE-2026-24858
-- id: reolink--multiple-ip-cameras
-  vendor: Reolink
-  product: Multiple IP Cameras
-  reason: producto genérico en KEV
-  matched:
-  - mail
-  kev_entries: 1
-  cves:
-  - CVE-2019-11001
 - id: wso2--multiple-products
   vendor: WSO2
   product: Multiple Products
@@ -1578,203 +1866,235 @@ below_threshold:
   product: HTTP Server
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: aquasecurity--trivy
   product: Trivy
   category: cicd
   vendor_category_entries: 1
-- id: array-networks--ag-vxag-arrayos
-  product: AG/vxAG ArrayOS
-  category: vpn
-  vendor_category_entries: 2
-- id: array-networks--arrayos-ag
-  product: ArrayOS AG
-  category: vpn
-  vendor_category_entries: 2
+  threshold: 3
 - id: barracuda-networks--email-security-gateway
   product: Email Security Gateway
   category: mail
   vendor_category_entries: 1
-- id: check-point--quantum-security-gateways
-  product: Quantum Security Gateways
-  category: firewall
-  vendor_category_entries: 2
-- id: check-point--security-gateway
-  product: Security Gateway
-  category: firewall
-  vendor_category_entries: 2
+  threshold: 3
 - id: cisco--secure-email-gateway
   product: Secure Email Gateway
   category: mail
   vendor_category_entries: 2
+  threshold: 3
 - id: citrix--session-recording
   product: Session Recording
   category: identity
   vendor_category_entries: 2
+  threshold: 3
 - id: commvault--web-server
   product: Web Server
   category: web-proxy
   vendor_category_entries: 1
-- id: f5--big-ip
-  product: BIG-IP
-  category: load-balancer
-  vendor_category_entries: 2
-- id: f5--big-ip-apm
-  product: BIG-IP APM
-  category: load-balancer
-  vendor_category_entries: 2
+  threshold: 3
 - id: fortinet--fortimail
   product: FortiMail
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: fortinet--fortiproxy
   product: FortiProxy
   category: web-proxy
   vendor_category_entries: 2
+  threshold: 3
 - id: fortra--goanywhere-mft
   product: GoAnywhere MFT
   category: file-transfer
   vendor_category_entries: 1
+  threshold: 3
 - id: gitea--gitea
   product: Gitea
   category: cicd
   vendor_category_entries: 1
+  threshold: 3
 - id: gogs--gogs
   product: Gogs
   category: cicd
   vendor_category_entries: 1
+  threshold: 3
 - id: ibm--aspera-faspex
   product: Aspera Faspex
   category: file-transfer
   vendor_category_entries: 1
+  threshold: 3
 - id: ivanti--virtual-traffic-manager
   product: Virtual Traffic Manager
   category: load-balancer
   vendor_category_entries: 1
+  threshold: 2
 - id: jenkins--command-line-interface
   product: Command Line Interface
   category: cicd
   vendor_category_entries: 2
+  threshold: 3
 - id: jenkins--jenkins
   product: Jenkins
   category: cicd
   vendor_category_entries: 2
+  threshold: 3
 - id: juniper--screenos
   product: ScreenOS
   category: firewall
   vendor_category_entries: 1
+  threshold: 2
 - id: libraesva--email-security-gateway
   product: Email Security Gateway
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: litespeed--cpanel-plugin
   product: cPanel Plugin
   category: file-transfer
   vendor_category_entries: 2
+  threshold: 3
 - id: mdaemon--email-server
   product: Email Server
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: microsoft--active-directory-federation-services
   product: Active Directory Federation Services
   category: identity
   vendor_category_entries: 1
+  threshold: 3
 - id: n-able--mailassure
   product: MailAssure
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: north-grid--proself
   product: Proself
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: nostromo--nhttpd
   product: nhttpd
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: openwave-messaging-limited--webtop-media-transcoder
   product: Webtop Media Transcoder
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: oracle--fusion-middleware
   product: Fusion Middleware
   category: identity
   vendor_category_entries: 1
+  threshold: 3
 - id: oracle--http-server
   product: HTTP Server
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: oracle--weblogic-server-proxy-plug-in
   product: Weblogic Server Proxy Plug-in
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: php--phpmailer
   product: PHPMailer
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: proftpd--proftpd
   product: ProFTPD
   category: file-transfer
   vendor_category_entries: 1
-- id: progress--loadmaster
-  product: Kemp LoadMaster
-  category: load-balancer
-  vendor_category_entries: 2
+  threshold: 3
 - id: qualitia--active-mail
   product: Active! Mail
   category: mail
   vendor_category_entries: 1
+  threshold: 3
 - id: rejetto--http-file-server
   product: HTTP File Server
   category: file-transfer
   vendor_category_entries: 1
+  threshold: 3
 - id: solarwinds--serv-u
   product: Serv-U
   category: file-transfer
   vendor_category_entries: 2
-- id: sonicwall--sonicos
-  product: SonicOS
-  category: firewall
-  vendor_category_entries: 2
-- id: sophos--cyberoamos
-  product: CyberoamOS
-  category: firewall
-  vendor_category_entries: 2
-- id: sophos--xg-firewall
-  product: XG Firewall
-  category: firewall
-  vendor_category_entries: 2
+  threshold: 3
 - id: tanstack--tanstack
   product: TanStack
   category: identity
   vendor_category_entries: 1
+  threshold: 3
 - id: tp-link--tl-wr841n
   product: TL-WR841N
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: trimble--cityworks
   product: Cityworks
   category: web-proxy
   vendor_category_entries: 1
+  threshold: 3
 - id: versa--concerto
   product: Concerto
   category: web-proxy
   vendor_category_entries: 1
-- id: watchguard--firebox
-  product: Firebox
-  category: firewall
-  vendor_category_entries: 2
+  threshold: 3
 - id: wing-ftp-server--wing-ftp-server
   product: Wing FTP Server
   category: file-transfer
   vendor_category_entries: 2
+  threshold: 3
 deployment_leg:
-  criterion: los 5 primeros nombres por cuota de una encuesta pública con fecha y licencia de reutilización
-    (servidores web/proxy y de identidad o SSH)
+  criterion: los 5 primeros productos instalables por cuota de una fuente pública con fecha, consultable
+    sin credenciales de pago y con términos que permitan reutilizar la clasificación (servidores web/proxy
+    y de identidad o SSH)
   n: 5
-  status: pending
-  reason: ninguna fuente encontrada permite reutilizar la clasificación; decide Juan (pregunta abierta
-    del PR)
-  source: null
+  status: active
+  source:
+    name: Common Crawl CC-MAIN-2026-47, cabecera Server de una muestra de WAT
+    url: https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-47/wat.paths.gz
+    license: 'Common Crawl Terms of Use (2024-03-07): licencia limitada, no sublicenciable'
+    survey_date: '2026-11-26'
+    sha256: sha256:6d994fb96fa2cc4fcffbc31e715be2a575a97b452c6a8452467996b0957f03e5
+    terms_url: https://commoncrawl.org/terms-of-use
+    method:
+      crawl: CC-MAIN-2026-47
+      inputs_sha256: sha256:911e4247d555f26525fec6e8ecfd996d69ffa1bf8d6d6a92c33531a1aa236026
+      prefix_bytes: 4194304
+      sample_files: 32
+      unit: host
+      version: 1
   options_found:
+  - name: Common Crawl (ficheros WAT, cabecera Server)
+    url: https://data.commoncrawl.org/
+    terms_url: https://commoncrawl.org/terms-of-use
+    checked: '2026-11-26'
+    quotes:
+    - CC grants you a limited, non-assignable, non-transferable, non-sublicensable, non-exclusive, limited
+      license to access and use the Service subject to the terms and conditions of these ToU.
+    - the "Crawled Content") may be subject to separate terms of use or terms of service from the owners
+      of such Crawled Content.
+    - CC strongly recommends that you obtain the advice of legal counsel before making any use, including
+      commercial use, of the Service and/or the Crawled Content.
+    credentials: 'no: HTTPS anónimo en data.commoncrawl.org (comprobado con una petición por rango el
+      2026-11-26)'
+    assessment: 'se usa para web-proxy: acceso sin credenciales; los términos no prohíben el uso ni tratan
+      los datos agregados; solo se publican nombres de producto, ningún contenido rastreado. Revisar en
+      el PR'
+  - name: HTTP Archive (BigQuery)
+    url: https://httparchive.org/faq
+    terms_url: null
+    checked: '2026-11-26'
+    quotes:
+    - The HTTP Archive dataset is available publicly on BigQuery.
+    - In order to access the HTTP Archive via BigQuery, you'll need a Google account.
+    - BigQuery has a free tier that you can use to get started without enabling billing.
+    credentials: 'sí: cuenta de Google (sin facturación con la capa gratuita)'
+    assessment: 'no se usa: exige cuenta y no se encontró licencia de los datos (ni en el FAQ ni en la
+      guía): SIN VERIFICAR'
   - name: W3Techs, Usage statistics of web servers
     url: https://w3techs.com/technologies/overview/web_server
     terms_url: https://w3techs.com/terms_of_use
@@ -1783,7 +2103,8 @@ deployment_leg:
     - All contents of this web site are Copyright © 2009-2026 Q-Success DI Gelbmann GmbH. All rights reserved.
     - If you quote information from this web site, you must include a reference.
     - If you publish the quote on the Internet, a link to the original page on this site must be provided.
-    assessment: sin licencia abierta; solo permite citar con referencia, fecha y enlace
+    credentials: 'no'
+    assessment: 'alternativa para Juan, no se usa: sin licencia abierta'
   - name: Netcraft Web Server Survey
     url: https://www.netcraft.com/blog/
     terms_url: https://www.netcraft.com/terms/
@@ -1792,15 +2113,37 @@ deployment_leg:
     - All information and content on Netcraft's websites belongs to Netcraft, except as otherwise noted.
     - Excerpts from Netcraft's public websites may be reproduced if Netcraft and the URL https://www.netcraft.com/
       are attributed.
-    assessment: 'permite reproducir extractos con atribución; el acceso automático está restringido (robots.txt
-      e identificación); no se localizó la última encuesta: SIN VERIFICAR'
-  - name: Shodan (facetas públicas)
-    url: https://www.shodan.io/terms
-    terms_url: https://www.shodan.io/terms
-    checked: '2026-11-26'
-    quotes: []
-    assessment: 'la página de términos devolvió 404: SIN VERIFICAR'
-  products: []
+    credentials: 'no'
+    assessment: 'no se usa: acceso automático restringido; encuesta no localizada'
+  pending_parts:
+  - category: identity
+    status: pending
+    reason: 'ninguna fuente abierta da el despliegue de servidores de identidad o SSH: Common Crawl solo
+      ve HTTP; queda como pregunta abierta'
+  products:
+  - id: deployment--apache
+    name: apache
+    rank: 1
+    category: web-proxy
+  - id: deployment--nginx
+    name: nginx
+    rank: 2
+    category: web-proxy
+  - id: deployment--litespeed
+    name: litespeed
+    rank: 3
+    category: web-proxy
+  - id: deployment--microsoft-iis
+    name: microsoft-iis
+    rank: 4
+    category: web-proxy
+  - id: deployment--openresty
+    name: openresty
+    rank: 5
+    category: web-proxy
+  skipped_above_cut:
+  - name: cloudflare
+    reason: servicio o CDN
 out_of_scope:
 - 7-zip--7-zip
 - acclaim-systems--usaherds
@@ -1809,11 +2152,10 @@ out_of_scope:
 - adminer--adminer
 - adobe--acrobat
 - adobe--coldfusion
-- adobe--commerce
+- adobe--commerce-and-magento
+- adobe--commerce-and-magento-open-source
 - adobe--experience-manager-forms
 - adobe--flash-player
-- adobe--magento
-- adobe--magento-open-source
 - adobe--reader
 - advantive--veracore
 - ahsay--ahsaycbs
@@ -1833,7 +2175,7 @@ out_of_scope:
 - apache--superset
 - apache--tomcat
 - apple--ios
-- apple--ipados
+- apple--ios-and-ipados
 - apple--macos
 - apple--multiple-products
 - arista--extensible-operating-system
@@ -1867,8 +2209,7 @@ out_of_scope:
 - craft-cms--craft-cms
 - cwp--control-web-panel
 - cyberpersons--cyberpanel
-- d-link--dcs-2530l
-- d-link--dcs-2670l
+- d-link--dcs-2530l-and-dcs-2670l
 - d-link--dir-600-router
 - d-link--dir-605-router
 - d-link--dir-820-router
@@ -1895,8 +2236,7 @@ out_of_scope:
 - fortinet--fortimanager
 - fortinet--fortisandbox
 - freetype--freetype
-- fxc--ae1021
-- fxc--ae1021pe
+- fxc--ae1021-ae1021pe
 - geovision--multiple
 - git--git
 - gnu--bash
@@ -1981,8 +2321,7 @@ out_of_scope:
 - mozilla--firefox
 - mozilla--multiple-products
 - n8n--n8n
-- nakivo--backup
-- nakivo--replication
+- nakivo--backup-and-replication
 - nextgen-healthcare--mirth-connect
 - nice--linear-emerge-e3
 - notepad--notepad
@@ -2013,8 +2352,7 @@ out_of_scope:
 - progress--whatsup-gold
 - project-monai--monai-label
 - projectsend--projectsend
-- ptc--flexplm
-- ptc--windchill
+- ptc--windchill-and-flexplm
 - ptzoptics--pt30x-sdi-ndi-cameras
 - qlik--sense
 - qnap--viostor-nvr
@@ -2026,6 +2364,7 @@ out_of_scope:
 - react-native-community--cli
 - red-hat--automatic-bug-reporting-tool
 - red-hat--libuser
+- reolink--multiple-ip-cameras
 - reolink--rlc-410w-ip-camera
 - reviewdog--action-setup-github-action
 - rockwell--multiple-products
@@ -2036,14 +2375,11 @@ out_of_scope:
 - sap--commerce-cloud
 - sap--netweaver
 - sciencelogic--sl1
-- servicenow--utah
-- servicenow--vancouver
-- servicenow--washington-dc-now-platform
+- servicenow--utah-vancouver-and-washington-dc-now-platform
 - siemens--software-center
 - sierra-wireless--airlink-aleos
 - signalwire--freeswitch
-- sitecore--cms
-- sitecore--experience-platform
+- sitecore--cms-and-experience-platform
 - sitecore--multiple-products
 - skysea--client-view
 - smartbedded--meteobridge
@@ -2068,8 +2404,7 @@ out_of_scope:
 - trueconf--server
 - twilio--authy
 - ubiquiti--unifi-os
-- unitronics--hmi
-- unitronics--vision-plc
+- unitronics--vision-plc-and-hmi
 - unrealircd--unrealircd
 - vanderbilt-university--research-electronic-data-capture
 - vates--xen-orchestra

@@ -44,6 +44,8 @@ def validate_exposed(doc: dict) -> list[str]:
             errors.append(f"rules.{cat}: sin lista `type`")
         elif not isinstance(r.get("brand"), list):
             errors.append(f"rules.{cat}: sin lista `brand`")
+        elif not isinstance(r.get("name", []), list):
+            errors.append(f"rules.{cat}: `name` no es una lista")
     if set(doc.get("precedence") or []) != set(categories):
         errors.append("`precedence` no cubre exactamente `categories`")
     if not (doc.get("canonicalization") or {}).get("rules"):
@@ -51,8 +53,15 @@ def validate_exposed(doc: dict) -> list[str]:
     if not isinstance(doc.get("manual_changes"), list):
         errors.append("`manual_changes` no es una lista")
     threshold = doc.get("threshold")
-    if not isinstance(threshold, int) or threshold < 1:
-        errors.append("`threshold` no válido")
+    if isinstance(threshold, int):  # criterio v1/v2: umbral único
+        threshold = dict.fromkeys(categories, threshold)
+    if (
+        not isinstance(threshold, dict)
+        or set(threshold) != set(categories)
+        or not all(isinstance(n, int) and n >= 1 for n in threshold.values())
+    ):
+        errors.append("`threshold` no válido: un entero ≥ 1 por categoría")
+        threshold = {}
     seen: set[str] = set()
     sections = ("products", "needs_review", "below_threshold")
     for section in sections:
@@ -88,7 +97,7 @@ def _check_id(pid: str, section: str, seen: set[str], errors: list[str]) -> None
     seen.add(pid)
 
 
-def _check_product(p: dict, categories: list, threshold: object, errors: list[str]) -> None:
+def _check_product(p: dict, categories: list, threshold: dict, errors: list[str]) -> None:
     pid = p.get("id")
     if p.get("category") not in categories:
         errors.append(f"{pid}: categoría desconocida")
@@ -109,6 +118,8 @@ def _check_product(p: dict, categories: list, threshold: object, errors: list[st
         errors.append(f"{pid}: CPE mal formado")
     if not cpes and not p.get("cpe_missing_reason"):
         errors.append(f"{pid}: sin CPE y sin motivo")
+    if "cna_missing_reason" in p and (p.get("cna") or not p["cna_missing_reason"]):
+        errors.append(f"{pid}: `cna_missing_reason` vacío o con pares del CNA")
     for c in p.get("cna") or []:
         if not (isinstance(c, dict) and c.get("vendor") and c.get("product")):
             errors.append(f"{pid}: par del CNA incompleto")
@@ -116,7 +127,8 @@ def _check_product(p: dict, categories: list, threshold: object, errors: list[st
     cves = ev.get("cves") or []
     if not cves or not all(CVE_RE.match(c) for c in cves):
         errors.append(f"{pid}: evidencia sin CVE válidos")
-    if isinstance(threshold, int) and ev.get("vendor_category_entries", 0) < threshold:
+    limit = threshold.get(p.get("category"))
+    if isinstance(limit, int) and ev.get("vendor_category_entries", 0) < limit:
         errors.append(f"{pid}: por debajo del umbral")
 
 
