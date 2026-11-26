@@ -7,6 +7,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // Las capturas tienen su propia configuración (`playwright.shots.config.ts`).
+  testIgnore: "shots.spec.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

@@ -9,7 +9,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from tests.portal_fixture import CVE_B, CVE_C, is_api, make_app
+from tests.portal_fixture import CVE_B, CVE_C, compressible, is_api, make_app
 from tests.test_feed import CVE_EXPOSED
 from vs.feed.osv import alert_id
 
@@ -44,3 +44,17 @@ def test_fixture_routes_api_by_segment():
     assert is_api("/admin") and is_api("/admin/") and is_api("/admin/x?y=1")
     assert is_api("/v1/feed/alerts/latest.json") and is_api("/.well-known/x")
     assert not is_api("/administracion") and not is_api("/gestion") and not is_api("/v1x")
+
+
+def test_fixture_compresses_text_like_the_edge():
+    # T8b: Lighthouse mide la red; el JS, el CSS y el JSON van con gzip como en producción.
+    for ctype in (
+        "text/javascript",
+        "application/javascript",
+        "text/css",
+        "text/html",
+        "application/json",
+    ):
+        assert compressible(ctype)
+    for ctype in ("image/png", "application/octet-stream", "application/jose"):
+        assert not compressible(ctype)

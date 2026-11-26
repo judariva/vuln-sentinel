@@ -16,7 +16,7 @@ id_prefixes:
 components:
   - id: CMP-001
     name: front
-    service: Cloudflare Workers static assets. SPA en web/ (Vite + React + shadcn/ui, ADR-0023); consume la API pública como cualquier cliente
+    service: Cloudflare Workers static assets. SPA en web/ (Vite + React + shadcn/ui, ADR-0023; movimiento con Motion y Magic UI, escena 3D en un bloque aparte, ADR-0024); consume la API pública como cualquier cliente
     status: planned
   - id: CMP-002
     name: api
@@ -235,6 +235,7 @@ threats:
   - {id: THR-018, name: "un despliegue no revisado o con una imagen o acción alterada llega a producción", refs: ["ATT&CK v20.1 T1195.002"]}
   - {id: THR-019, name: "los logs públicos de Actions exponen IDs, nombres o rangos de la plataforma", refs: []}
   - {id: THR-020, name: "el vigilante externo da verde con un feed parado, manipulado, con la clave cambiada o sin configurar", refs: []}
+  - {id: THR-021, name: "el portal enseña una cifra que no sale de la API (contador a medio animar, embudo recortado sin decirlo) o la escena 3D impide ver los datos", refs: []}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado); tests/test_agent.py (el agente nunca deja el nivel por debajo del determinista ni del publicado, con hypothesis; el intento queda en ai_call.blocked_downgrade)"}
@@ -261,3 +262,4 @@ controls:
   - {id: CTL-023, name: "vigilante externo fail-closed: sin firma válida no mira el contenido; sin modified o sin sources, modified de 30 min o más (o en el futuro), fuente en UNKNOWN más de 2 h, HTTP no 200 o JWKS vacío dan fallo; la clave fijada detecta una clave publicada cambiada; sin VS_FEED_BASE_URL el job sale «saltado»; nunca imprime la URL del feed; secrets solo por env", mitigates: [THR-009, THR-012, THR-019, THR-020], proof: "tests/test_watchdog.py (firma válida, rota y de otra clave, feed viejo, fuente en UNKNOWN, carrera .json/.jws, forma del workflow); actionlint en CI"}
   - {id: CTL-024, name: "el latido no tumba el job si falla (lo cubre la regla «sin latido en 20 min»); sus columnas son las de la DCR; los errores no llevan el token ni el detalle de la identidad", mitigates: [THR-009], proof: "tests/test_heartbeat.py"}
   - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (official_advisory_domains, nunca un repositorio de PoC); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE; el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py"}
+  - {id: CTL-025, name: "las cifras animadas salen de la API: el contador lleva el valor real en el DOM (sr-only y data-value) y la animación es decorativa; el embudo dice «al menos» si el feed no se leyó entero y cuántas partículas dibuja; la escena 3D va en un bloque aparte que se pide después de los datos, y con prefers-reduced-motion, sin WebGL o si falla se ve el SVG con las mismas cifras", mitigates: [THR-021], proof: "web/src/test/motion.test.tsx y reduced-motion.test.tsx; web/e2e/smoke.spec.ts (cifras del embudo contra la API, movimiento reducido, bloque 3D bloqueado); web/scripts/check-budgets.mjs en CI"}

@@ -100,6 +100,9 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      # T8b: JS inicial sin 3D <= 250 KB gzip y bloque 3D <= 400 KB gzip (ADR-0024).
+      - name: Presupuestos del build
+        run: npm run budget
       - name: Tests de componentes
         run: npm test
       - name: Navegador de Playwright

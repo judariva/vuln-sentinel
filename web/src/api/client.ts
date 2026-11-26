@@ -35,23 +35,30 @@ export function getAlertsLatest(signal?: AbortSignal) {
   return getJson<AlertsLatest>("/v1/feed/alerts/latest.json", signal);
 }
 
-/** Todo el índice «head» de un feed, siguiendo el cursor (como mucho `MAX_PAGES` páginas). */
+/**
+ * Todo el índice «head» de un feed, siguiendo el cursor (como mucho `MAX_PAGES` páginas).
+ * `complete` es falso si quedaron páginas sin leer: quien pinte cifras con esto debe decirlo.
+ */
 export async function getAllChanges(
   feed: "all" | "alerts",
   signal?: AbortSignal,
-): Promise<{ generatedAt: string; entries: ChangeEntry[] }> {
+): Promise<{ generatedAt: string; entries: ChangeEntry[]; complete: boolean }> {
   const entries: ChangeEntry[] = [];
   let since: string | null = null;
   let generatedAt = "";
+  let complete = false;
   for (let i = 0; i < MAX_PAGES; i++) {
     const q: string = since ? `?since=${encodeURIComponent(since)}` : "";
     const page: ChangesPage = await getJson<ChangesPage>(`/v1/feed/${feed}/changes${q}`, signal);
     generatedAt ||= page.generated_at;
     entries.push(...page.entries);
-    if (!page.has_more || !page.next) break;
+    if (!page.has_more || !page.next) {
+      complete = true;
+      break;
+    }
     since = page.next;
   }
-  return { generatedAt, entries };
+  return { generatedAt, entries, complete };
 }
 
 export function getVuln(id: string, signal?: AbortSignal) {

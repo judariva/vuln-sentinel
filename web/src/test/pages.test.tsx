@@ -117,19 +117,20 @@ describe("Pantallas restringidas", () => {
   it.each([
     ["/fuentes", "Fuentes"],
     ["/gestion", "Administración"],
-  ])("%s se marca como «detrás de Access» y no llama a la API", (path, title) => {
+  ])("%s se marca como «detrás de Access» y no llama a la API", async (path, title) => {
     const fetchSpy = vi.fn(fakeFetch({}));
     vi.stubGlobal("fetch", fetchSpy);
     renderAt(path);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(title);
+    // La pantalla se carga aparte (lazy, T8b): se espera a que aparezca.
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(title);
     expect(screen.getByTestId("access-notice")).toHaveTextContent("Detrás de Access");
     expect(screen.getByTestId("access-notice")).toHaveTextContent("datos de ejemplo");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("Fuentes muestra UNKNOWN para una fuente caída", () => {
+  it("Fuentes muestra UNKNOWN para una fuente caída", async () => {
     renderAt("/fuentes");
-    expect(screen.getByText("UNKNOWN")).toBeInTheDocument();
+    expect(await screen.findByText("UNKNOWN")).toBeInTheDocument();
   });
 });
 

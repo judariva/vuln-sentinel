@@ -1,4 +1,5 @@
 import { AccessNotice } from "@/components/AccessNotice";
+import { SourceBeams } from "@/components/SourceBeams";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,6 +20,17 @@ export function SourcesPage() {
         Fuentes
       </h1>
       <AccessNotice />
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <h2>Flujo hacia el núcleo</h2>
+          </CardTitle>
+          <CardDescription>Cada fuente alimenta el núcleo; una caída se ve cortada.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SourceBeams sources={SOURCES} />
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>

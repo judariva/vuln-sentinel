@@ -14,6 +14,7 @@ y `/admin` al `TestClient` de la aplicación, en proceso. Solo para pruebas loca
 from __future__ import annotations
 
 import argparse
+import gzip
 import mimetypes
 import threading
 from datetime import UTC, datetime, timedelta
@@ -52,6 +53,15 @@ CVE_C = "CVE-2099-1004"  # producto expuesto, RCE sin auth, sin exploit: C
 CVE_B = "CVE-2099-1005"  # producto expuesto, RCE sin auth, exploit a T2: C y luego B
 PROXIED = ("/v1/", "/.well-known/", "/admin/")
 PROXIED_EXACT = ("/admin",)  # `/admin` sin barra también es de la API; `/administracion` no
+
+
+def compressible(ctype: str) -> bool:
+    """Tipos de texto que se sirven con gzip (HTML, JS, CSS, JSON, SVG)."""
+    return ctype.startswith("text/") or ctype in (
+        "application/javascript",
+        "application/json",
+        "image/svg+xml",
+    )
 
 
 def is_api(path: str) -> bool:
@@ -161,7 +171,14 @@ def handler(client: TestClient, static: Path | None):
             fwd = {k: v for k, v in self.headers.items() if k.lower() not in ("host",)}
             with lock:
                 resp = client.request(self.command, self.path, headers=fwd)
-            self._send(resp.status_code, dict(resp.headers), resp.content)
+            headers = {k: v for k, v in resp.headers.items() if k.lower() != "content-encoding"}
+            body = resp.content
+            ctype = headers.get("content-type", "").split(";")[0].strip()
+            if compressible(ctype) and "gzip" in self.headers.get("Accept-Encoding", ""):
+                body = gzip.compress(body, compresslevel=6)
+                headers["Content-Encoding"] = "gzip"
+                headers["Vary"] = "Accept-Encoding"
+            self._send(resp.status_code, headers, body)
 
         def _static(self) -> None:
             if root is None:
@@ -172,7 +189,18 @@ def handler(client: TestClient, static: Path | None):
             if not path.is_relative_to(root) or not path.is_file():
                 path = root / "index.html"  # SPA: cualquier ruta del portal sirve el índice
             ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-            self._send(200, {"Content-Type": ctype, "Cache-Control": "no-store"}, path.read_bytes())
+            headers = {
+                "Content-Type": ctype,
+                "Cache-Control": "no-store",
+                "Vary": "Accept-Encoding",
+            }
+            body = path.read_bytes()
+            # Comprimido como lo sirve el borde en producción: si no, Lighthouse mide la red con el
+            # JS sin comprimir (T8b).
+            if compressible(ctype) and "gzip" in self.headers.get("Accept-Encoding", ""):
+                body = gzip.compress(body, compresslevel=6)
+                headers["Content-Encoding"] = "gzip"
+            self._send(200, headers, body)
 
         def do_GET(self):  # noqa: N802 - nombre de BaseHTTPRequestHandler
             if is_api(self.path):

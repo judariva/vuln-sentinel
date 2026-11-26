@@ -1,6 +1,7 @@
 import { LockKeyhole, Moon, Sun } from "lucide-react";
+import * as m from "motion/react-m";
 import { useState, type ReactNode } from "react";
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/config";
@@ -44,6 +45,7 @@ export function ThemeToggle() {
 }
 
 export function Layout({ children }: { children: ReactNode }) {
+  const location = useLocation();
   return (
     <div className="min-h-screen">
       <a href="#contenido" className="sr-only focus:not-sr-only focus:absolute focus:p-2">
@@ -78,7 +80,18 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
       <Separator />
       <main id="contenido" className="mx-auto max-w-6xl space-y-6 px-4 py-6">
-        {children}
+        {/*
+          Transición entre pantallas: solo desplazamiento, sin opacidad (axe mediría el contraste
+          de un texto a medio aparecer). Con `prefers-reduced-motion`, nada (MotionConfig).
+        */}
+        <m.div
+          key={location.pathname}
+          initial={{ y: 10 }}
+          animate={{ y: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        >
+          {children}
+        </m.div>
       </main>
     </div>
   );

@@ -14,6 +14,11 @@ export default defineConfig({
   },
   build: {
     sourcemap: false,
+    // El manifiesto dice qué bloques carga la página al empezar y cuáles son de la escena 3D:
+    // lo lee `scripts/check-budgets.mjs` (presupuestos en gzip, T8b).
+    manifest: true,
+    // El aviso de Vite (500 kB sin comprimir) no es el criterio: los presupuestos en gzip sí.
+    chunkSizeWarningLimit: 1200,
   },
   test: {
     globals: true,
