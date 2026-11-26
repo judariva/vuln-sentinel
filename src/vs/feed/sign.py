@@ -210,13 +210,37 @@ def sign_detached(payload: bytes, signer: Signer) -> str:
     return f"{protected}..{b64url(signature)}"
 
 
+def _coord(jwk: Mapping[str, Any], name: str) -> bytes:
+    value = jwk.get(name)
+    if not isinstance(value, str):
+        raise SignatureError(f"coordenada {name} ausente o no es una cadena")
+    raw = b64url_decode(value)
+    if len(raw) != _COORD:  # RFC 7518 §6.2.1.2: longitud completa, sin quitar ceros
+        raise SignatureError(f"coordenada {name} de {len(raw)} bytes; se esperaban 32")
+    return raw
+
+
+def jwk_thumbprint(jwk: Mapping[str, Any]) -> str:
+    """Huella RFC 7638 (SHA-256, base64url) de una clave EC P-256.
+
+    Es la que se publica fuera del origen (`docs/feed/keys.md` y las notas de cada release) para
+    que el consumidor fije la clave: un JWKS sustituido en el origen no la cumple.
+    """
+    if jwk.get("kty") != "EC" or jwk.get("crv") != "P-256":
+        raise SignatureError("la clave no es EC P-256")
+    x, y = _coord(jwk, "x"), _coord(jwk, "y")
+    # Miembros obligatorios en orden lexicográfico y sin espacios (RFC 7638 §3.2 y §3.3).
+    canon = f'{{"crv":"P-256","kty":"EC","x":"{b64url(x)}","y":"{b64url(y)}"}}'
+    return b64url(hashlib.sha256(canon.encode("ascii")).digest())
+
+
 def _public_key(jwk: Mapping[str, Any]) -> ec.EllipticCurvePublicKey:
     if jwk.get("kty") != "EC" or jwk.get("crv") != "P-256":
         raise SignatureError("la clave no es EC P-256")
     if any(k in jwk for k in ("d", "p", "q")):
         raise SignatureError("el JWKS contiene material privado")
-    x = int.from_bytes(b64url_decode(str(jwk.get("x", ""))), "big")
-    y = int.from_bytes(b64url_decode(str(jwk.get("y", ""))), "big")
+    x = int.from_bytes(_coord(jwk, "x"), "big")
+    y = int.from_bytes(_coord(jwk, "y"), "big")
     try:
         return ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1()).public_key()
     except ValueError as exc:
@@ -245,13 +269,30 @@ def parse_detached(jws: str) -> tuple[str, dict[str, Any], bytes]:
     return protected, header, signature
 
 
-def verify_detached(jws: str, payload: bytes, jwks: Mapping[str, Any]) -> str:
-    """Comprueba la firma sobre los bytes dados. Devuelve el `kid`; si no vale, `SignatureError`."""
+def verify_detached(
+    jws: str,
+    payload: bytes,
+    jwks: Mapping[str, Any],
+    expected_thumbprints: Iterable[str] | None = None,
+) -> str:
+    """Comprueba la firma sobre los bytes dados. Devuelve el `kid`; si no vale, `SignatureError`.
+
+    Con `expected_thumbprints`, la clave del `kid` tiene que tener una de esas huellas RFC 7638:
+    así un JWKS cambiado en el origen no basta para que una firma «verifique».
+    """
     protected, header, signature = parse_detached(jws)
     kid = header.get("kid")
-    keys = [k for k in jwks.get("keys") or [] if k.get("kid") == kid]
+    if not isinstance(kid, str) or not kid:
+        raise SignatureError("kid ausente, vacío o que no es una cadena")
+    keys = [k for k in jwks.get("keys") or [] if isinstance(k, Mapping) and k.get("kid") == kid]
     if len(keys) != 1:
         raise SignatureError(f"kid {kid!r} no está (o está repetido) en el JWKS")
+    if expected_thumbprints is not None:
+        pinned = {t.strip() for t in expected_thumbprints if t.strip()}
+        if not pinned:
+            raise SignatureError("se pidió fijar la clave sin ninguna huella")
+        if jwk_thumbprint(keys[0]) not in pinned:
+            raise SignatureError(f"la clave del kid {kid!r} no tiene ninguna huella esperada")
     public = _public_key(keys[0])
     r = int.from_bytes(signature[:_COORD], "big")
     s = int.from_bytes(signature[_COORD:], "big")
