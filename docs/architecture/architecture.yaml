@@ -16,7 +16,7 @@ id_prefixes:
 components:
   - id: CMP-001
     name: front
-    service: Cloudflare Workers static assets
+    service: Cloudflare Workers static assets. SPA en web/ (Vite + React + shadcn/ui, ADR-0023); consume la API pública como cualquier cliente
     status: planned
   - id: CMP-002
     name: api
@@ -163,6 +163,7 @@ flows:
   - {id: FLW-027, from: SRC-011, to: CMP-024, crosses: [TB-003], note: "commits de la API y JSON por CVE en su versión del commit"}
   - {id: FLW-028, from: SRC-012, to: CMP-024, crosses: [TB-003], note: "búsqueda de repositorios solo para candidatos B/C, 30/min con token; metadatos, árbol, releases y contenidos de texto pequeños"}
   - {id: FLW-029, from: CMP-024, to: CMP-021, note: "señales exploit (E1, E2, poc_unverified, poc_suspicious) por el ejecutor de fuentes"}
+  - {id: FLW-030, from: CMP-001, to: CMP-002, note: "el portal lee la API pública con GET y sin credenciales (feed de alertas, registros y metric_daily); URL base de VITE_API_BASE_URL (ADR-0016, ADR-0023)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -180,6 +181,7 @@ threats:
   - {id: THR-013, name: "acceso a /admin/* sin pasar por Access o con un JWT falsificado, caducado o de otra aplicación", refs: ["OWASP API2:2023"]}
   - {id: THR-014, name: "la API pública modifica datos o expone datos de donaciones con las donaciones desactivadas", refs: []}
   - {id: THR-015, name: "un PoC falso o con malware cuenta como exploit funcional, o un módulo DoS sube a B", refs: []}
+  - {id: THR-016, name: "un enlace o texto de una fuente de terceros, servido por el feed, ejecuta script en el portal (javascript:, data:) o filtra la navegación", refs: ["CWE-79"]}
 
 controls:
   - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado)"}
@@ -199,3 +201,4 @@ controls:
   - {id: CTL-015, name: "el origen valida el JWT de Access en /admin/* (RS256 con las claves del equipo, iss, aud, exp y nbf); sin configuración, /admin cerrado", mitigates: [THR-013], proof: "tests/test_api.py (sin JWT 401; firma, kid, alg, aud, iss o vigencia malos 403; sin configuración 403)"}
   - {id: CTL-016, name: "API pública solo GET y sin escritura; los datos donations.* no salen con donations.enabled=false", mitigates: [THR-014], proof: "tests/test_api.py (405 en métodos de escritura; el publicador no cambia; ninguna respuesta lleva donaciones)"}
   - {id: CTL-017, name: "heurísticas poc_suspicious (binarios, blobs u ofuscación, curl|sh y descargas ajenas, cuenta de menos de 30 días, README sin código, fork) sobre metadatos y la API de contenidos, sin clonar ni ejecutar; un PoC sin inspección completa nunca es limpio; el tipo de módulo o de entrada (auxiliary/dos, dos) se conserva para que no cuente como exploit", mitigates: [THR-005, THR-015], proof: "tests/test_exploit_sources.py (una prueba por heurística con fixtures sintéticos; el inspector solo pide URLs de la API; integración: un módulo DoS no da B)"}
+  - {id: CTL-018, name: "el portal solo pone en un href enlaces https (safeUrl), con rel=noopener noreferrer; React escapa el texto y no se usa HTML del feed; referrer no-referrer; un id de alerta mal formado no llega a la API", mitigates: [THR-016], proof: "web/src/test/units.test.tsx (safeUrl); web/src/test/pages.test.tsx (javascript: nunca en href; id mal formado sin petición)"}

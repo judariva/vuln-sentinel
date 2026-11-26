@@ -44,3 +44,39 @@ jobs:
           VS_FORBIDDEN_HOSTS: ${{ secrets.VS_FORBIDDEN_HOSTS }}
           VS_TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
         run: uv run pytest -rs
+
+  # Portal (T8a, ADR-0023): build, lint, tests de componentes y prueba de humo con axe contra la
+  # API de T6 con fixtures (`tests/portal_fixture.py`), todo en 127.0.0.1.
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # SHA leído en la página del commit de la release v7.1.0 (2026-11-26); verificar con
+      # `git ls-remote` antes de fusionar (informe de T8a).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Dependencias de Python (API con fixtures)
+        working-directory: .
+        run: uv sync --locked
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
+      - name: Tests de componentes
+        run: npm test
+      - name: Navegador de Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Prueba de humo y axe
+        run: npx playwright test
