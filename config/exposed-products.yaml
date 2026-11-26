@@ -1,29 +1,2428 @@
 # Productos expuestos a Internet de uso masivo (PLAN.md §5.2, `producto_expuesto`).
 #
-# CRITERIO v1 (antes de mirar ningún caso):
-#   Productos de las categorías de abajo cuyo fabricante tenga al menos 3 entradas en CISA KEV en
-#   los últimos 36 meses en esa categoría, más los servidores web/proxy y de identidad de mayor
-#   despliegue. La lista inicial la propone un script en F1a a partir de KEV y Juan la revisa
-#   (P-10). Cada alta o baja es un commit con su motivo.
+# FICHERO GENERADO por vs.lists.build_exposed_products
+# (src/vs/lists/build_exposed_products.py). No se edita a mano: se cambia el criterio o las reglas
+# en el script, se regenera y se revisa por PR (P-10). `manual_changes` solo como excepción, con
+# motivo y PR.
+#
+# CRITERIO v3, reglas v3 (el criterio de partida se fijó en F0, antes
+# de mirar ningún caso; R7):
+#   1. Entradas de CISA KEV con `dateAdded` en los últimos 36 meses hasta `cutoff_date`.
+#   2. Canonicalización: un producto por (fabricante, producto) con las variantes de KEV en
+#      `aliases`, según las reglas de `canonicalization.rules`. Cada reasignación y fusión aplicada
+#      se lista en `canonicalization`.
+#   3. Categoría (`rules`): palabras de tipo (`type`), de tipo solo para nombres (`name`) y de marca
+#      (`brand`) sobre el fabricante y los nombres del producto canónico. Si casan varias, gana la
+#      primera de `precedence`. Si no casa ninguna, SOLO las palabras de tipo (`type`) sobre
+#      vulnerabilityName y shortDescription de sus entradas: la
+#      categoría más frecuente, si es única y casa en al menos la mitad de las entradas.
+#   4. Entra en `products` si su fabricante suma al menos `threshold[categoría]` entradas de KEV de
+#      esa categoría en la ventana (una entrada cuenta una vez por categoría). Si no,
+#      `below_threshold`. Umbral por familia (v3, decisión de Juan del 2026-11-26):
+#      firewall 2, vpn 2, load-balancer 2, remote-access 2; 3 para el resto.
+#   5. `needs_review` (NUNCA `products`), con su motivo: productos genéricos de KEV («Multiple
+#      Products») que casan alguna regla en su nombre o alguna palabra de tipo en sus descripciones
+#      (v3: antes también las de marca), y empates en las
+#      descripciones. Si ninguna regla casa por nombre y ninguna categoría llega a la mitad de las
+#      descripciones: `out_of_scope` (solo se listan los ids).
+#   6. `cpe` y `cna` salen de los registros cvelistV5 de las entradas del producto: prefijos
+#      cpe:2.3:<part>:<vendor>:<product> y pares vendor/product del CNA cuyos términos casan con los
+#      nombres del producto (regla «tokens»); si ninguno casa, los que aparecen en al menos la mitad
+#      de sus registros y comparten un término o salen de entradas de un solo producto (regla
+#      «majority»). Si no queda ninguno, `cpe_missing_reason` dice por qué.
+#   7. Pata de despliegue («los servidores web/proxy y de identidad de mayor despliegue»): ver
+#      `deployment_leg`. N y la fuente se fijaron antes de ver ningún resultado.
 #
 # Formato de cada producto:
-#   - id: estable, nunca se reutiliza
-#     category: una de `categories`
-#     vendor: nombre normalizado
-#     product: nombre normalizado
-#     aliases: [nombres vendor/product tal como aparecen en registros CVE de distintos CNA]
-#     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]
-#     purl: [purl sin versión, si existe]
-criterion_version: 1
+#   - id: estable (fabricante--producto canónicos), nunca se reutiliza
+#     category / category_source (name | descriptions) / matched (reglas que casaron)
+#     vendor / product: forma más frecuente; names: nombres canónicos; abbreviations
+#     aliases: [{vendor, product} tal como aparecen en KEV]
+#     cna: [{vendor, product} tal como aparecen en cvelistV5]; cna_missing_reason si vacío
+#     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]; cpe_rule; cpe_missing_reason si vacío
+#     purl: [purl sin versión] (vacío en v2: los productos de borde no tienen purl)
+#     evidence: entradas de KEV que justifican el alta
+criterion_version: 3
+generator: vs.lists.build_exposed_products
+generator_version: 3.0.0
+rules_version: 3
+cutoff_date: '2026-11-26'
+window:
+  months: 36
+  from_exclusive: '2023-11-26'
+threshold:
+  vpn: 2
+  firewall: 2
+  load-balancer: 2
+  web-proxy: 3
+  identity: 3
+  hypervisor: 3
+  cicd: 3
+  mail: 3
+  file-transfer: 3
+  remote-access: 2
+inputs:
+- name: cisa-kev
+  url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  license: CC0-1.0
+  catalog_version: 2026.11.25
+  sha256: sha256:a76360009e4a65794a2b8073df5475f7a787a3bb83c3bfad2b0c3434a067631a
+- name: cvelistV5
+  url: https://github.com/CVEProject/cvelistV5
+  license: CVE Program Terms of Use (MITRE)
+  terms_url: https://www.cve.org/Legal/TermsOfUse
+  notice: 'Contiene datos de registros CVE. CVE® es una marca de The MITRE Corporation. Usados según los
+    CVE Program Terms of Use (https://www.cve.org/Legal/TermsOfUse): «MITRE hereby grants you a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare
+    derivative works of, publicly display, publicly perform, sublicense, and distribute Common Vulnerabilities
+    and Exposures (CVE). Any copy you make for such purposes is authorized provided that you reproduce
+    MITRE''s copyright designation and this license in any such copy.»'
+  records: 145
+  records_missing: []
+  sha256: sha256:fa0e94dfc16d1af903ff77a35986fa35afa19a517743e36681858de922a99dbe
 categories:
-  - vpn
+- vpn
+- firewall
+- load-balancer
+- web-proxy
+- identity
+- hypervisor
+- cicd
+- mail
+- file-transfer
+- remote-access
+precedence:
+- vpn
+- remote-access
+- identity
+- load-balancer
+- firewall
+- file-transfer
+- mail
+- cicd
+- hypervisor
+- web-proxy
+rules:
+  vpn:
+    type:
+    - vpn
+    - ssl[- ]?vpn
+    - secure access
+    - secure mobile access
+    - access gateway
+    - remote access vpn
+    name: []
+    brand:
+    - connect secure
+    - policy secure
+    - zta gateways?
+    - globalprotect
+    - sonicwall sma ?\d*
+    - netscaler gateway
+    - arrayos
+  firewall:
+    type:
+    - firewalls?
+    - waf
+    - web application firewall
+    - threat defense
+    - (?<!email )security gateways?
+    - utm
+    - next[- ]generation firewall
+    - ngfw
+    name: []
+    brand:
+    - pan-os
+    - fortios
+    - fortigate
+    - fortiweb
+    - sonicos
+    - firebox
+    - screenos
+    - cyberoamos
+    - adaptive security appliance
+    - firepower
+  load-balancer:
+    type:
+    - load[- ]balanc\w*
+    - adc
+    - application delivery\w*
+    - traffic manager
+    name: []
+    brand:
+    - big-ip
+    - loadmaster
+    - netscaler
+  web-proxy:
+    type:
+    - proxy
+    - reverse proxy
+    - web server
+    - http server
+    - \w*httpd
+    name: []
+    brand:
+    - fortiproxy
+  identity:
+    type:
+    - identity
+    - identity provider
+    - sso
+    - single sign[- ]on
+    - access manager
+    - active directory
+    - federation
+    - adfs
+    - radius
+    name: []
+    brand: []
+  hypervisor:
+    type:
+    - hypervisor
+    - virtualization
+    - virtual machine manager
+    name: []
+    brand:
+    - esxi?
+    - vcenter
+    - vsphere
+    - hyper-v
+  cicd:
+    type:
+    - ci/cd
+    - continuous integration
+    - build server
+    - devops
+    - artifact repository
+    - repository manager
+    name: []
+    brand:
+    - teamcity
+    - jenkins
+    - gitlab
+    - artifactory
+    - gitea
+    - gogs
+  mail:
+    type:
+    - e-?mail
+    - webmail
+    - mail
+    - groupware
+    - mail server
+    name:
+    - \w*mail\w*
+    brand:
+    - exchange server
+    - zimbra
+  file-transfer:
+    type:
+    - file transfer
+    - managed file transfer
+    - \w*ftp\w*
+    - mft
+    - file sharing
+    - file server
+    name: []
+    brand:
+    - serv-u
+    - centrestack
+    - triofox
+    - aspera faspex
+    - moveit
+  remote-access:
+    type:
+    - remote access
+    - remote support
+    - remote desktop
+    - remote management
+    - remote monitoring
+    - rmm
+    name: []
+    brand:
+    - screenconnect
+    - simplehelp
+    - n-central
+canonicalization:
+  rules:
+  - 'R1 fabricante: si el producto de KEV empieza por el nombre de OTRO fabricante de KEV (catálogo completo),
+    el producto pasa a ese fabricante sin el prefijo (p. ej. «Broadcom | VMware vCenter» → VMware vCenter).
+    Cada reasignación se lista en `canonicalization`.'
+  - 'R2 «X and Y», «X, Y, and Z» → un producto por parte. Una parte de una sola palabra genérica (manager,
+    gateway, controller, server, client, console, director, router, conductor) hereda el prefijo de la
+    primera parte si esta acaba en palabra genérica o en sigla («NetScaler ADC and Gateway» → NetScaler
+    ADC, NetScaler Gateway). Una parte que solo nombra el despliegue (server, data center, cloud, on-prem)
+    se descarta («Jira Server and Data Center» → Jira Server). v3: si alguna parte es de una sola palabra
+    (sin abreviatura) y ninguna parte es un producto que el fabricante tiene solo en otra entrada de la
+    ventana, ni el nombre del fabricante, ni es solo de edición (R4), la «and» es parte del nombre y no
+    se separa («Backup and Replication», «Utah, Vancouver, and Washington DC Now Platform»).'
+  - 'R3 el contenido entre paréntesis es una abreviatura del producto («Adaptive Security Appliance (ASA)»):
+    se guarda aparte y no forma parte de la clave.'
+  - R4 se quita el nombre del propio fabricante al principio («WordPress Core» → Core), salvo que el producto
+    se llame igual que el fabricante o solo quede server/software. Un nombre que solo tiene palabras de
+    edición (community, enterprise, edition(s), ce, ee) es el producto con el nombre del fabricante.
+  - R5 clave = nombre normalizado sin los sufijos genéricos finales (software, device(s), series); «appliances»
+    y «gateways» (v3) se normalizan al singular.
+  - 'R6 producto genérico: si el producto de KEV es el nombre del fabricante y ese fabricante tiene otros
+    productos en la ventana, o empieza por «Multiple», se busca al principio del nombre de la vulnerabilidad
+    un producto conocido del fabricante (el más largo). Si no hay, «Multiple…» va a `needs_review` si
+    casa alguna regla y a `out_of_scope` si no.'
+  - 'R7 fusiones dentro de un fabricante: claves que comparten abreviatura; clave que acaba en «-<abreviatura>»
+    o «-<otra clave>»; «X» y «X-server». La clave canónica es la de más entradas (a igualdad, la más corta
+    y luego la alfabética).'
+  vendor_reassignments:
+  - cve: CVE-2024-37079
+    kev: Broadcom | VMware vCenter Server
+    to_vendor: VMware
+    rule: R1
+  - cve: CVE-2024-4358
+    kev: Progress | Telerik Report Server
+    to_vendor: Telerik
+    rule: R1
+  - cve: CVE-2025-41244
+    kev: Broadcom | VMware Aria Operations and VMware Tools
+    to_vendor: VMware
+    rule: R1
+  - cve: CVE-2026-103406
+    kev: Hewlett Packard Enterprise (HPE) | Juniper Session Smart Conductor and Session Smart Router
+    to_vendor: Juniper
+    rule: R1
+  - cve: CVE-2026-123890
+    kev: Broadcom | VMware vCenter
+    to_vendor: VMware
+    rule: R1
+  - cve: CVE-2026-22719
+    kev: Broadcom | VMware Aria Operations
+    to_vendor: VMware
+    rule: R1
+  - cve: CVE-2026-41709
+    kev: Broadcom | VMware ESX
+    to_vendor: VMware
+    rule: R1
+  - cve: CVE-2026-59310
+    kev: Broadcom | VMware vCenter
+    to_vendor: VMware
+    rule: R1
+  resolved_generic:
+  - cve: CVE-2026-42897
+    kev: Microsoft | Microsoft
+    to: microsoft--exchange-server
+    rule: R6
+  merges:
+  - id: apple--ios-and-ipados
+    merged:
+    - ios-and-ipados
+    - ipados
+    rules:
+    - R7 sufijo
+  - id: asus--routers
+    merged:
+    - routers
+    - rt-ax55-routers
+    rules:
+    - R7 sufijo
+  - id: check-point--security-gateway
+    merged:
+    - quantum-security-gateway
+    - security-gateway
+    rules:
+    - R7 sufijo
+  - id: cisco--adaptive-security-appliance
+    merged:
+    - adaptive-security-appliance
+    - secure-firewall-adaptive-security-appliance
+    - secure-firewall-asa
+    rules:
+    - R7 abreviatura
+  - id: cisco--firepower-threat-defense
+    merged:
+    - firepower-threat-defense
+    - secure-firewall-threat-defense
+    - secure-ftd
+    rules:
+    - R7 abreviatura
+  - id: cisco--sd-wan
+    merged:
+    - catalyst-sd-wan
+    - sd-wan
+    rules:
+    - R7 sufijo
+  - id: draytek--vigor-routers
+    merged:
+    - multiple-vigor-routers
+    - vigor-routers
+    rules:
+    - R7 sufijo
+  - id: google--skia
+    merged:
+    - chromium-skia
+    - skia
+    rules:
+    - R7 sufijo
+  - id: microsoft--sharepoint
+    merged:
+    - sharepoint
+    - sharepoint-server
+    rules:
+    - R7 sufijo
+  - id: mongodb--mongodb
+    merged:
+    - mongodb
+    - mongodb-server
+    rules:
+    - R7 sufijo
+  - id: progress--loadmaster
+    merged:
+    - kemp-loadmaster
+    - loadmaster
+    rules:
+    - R7 sufijo
+  - id: vmware--vcenter-server
+    merged:
+    - vcenter
+    - vcenter-server
+    rules:
+    - R7 sufijo
+stats:
+  kev_entries_total: 1805
+  kev_entries_in_window: 765
+  products_in_window: 370
+  products: 45
+  products_with_cpe: 18
+  needs_review: 7
+  below_threshold: 37
+  out_of_scope: 281
+manual_changes: []
+products:
+- id: array-networks--ag-vxag-arrayos
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:arrayos
+  vendor: Array Networks
+  product: AG/vxAG ArrayOS
+  names:
+  - AG/vxAG ArrayOS
+  abbreviations: []
+  aliases:
+  - vendor: Array Networks
+    product: AG/vxAG ArrayOS
+  cpe:
+  - cpe:2.3:o:arraynetworks:arrayos_ag
+  cna: []
+  cpe_rule: tokens
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2023-28461
+- id: array-networks--arrayos-ag
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:arrayos
+  vendor: Array Networks
+  product: ArrayOS AG
+  names:
+  - ArrayOS AG
+  abbreviations: []
+  aliases:
+  - vendor: Array Networks
+    product: ArrayOS AG
+  cpe: []
+  cna:
+  - vendor: Array Networks
+    product: ArrayOS AG
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-66644
+- id: beyondtrust--privileged-remote-access
+  category: remote-access
+  category_source: name
+  matched:
+  - type:remote-access:remote access
+  vendor: BeyondTrust
+  product: Privileged Remote Access
+  names:
+  - Privileged Remote Access
+  abbreviations:
+  - PRA
+  aliases:
+  - vendor: BeyondTrust
+    product: Privileged Remote Access (PRA) and Remote Support (RS)
+  - vendor: BeyondTrust
+    product: Remote Support (RS) and Privileged Remote Access (PRA)
+  cpe: []
+  cna:
+  - vendor: BeyondTrust
+    product: Privileged Remote Access
+  - vendor: BeyondTrust
+    product: Remote Support(RS) & Privileged Remote Access(PRA)
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 4
+    cves:
+    - CVE-2024-12356
+    - CVE-2024-12686
+    - CVE-2026-1731
+- id: beyondtrust--remote-support
+  category: remote-access
+  category_source: name
+  matched:
+  - type:remote-access:remote support
+  vendor: BeyondTrust
+  product: Remote Support
+  names:
+  - Remote Support
+  abbreviations:
+  - RS
+  aliases:
+  - vendor: BeyondTrust
+    product: Privileged Remote Access (PRA) and Remote Support (RS)
+  - vendor: BeyondTrust
+    product: Remote Support
+  - vendor: BeyondTrust
+    product: Remote Support (RS) and Privileged Remote Access (PRA)
+  cpe: []
+  cna:
+  - vendor: BeyondTrust
+    product: Remote Support
+  - vendor: BeyondTrust
+    product: Remote Support(RS) & Privileged Remote Access(PRA)
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 4
+    cves:
+    - CVE-2024-12356
+    - CVE-2024-12686
+    - CVE-2026-102764
+    - CVE-2026-1731
+- id: check-point--security-gateway
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:(?<!email )security gateways?
+  vendor: Check Point
+  product: Quantum Security Gateways
+  names:
+  - Quantum Security Gateways
+  - Security Gateway
+  abbreviations: []
+  aliases:
+  - vendor: Check Point
+    product: Quantum Security Gateways
+  - vendor: Check Point
+    product: Security Gateway
+  cpe:
+  - cpe:2.3:o:checkpoint:quantum_security_gateway_firmware
+  cna:
+  - vendor: checkpoint
+    product: Quantum Security Gateway
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-24919
+    - CVE-2026-50751
+- id: cisco--adaptive-security-appliance
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  - brand:firewall:adaptive security appliance
+  vendor: Cisco
+  product: Adaptive Security Appliance
+  names:
+  - Adaptive Security Appliance
+  - Secure Firewall ASA Software
+  - Secure Firewall Adaptive Security Appliance
+  abbreviations:
+  - ASA
+  aliases:
+  - vendor: Cisco
+    product: Adaptive Security Appliance (ASA)
+  - vendor: Cisco
+    product: Adaptive Security Appliance (ASA) and Firepower Threat Defense (FTD)
+  - vendor: Cisco
+    product: Secure Firewall ASA Software and Cisco Secure FTD Software
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance (ASA) and Secure Firewall Threat Defense (FTD)
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance and Secure Firewall Threat Defense
+  cpe:
+  - cpe:2.3:a:cisco:adaptive_security_appliance_software
+  - cpe:2.3:a:cisco:asa
+  - cpe:2.3:o:cisco:adaptive_security_appliance_software
+  cna:
+  - vendor: Cisco
+    product: Cisco Adaptive Security Appliance (ASA) Software
+  - vendor: Cisco
+    product: Cisco Secure Firewall Adaptive Security Appliance (ASA) Software
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 9
+    vendor_category_entries: 12
+    cves:
+    - CVE-2014-2120
+    - CVE-2020-3259
+    - CVE-2024-20353
+    - CVE-2024-20359
+    - CVE-2024-20481
+    - CVE-2025-20333
+    - CVE-2025-20362
+    - CVE-2026-20349
+    - CVE-2026-76418
+- id: cisco--firepower-threat-defense
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  - type:firewall:threat defense
+  - brand:firewall:firepower
+  vendor: Cisco
+  product: Firepower Threat Defense
+  names:
+  - Firepower Threat Defense
+  - Secure FTD Software
+  - Secure Firewall Threat Defense
+  abbreviations:
+  - FTD
+  aliases:
+  - vendor: Cisco
+    product: Adaptive Security Appliance (ASA) and Firepower Threat Defense (FTD)
+  - vendor: Cisco
+    product: Secure Firewall ASA Software and Cisco Secure FTD Software
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance (ASA) and Secure Firewall Threat Defense (FTD)
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance and Secure Firewall Threat Defense
+  cpe:
+  - cpe:2.3:a:cisco:firepower_threat_defense
+  - cpe:2.3:a:cisco:firepower_threat_defense_software
+  - cpe:2.3:o:cisco:firepower_threat_defense_software
+  cna:
+  - vendor: Cisco
+    product: Cisco Firepower Threat Defense Software
+  - vendor: Cisco
+    product: Cisco Secure Firewall Threat Defense (FTD) Software
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 8
+    vendor_category_entries: 12
+    cves:
+    - CVE-2020-3259
+    - CVE-2024-20353
+    - CVE-2024-20359
+    - CVE-2024-20481
+    - CVE-2025-20333
+    - CVE-2025-20362
+    - CVE-2026-20349
+    - CVE-2026-76418
+- id: cisco--identity-services-engine
+  category: identity
+  category_source: name
+  matched:
+  - type:identity:identity
+  vendor: Cisco
+  product: Identity Services Engine
+  names:
+  - Identity Services Engine
+  abbreviations: []
+  aliases:
+  - vendor: Cisco
+    product: Identity Services Engine
+  cpe: []
+  cna:
+  - vendor: Cisco
+    product: Cisco Identity Services Engine Software
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2025-20281
+    - CVE-2025-20337
+    - CVE-2026-76460
+- id: cisco--secure-firewall-management-center
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  vendor: Cisco
+  product: Secure Firewall Management Center
+  names:
+  - Secure Firewall Management Center
+  abbreviations:
+  - FMC
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Management Center (FMC)
+  - vendor: Cisco
+    product: Secure Firewall Management Center (FMC) and Security Cloud Control (SCC) Firewall Management
+  cpe: []
+  cna:
+  - vendor: Cisco
+    product: Cisco Secure Firewall Management Center (FMC)
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 12
+    cves:
+    - CVE-2026-20079
+    - CVE-2026-20131
+    - CVE-2026-20316
+- id: cisco--security-cloud-control-firewall-management
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  vendor: Cisco
+  product: Security Cloud Control Firewall Management
+  names:
+  - Security Cloud Control Firewall Management
+  abbreviations:
+  - SCC
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Management Center (FMC) and Security Cloud Control (SCC) Firewall Management
+  cpe: []
+  cna:
+  - vendor: Cisco
+    product: Cisco Secure Firewall Management Center (FMC)
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 12
+    cves:
+    - CVE-2026-20079
+- id: citrix--netscaler
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:netscaler
+  vendor: Citrix
+  product: NetScaler
+  names:
+  - NetScaler
+  abbreviations: []
+  aliases:
+  - vendor: Citrix
+    product: NetScaler
+  cpe: []
+  cna:
+  - vendor: NetScaler
+    product: ADC
+  - vendor: NetScaler
+    product: Gateway
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 6
+    vendor_category_entries: 11
+    cves:
+    - CVE-2025-7775
+    - CVE-2026-19490
+    - CVE-2026-3055
+    - CVE-2026-88771
+    - CVE-2026-88772
+    - CVE-2026-88779
+- id: citrix--netscaler-adc
+  category: load-balancer
+  category_source: name
+  matched:
+  - type:load-balancer:adc
+  - brand:load-balancer:netscaler
+  vendor: Citrix
+  product: NetScaler ADC
+  names:
+  - NetScaler ADC
+  abbreviations: []
+  aliases:
+  - vendor: Citrix
+    product: NetScaler ADC and Gateway
+  - vendor: Citrix
+    product: NetScaler ADC and NetScaler Gateway
+  cpe: []
+  cna:
+  - vendor: Cloud Software Group
+    product: NetScaler ADC
+  - vendor: NetScaler
+    product: ADC
+  cpe_rule: null
+  cpe_missing_reason: los registros traen CPE, pero ninguno casa con los nombres del producto
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 11
+    cves:
+    - CVE-2023-6548
+    - CVE-2023-6549
+    - CVE-2025-5777
+    - CVE-2025-6543
+    - CVE-2026-8452
+- id: citrix--netscaler-gateway
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:netscaler gateway
+  - brand:load-balancer:netscaler
+  vendor: Citrix
+  product: NetScaler Gateway
+  names:
+  - NetScaler Gateway
+  abbreviations: []
+  aliases:
+  - vendor: Citrix
+    product: NetScaler ADC and Gateway
+  - vendor: Citrix
+    product: NetScaler ADC and NetScaler Gateway
+  cpe:
+  - cpe:2.3:a:citrix:netscaler_gateway
+  cna:
+  - vendor: Cloud Software Group
+    product: NetScaler Gateway
+  - vendor: NetScaler
+    product: Gateway
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 5
+    cves:
+    - CVE-2023-6548
+    - CVE-2023-6549
+    - CVE-2025-5777
+    - CVE-2025-6543
+    - CVE-2026-8452
+- id: connectwise--screenconnect
+  category: remote-access
+  category_source: name
+  matched:
+  - brand:remote-access:screenconnect
+  vendor: ConnectWise
+  product: ScreenConnect
+  names:
+  - ScreenConnect
+  abbreviations: []
+  aliases:
+  - vendor: ConnectWise
+    product: ScreenConnect
+  cpe:
+  - cpe:2.3:a:connectwise:screenconnect
+  cna:
+  - vendor: ConnectWise
+    product: ScreenConnect
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 4
+    cves:
+    - CVE-2024-1708
+    - CVE-2024-1709
+    - CVE-2025-3935
+    - CVE-2026-84869
+- id: crushftp--crushftp
+  category: file-transfer
+  category_source: name
+  matched:
+  - type:file-transfer:\w*ftp\w*
+  vendor: CrushFTP
+  product: CrushFTP
+  names:
+  - CrushFTP
+  abbreviations: []
+  aliases:
+  - vendor: CrushFTP
+    product: CrushFTP
+  cpe:
+  - cpe:2.3:a:crushftp:crushftp
+  cna:
+  - vendor: CrushFTP
+    product: CrushFTP
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2024-4040
+    - CVE-2025-31161
+    - CVE-2025-54309
+- id: f5--big-ip
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:big-ip
+  vendor: F5
+  product: BIG-IP
+  names:
+  - BIG-IP
+  abbreviations: []
+  aliases:
+  - vendor: F5
+    product: BIG-IP
+  cpe: []
+  cna:
+  - vendor: F5
+    product: BIG-IP
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-53521
+- id: f5--big-ip-apm
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:big-ip
+  vendor: F5
+  product: BIG-IP APM
+  names:
+  - BIG-IP APM
+  abbreviations: []
+  aliases:
+  - vendor: F5
+    product: BIG-IP APM
+  cpe: []
+  cna:
+  - vendor: F5
+    product: BIG-IP
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2026-94127
+- id: fortinet--fortios
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:fortios
+  vendor: Fortinet
+  product: FortiOS
+  names:
+  - FortiOS
+  abbreviations: []
+  aliases:
+  - vendor: Fortinet
+    product: FortiOS
+  - vendor: Fortinet
+    product: FortiOS and FortiProxy
+  cpe:
+  - cpe:2.3:o:fortinet:fortios
+  cna:
+  - vendor: Fortinet
+    product: FortiOS
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 8
+    cves:
+    - CVE-2019-6693
+    - CVE-2024-21762
+    - CVE-2024-55591
+    - CVE-2025-24472
+    - CVE-2025-68686
+- id: fortinet--fortiweb
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:fortiweb
+  vendor: Fortinet
+  product: FortiWeb
+  names:
+  - FortiWeb
+  abbreviations: []
+  aliases:
+  - vendor: Fortinet
+    product: FortiWeb
+  cpe:
+  - cpe:2.3:a:fortinet:fortiweb
+  cna:
+  - vendor: Fortinet
+    product: FortiWeb
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 8
+    cves:
+    - CVE-2025-25257
+    - CVE-2025-58034
+    - CVE-2025-64446
+- id: gitlab--gitlab
+  category: cicd
+  category_source: name
+  matched:
+  - brand:cicd:gitlab
+  vendor: GitLab
+  product: GitLab
+  names:
+  - GitLab
+  abbreviations: []
+  aliases:
+  - vendor: GitLab
+    product: Community Edition and Enterprise Edition
+  - vendor: GitLab
+    product: Community and Enterprise Editions
+  - vendor: GitLab
+    product: GitLab
+  - vendor: GitLab
+    product: GitLab CE/EE
+  cpe:
+  - cpe:2.3:a:gitlab:gitlab
+  cna:
+  - vendor: GitLab
+    product: GitLab
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 5
+    cves:
+    - CVE-2021-22175
+    - CVE-2021-39935
+    - CVE-2023-7028
+    - CVE-2026-85706
+    - CVE-2026-97229
+- id: gladinet--centrestack
+  category: file-transfer
+  category_source: name
+  matched:
+  - brand:file-transfer:centrestack
+  vendor: Gladinet
+  product: CentreStack
+  names:
+  - CentreStack
+  abbreviations: []
+  aliases:
+  - vendor: Gladinet
+    product: CentreStack
+  - vendor: Gladinet
+    product: CentreStack and Triofox
+  cpe: []
+  cna:
+  - vendor: Gladinet
+    product: CentreStack
+  - vendor: Gladinet
+    product: CentreStack and TrioFox
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 4
+    cves:
+    - CVE-2025-11371
+    - CVE-2025-14611
+    - CVE-2025-30406
+- id: gladinet--triofox
+  category: file-transfer
+  category_source: name
+  matched:
+  - brand:file-transfer:triofox
+  vendor: Gladinet
+  product: Triofox
+  names:
+  - Triofox
+  abbreviations: []
+  aliases:
+  - vendor: Gladinet
+    product: CentreStack and Triofox
+  - vendor: Gladinet
+    product: Triofox
+  cpe: []
+  cna:
+  - vendor: Gladinet
+    product: CentreStack and TrioFox
+  - vendor: TrioFox
+    product: TrioFox
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 4
+    cves:
+    - CVE-2025-11371
+    - CVE-2025-12480
+    - CVE-2025-14611
+- id: ivanti--connect-secure
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:connect secure
+  vendor: Ivanti
+  product: Connect Secure
+  names:
+  - Connect Secure
+  abbreviations: []
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure
+  - vendor: Ivanti
+    product: Connect Secure and Policy Secure
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and Neurons
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and ZTA Gateways
+  cpe:
+  - cpe:2.3:a:ivanti:connect_secure
+  cna:
+  - vendor: Ivanti
+    product: Connect Secure
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 8
+    vendor_category_entries: 8
+    cves:
+    - CVE-2023-46805
+    - CVE-2024-21887
+    - CVE-2024-21893
+    - CVE-2025-0282
+    - CVE-2025-22457
+    - CVE-2026-104935
+    - CVE-2026-111357
+    - CVE-2026-118527
+- id: ivanti--policy-secure
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:policy secure
+  vendor: Ivanti
+  product: Policy Secure
+  names:
+  - Policy Secure
+  abbreviations: []
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure and Policy Secure
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and Neurons
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and ZTA Gateways
+  cpe:
+  - cpe:2.3:a:ivanti:policy_secure
+  cna:
+  - vendor: Ivanti
+    product: Policy Secure
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 8
+    cves:
+    - CVE-2023-46805
+    - CVE-2024-21887
+    - CVE-2024-21893
+    - CVE-2025-0282
+    - CVE-2025-22457
+- id: ivanti--zta-gateway
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:zta gateways?
+  vendor: Ivanti
+  product: ZTA Gateways
+  names:
+  - ZTA Gateways
+  abbreviations: []
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and ZTA Gateways
+  cpe: []
+  cna:
+  - vendor: Ivanti
+    product: Neurons for ZTA gateways
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 8
+    cves:
+    - CVE-2025-0282
+    - CVE-2025-22457
+- id: jetbrains--teamcity
+  category: cicd
+  category_source: name
+  matched:
+  - brand:cicd:teamcity
+  vendor: JetBrains
+  product: TeamCity
+  names:
+  - TeamCity
+  abbreviations: []
+  aliases:
+  - vendor: JetBrains
+    product: TeamCity
+  cpe:
+  - cpe:2.3:a:jetbrains:teamcity
+  cna:
+  - vendor: JetBrains
+    product: TeamCity
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2024-27198
+    - CVE-2024-27199
+    - CVE-2026-63077
+- id: jfrog--artifactory
+  category: cicd
+  category_source: name
+  matched:
+  - brand:cicd:artifactory
+  vendor: JFrog
+  product: Artifactory
+  names:
+  - Artifactory
+  abbreviations: []
+  aliases:
+  - vendor: JFrog
+    product: Artifactory
+  cpe: []
+  cna:
+  - vendor: jfrog
+    product: artifactory
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 4
+    cves:
+    - CVE-2026-42016
+    - CVE-2026-42018
+    - CVE-2026-66384
+    - CVE-2026-82329
+- id: microsoft--exchange-server
+  category: mail
+  category_source: name
+  matched:
+  - brand:mail:exchange server
+  vendor: Microsoft
+  product: Exchange Server
+  names:
+  - Exchange Server
+  abbreviations: []
+  aliases:
+  - vendor: Microsoft
+    product: Exchange Server
+  - vendor: Microsoft
+    product: Microsoft
+  cpe: []
+  cna:
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2013 Cumulative Update 23
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2016 Cumulative Update 20
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2016 Cumulative Update 21
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2016 Cumulative Update 23
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 10
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 11
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 12
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 13
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 14
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 15
+  - vendor: Microsoft
+    product: Microsoft Exchange Server 2019 Cumulative Update 9
+  - vendor: Microsoft
+    product: Microsoft Exchange Server Subscription Edition RTM
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 4
+    cves:
+    - CVE-2021-31196
+    - CVE-2023-21529
+    - CVE-2024-21410
+    - CVE-2026-42897
+- id: n-able--n-central
+  category: remote-access
+  category_source: name
+  matched:
+  - brand:remote-access:n-central
+  vendor: N-able
+  product: N-central
+  names:
+  - N-Central
+  - N-central
+  abbreviations: []
+  aliases:
+  - vendor: N-able
+    product: N-Central
+  - vendor: N-able
+    product: N-central
+  cpe: []
+  cna:
+  - vendor: N-able
+    product: N-central
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 5
+    vendor_category_entries: 5
+    cves:
+    - CVE-2025-8875
+    - CVE-2025-8876
+    - CVE-2026-18556
+    - CVE-2026-18577
+    - CVE-2026-86218
+- id: palo-alto-networks--pan-os
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:pan-os
+  vendor: Palo Alto Networks
+  product: PAN-OS
+  names:
+  - PAN-OS
+  abbreviations: []
+  aliases:
+  - vendor: Palo Alto Networks
+    product: PAN-OS
+  cpe:
+  - cpe:2.3:o:palo_alto_networks:pan-os
+  - cpe:2.3:o:paloaltonetworks:pan-os
+  cna:
+  - vendor: Palo Alto Networks
+    product: PAN-OS
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 9
+    vendor_category_entries: 9
+    cves:
+    - CVE-2024-0012
+    - CVE-2024-3393
+    - CVE-2024-3400
+    - CVE-2024-9474
+    - CVE-2025-0108
+    - CVE-2025-0111
+    - CVE-2026-0257
+    - CVE-2026-0300
+    - CVE-2026-0322
+- id: progress--loadmaster
+  category: load-balancer
+  category_source: name
+  matched:
+  - brand:load-balancer:loadmaster
+  vendor: Progress
+  product: Kemp LoadMaster
+  names:
+  - Kemp LoadMaster
+  - LoadMaster
+  abbreviations: []
+  aliases:
+  - vendor: Progress
+    product: Kemp LoadMaster
+  - vendor: Progress
+    product: LoadMaster
+  cpe:
+  - cpe:2.3:a:kemptechnologies:loadmaster
+  cna:
+  - vendor: Progress Software
+    product: LoadMaster
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-1212
+    - CVE-2026-8037
+- id: roundcube--webmail
+  category: mail
+  category_source: name
+  matched:
+  - type:mail:webmail
+  - name:mail:\w*mail\w*
+  vendor: Roundcube
+  product: Webmail
+  names:
+  - Webmail
+  abbreviations: []
+  aliases:
+  - vendor: Roundcube
+    product: Webmail
+  cpe:
+  - cpe:2.3:a:roundcube:webmail
+  cna:
+  - vendor: Roundcube
+    product: Webmail
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 6
+    vendor_category_entries: 6
+    cves:
+    - CVE-2020-13965
+    - CVE-2023-43770
+    - CVE-2024-37383
+    - CVE-2024-42009
+    - CVE-2025-49113
+    - CVE-2025-68461
+- id: simplehelp--simplehelp
+  category: remote-access
+  category_source: name
+  matched:
+  - brand:remote-access:simplehelp
+  vendor: SimpleHelp
+  product: SimpleHelp
+  names:
+  - SimpleHelp
+  abbreviations: []
+  aliases:
+  - vendor: SimpleHelp
+    product: SimpleHelp
+  cpe: []
+  cna:
+  - vendor: SimpleHelp
+    product: SimpleHelp
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 4
+    cves:
+    - CVE-2024-57726
+    - CVE-2024-57727
+    - CVE-2024-57728
+    - CVE-2026-48558
+- id: smartertools--smartermail
+  category: mail
+  category_source: name
+  matched:
+  - name:mail:\w*mail\w*
+  vendor: SmarterTools
+  product: SmarterMail
+  names:
+  - SmarterMail
+  abbreviations: []
+  aliases:
+  - vendor: SmarterTools
+    product: SmarterMail
+  cpe: []
+  cna:
+  - vendor: SmarterTools
+    product: SmarterMail
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2025-52691
+    - CVE-2026-23760
+    - CVE-2026-24423
+- id: sonicwall--sma100-appliance
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:sonicwall sma ?\d*
+  vendor: SonicWall
+  product: SMA100 Appliances
+  names:
+  - SMA100 Appliances
+  abbreviations: []
+  aliases:
+  - vendor: SonicWall
+    product: SMA100 Appliances
+  cpe: []
+  cna:
+  - vendor: SonicWall
+    product: SMA100
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 9
+    cves:
+    - CVE-2021-20035
+    - CVE-2023-44221
+- id: sonicwall--sma1000-appliance
+  category: vpn
+  category_source: name
+  matched:
+  - brand:vpn:sonicwall sma ?\d*
+  vendor: SonicWall
+  product: SMA1000 Appliances
+  names:
+  - SMA1000 Appliances
+  - SMA1000 appliance
+  abbreviations: []
+  aliases:
+  - vendor: SonicWall
+    product: SMA1000 Appliances
+  - vendor: SonicWall
+    product: SMA1000 appliance
+  cpe: []
+  cna:
+  - vendor: SonicWall
+    product: SMA1000
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 6
+    vendor_category_entries: 9
+    cves:
+    - CVE-2025-23006
+    - CVE-2025-40602
+    - CVE-2026-15409
+    - CVE-2026-15410
+    - CVE-2026-83548
+    - CVE-2026-83549
+- id: sonicwall--sonicos
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:sonicos
+  vendor: SonicWall
+  product: SonicOS
+  names:
+  - SonicOS
+  abbreviations: []
+  aliases:
+  - vendor: SonicWall
+    product: SonicOS
+  cpe: []
+  cna:
+  - vendor: SonicWall
+    product: SonicOS
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2024-40766
+    - CVE-2024-53704
+- id: sonicwall--sonicos-sslvpn
+  category: vpn
+  category_source: name
+  matched:
+  - type:vpn:ssl[- ]?vpn
+  - brand:firewall:sonicos
+  vendor: SonicWall
+  product: SonicOS SSLVPN
+  names:
+  - SonicOS SSLVPN
+  abbreviations: []
+  aliases:
+  - vendor: SonicWall
+    product: SonicOS SSLVPN
+  cpe: []
+  cna:
+  - vendor: SonicWall
+    product: SonicOS
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 9
+    cves:
+    - CVE-2026-19868
+- id: sophos--cyberoamos
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:cyberoamos
+  vendor: Sophos
+  product: CyberoamOS
+  names:
+  - CyberoamOS
+  abbreviations: []
+  aliases:
+  - vendor: Sophos
+    product: CyberoamOS
+  cpe: []
+  cna: []
+  cpe_rule: null
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2020-29574
+- id: sophos--xg-firewall
+  category: firewall
+  category_source: name
+  matched:
+  - type:firewall:firewalls?
+  vendor: Sophos
+  product: XG Firewall
+  names:
+  - XG Firewall
+  abbreviations: []
+  aliases:
+  - vendor: Sophos
+    product: XG Firewall
+  cpe: []
+  cna: []
+  cpe_rule: null
+  cna_missing_reason: el CNA publica vendor/product «n/a» o vacíos en todos sus registros
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 2
+    cves:
+    - CVE-2020-15069
+- id: synacor--zimbra-collaboration-suite
+  category: mail
+  category_source: name
+  matched:
+  - brand:mail:zimbra
+  vendor: Synacor
+  product: Zimbra Collaboration Suite
+  names:
+  - Zimbra Collaboration Suite
+  abbreviations:
+  - ZCS
+  aliases:
+  - vendor: Synacor
+    product: Zimbra Collaboration Suite
+  - vendor: Synacor
+    product: Zimbra Collaboration Suite (ZCS)
+  cpe: []
+  cna:
+  - vendor: Zimbra
+    product: Collaboration
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 10
+    vendor_category_entries: 10
+    cves:
+    - CVE-2019-9621
+    - CVE-2020-7796
+    - CVE-2023-34192
+    - CVE-2024-27443
+    - CVE-2024-45519
+    - CVE-2025-27915
+    - CVE-2025-48700
+    - CVE-2025-66376
+    - CVE-2025-68645
+    - CVE-2026-73570
+- id: vmware--esx
+  category: hypervisor
+  category_source: name
+  matched:
+  - brand:hypervisor:esxi?
+  vendor: VMware
+  product: ESX
+  names:
+  - ESX
+  abbreviations: []
+  aliases:
+  - vendor: Broadcom
+    product: VMware ESX
+  cpe: []
+  cna:
+  - vendor: VMware
+    product: ESX
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 12
+    cves:
+    - CVE-2026-41709
+- id: vmware--esxi
+  category: hypervisor
+  category_source: name
+  matched:
+  - brand:hypervisor:esxi?
+  vendor: VMware
+  product: ESXi
+  names:
+  - ESXi
+  abbreviations: []
+  aliases:
+  - vendor: VMware
+    product: ESXi
+  - vendor: VMware
+    product: ESXi and Workstation
+  - vendor: VMware
+    product: ESXi, Workstation, and Fusion
+  cpe:
+  - cpe:2.3:o:vmware:esxi
+  cna:
+  - vendor: VMware
+    product: ESXi
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 12
+    cves:
+    - CVE-2024-37085
+    - CVE-2025-22224
+    - CVE-2025-22225
+    - CVE-2025-22226
+- id: vmware--vcenter-server
+  category: hypervisor
+  category_source: name
+  matched:
+  - brand:hypervisor:vcenter
+  vendor: VMware
+  product: vCenter Server
+  names:
+  - vCenter
+  - vCenter Server
+  abbreviations: []
+  aliases:
+  - vendor: Broadcom
+    product: VMware vCenter
+  - vendor: Broadcom
+    product: VMware vCenter Server
+  - vendor: VMware
+    product: vCenter Server
+  cpe:
+  - cpe:2.3:a:broadcom:vmware_vcenter_server
+  - cpe:2.3:a:vmware:vcenter_server
+  cna:
+  - vendor: VMware
+    product: VMware Cloud Foundation (VMware vCenter Server)
+  - vendor: VMware
+    product: VMware vCenter
+  - vendor: VMware
+    product: VMware vCenter Server
+  - vendor: VMware
+    product: vCenter
+  cpe_rule: tokens
+  purl: []
+  evidence:
+    kev_entries: 7
+    vendor_category_entries: 12
+    cves:
+    - CVE-2022-22948
+    - CVE-2023-34048
+    - CVE-2024-37079
+    - CVE-2024-38812
+    - CVE-2024-38813
+    - CVE-2026-123890
+    - CVE-2026-59310
+- id: watchguard--firebox
+  category: firewall
+  category_source: name
+  matched:
+  - brand:firewall:firebox
+  vendor: WatchGuard
+  product: Firebox
+  names:
+  - Firebox
+  abbreviations: []
+  aliases:
+  - vendor: WatchGuard
+    product: Firebox
+  cpe: []
+  cna:
+  - vendor: WatchGuard
+    product: Fireware OS
+  cpe_rule: null
+  cpe_missing_reason: los registros cvelistV5 no traen CPE (ni el CNA ni el ADP)
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 2
+    cves:
+    - CVE-2025-14733
+    - CVE-2025-9242
+needs_review:
+- id: barracuda-networks--multiple-products
+  vendor: Barracuda Networks
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
   - firewall
   - load-balancer
-  - web-proxy
-  - identity
-  - hypervisor
-  - cicd
   - mail
-  - file-transfer
+  kev_entries: 1
+  cves:
+  - CVE-2026-111560
+- id: check-point--multiple-products
+  vendor: Check Point
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
+  - firewall
   - remote-access
-products: []
+  - vpn
+  kev_entries: 3
+  cves:
+  - CVE-2026-123039
+  - CVE-2026-85102
+  - CVE-2026-93616
+- id: cisco--multiple-products
+  vendor: Cisco
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
+  - mail
+  kev_entries: 1
+  cves:
+  - CVE-2025-20393
+- id: cleo--multiple-products
+  vendor: Cleo
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
+  - file-transfer
+  kev_entries: 2
+  cves:
+  - CVE-2024-50623
+  - CVE-2024-55956
+- id: fortinet--multiple-products
+  vendor: Fortinet
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
+  - identity
+  kev_entries: 6
+  cves:
+  - CVE-2024-23113
+  - CVE-2025-25249
+  - CVE-2025-32756
+  - CVE-2025-59718
+  - CVE-2025-61624
+  - CVE-2026-24858
+- id: wso2--multiple-products
+  vendor: WSO2
+  product: Multiple Products
+  reason: producto genérico en KEV
+  matched:
+  - load-balancer
+  kev_entries: 1
+  cves:
+  - CVE-2026-5430
+- id: zyxel--multiple-firewalls
+  vendor: Zyxel
+  product: Multiple Firewalls
+  reason: producto genérico en KEV
+  matched:
+  - firewall
+  kev_entries: 1
+  cves:
+  - CVE-2024-11667
+below_threshold:
+- id: apache--http-server
+  product: HTTP Server
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: aquasecurity--trivy
+  product: Trivy
+  category: cicd
+  vendor_category_entries: 1
+  threshold: 3
+- id: barracuda-networks--email-security-gateway
+  product: Email Security Gateway
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: cisco--secure-email-gateway
+  product: Secure Email Gateway
+  category: mail
+  vendor_category_entries: 2
+  threshold: 3
+- id: citrix--session-recording
+  product: Session Recording
+  category: identity
+  vendor_category_entries: 2
+  threshold: 3
+- id: commvault--web-server
+  product: Web Server
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: fortinet--fortimail
+  product: FortiMail
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: fortinet--fortiproxy
+  product: FortiProxy
+  category: web-proxy
+  vendor_category_entries: 2
+  threshold: 3
+- id: fortra--goanywhere-mft
+  product: GoAnywhere MFT
+  category: file-transfer
+  vendor_category_entries: 1
+  threshold: 3
+- id: gitea--gitea
+  product: Gitea
+  category: cicd
+  vendor_category_entries: 1
+  threshold: 3
+- id: gogs--gogs
+  product: Gogs
+  category: cicd
+  vendor_category_entries: 1
+  threshold: 3
+- id: ibm--aspera-faspex
+  product: Aspera Faspex
+  category: file-transfer
+  vendor_category_entries: 1
+  threshold: 3
+- id: ivanti--virtual-traffic-manager
+  product: Virtual Traffic Manager
+  category: load-balancer
+  vendor_category_entries: 1
+  threshold: 2
+- id: jenkins--command-line-interface
+  product: Command Line Interface
+  category: cicd
+  vendor_category_entries: 2
+  threshold: 3
+- id: jenkins--jenkins
+  product: Jenkins
+  category: cicd
+  vendor_category_entries: 2
+  threshold: 3
+- id: juniper--screenos
+  product: ScreenOS
+  category: firewall
+  vendor_category_entries: 1
+  threshold: 2
+- id: libraesva--email-security-gateway
+  product: Email Security Gateway
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: litespeed--cpanel-plugin
+  product: cPanel Plugin
+  category: file-transfer
+  vendor_category_entries: 2
+  threshold: 3
+- id: mdaemon--email-server
+  product: Email Server
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: microsoft--active-directory-federation-services
+  product: Active Directory Federation Services
+  category: identity
+  vendor_category_entries: 1
+  threshold: 3
+- id: n-able--mailassure
+  product: MailAssure
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: north-grid--proself
+  product: Proself
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: nostromo--nhttpd
+  product: nhttpd
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: openwave-messaging-limited--webtop-media-transcoder
+  product: Webtop Media Transcoder
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: oracle--fusion-middleware
+  product: Fusion Middleware
+  category: identity
+  vendor_category_entries: 1
+  threshold: 3
+- id: oracle--http-server
+  product: HTTP Server
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: oracle--weblogic-server-proxy-plug-in
+  product: Weblogic Server Proxy Plug-in
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: php--phpmailer
+  product: PHPMailer
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: proftpd--proftpd
+  product: ProFTPD
+  category: file-transfer
+  vendor_category_entries: 1
+  threshold: 3
+- id: qualitia--active-mail
+  product: Active! Mail
+  category: mail
+  vendor_category_entries: 1
+  threshold: 3
+- id: rejetto--http-file-server
+  product: HTTP File Server
+  category: file-transfer
+  vendor_category_entries: 1
+  threshold: 3
+- id: solarwinds--serv-u
+  product: Serv-U
+  category: file-transfer
+  vendor_category_entries: 2
+  threshold: 3
+- id: tanstack--tanstack
+  product: TanStack
+  category: identity
+  vendor_category_entries: 1
+  threshold: 3
+- id: tp-link--tl-wr841n
+  product: TL-WR841N
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: trimble--cityworks
+  product: Cityworks
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: versa--concerto
+  product: Concerto
+  category: web-proxy
+  vendor_category_entries: 1
+  threshold: 3
+- id: wing-ftp-server--wing-ftp-server
+  product: Wing FTP Server
+  category: file-transfer
+  vendor_category_entries: 2
+  threshold: 3
+deployment_leg:
+  criterion: los 5 primeros productos instalables por cuota de una fuente pública con fecha, consultable
+    sin credenciales de pago y con términos que permitan reutilizar la clasificación (servidores web/proxy
+    y de identidad o SSH)
+  n: 5
+  status: active
+  source:
+    name: Common Crawl CC-MAIN-2026-47, cabecera Server de una muestra de WAT
+    url: https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-47/wat.paths.gz
+    license: 'Common Crawl Terms of Use (2024-03-07): licencia limitada, no sublicenciable'
+    survey_date: '2026-11-26'
+    sha256: sha256:6d994fb96fa2cc4fcffbc31e715be2a575a97b452c6a8452467996b0957f03e5
+    terms_url: https://commoncrawl.org/terms-of-use
+    method:
+      crawl: CC-MAIN-2026-47
+      inputs_sha256: sha256:911e4247d555f26525fec6e8ecfd996d69ffa1bf8d6d6a92c33531a1aa236026
+      prefix_bytes: 4194304
+      sample_files: 32
+      unit: host
+      version: 1
+  options_found:
+  - name: Common Crawl (ficheros WAT, cabecera Server)
+    url: https://data.commoncrawl.org/
+    terms_url: https://commoncrawl.org/terms-of-use
+    checked: '2026-11-26'
+    quotes:
+    - CC grants you a limited, non-assignable, non-transferable, non-sublicensable, non-exclusive, limited
+      license to access and use the Service subject to the terms and conditions of these ToU.
+    - the "Crawled Content") may be subject to separate terms of use or terms of service from the owners
+      of such Crawled Content.
+    - CC strongly recommends that you obtain the advice of legal counsel before making any use, including
+      commercial use, of the Service and/or the Crawled Content.
+    credentials: 'no: HTTPS anónimo en data.commoncrawl.org (comprobado con una petición por rango el
+      2026-11-26)'
+    assessment: 'se usa para web-proxy: acceso sin credenciales; los términos no prohíben el uso ni tratan
+      los datos agregados; solo se publican nombres de producto, ningún contenido rastreado. Revisar en
+      el PR'
+  - name: HTTP Archive (BigQuery)
+    url: https://httparchive.org/faq
+    terms_url: null
+    checked: '2026-11-26'
+    quotes:
+    - The HTTP Archive dataset is available publicly on BigQuery.
+    - In order to access the HTTP Archive via BigQuery, you'll need a Google account.
+    - BigQuery has a free tier that you can use to get started without enabling billing.
+    credentials: 'sí: cuenta de Google (sin facturación con la capa gratuita)'
+    assessment: 'no se usa: exige cuenta y no se encontró licencia de los datos (ni en el FAQ ni en la
+      guía): SIN VERIFICAR'
+  - name: W3Techs, Usage statistics of web servers
+    url: https://w3techs.com/technologies/overview/web_server
+    terms_url: https://w3techs.com/terms_of_use
+    checked: '2026-11-26'
+    quotes:
+    - All contents of this web site are Copyright © 2009-2026 Q-Success DI Gelbmann GmbH. All rights reserved.
+    - If you quote information from this web site, you must include a reference.
+    - If you publish the quote on the Internet, a link to the original page on this site must be provided.
+    credentials: 'no'
+    assessment: 'alternativa para Juan, no se usa: sin licencia abierta'
+  - name: Netcraft Web Server Survey
+    url: https://www.netcraft.com/blog/
+    terms_url: https://www.netcraft.com/terms/
+    checked: '2026-11-26'
+    quotes:
+    - All information and content on Netcraft's websites belongs to Netcraft, except as otherwise noted.
+    - Excerpts from Netcraft's public websites may be reproduced if Netcraft and the URL https://www.netcraft.com/
+      are attributed.
+    credentials: 'no'
+    assessment: 'no se usa: acceso automático restringido; encuesta no localizada'
+  pending_parts:
+  - category: identity
+    status: pending
+    reason: 'ninguna fuente abierta da el despliegue de servidores de identidad o SSH: Common Crawl solo
+      ve HTTP; queda como pregunta abierta'
+  products:
+  - id: deployment--apache
+    name: apache
+    rank: 1
+    category: web-proxy
+  - id: deployment--nginx
+    name: nginx
+    rank: 2
+    category: web-proxy
+  - id: deployment--litespeed
+    name: litespeed
+    rank: 3
+    category: web-proxy
+  - id: deployment--microsoft-iis
+    name: microsoft-iis
+    rank: 4
+    category: web-proxy
+  - id: deployment--openresty
+    name: openresty
+    rank: 5
+    category: web-proxy
+  skipped_above_cut:
+  - name: cloudflare
+    reason: servicio o CDN
+out_of_scope:
+- 7-zip--7-zip
+- acclaim-systems--usaherds
+- acronis--backup
+- acronis--cyber-infrastructure
+- adminer--adminer
+- adobe--acrobat
+- adobe--coldfusion
+- adobe--commerce-and-magento
+- adobe--commerce-and-magento-open-source
+- adobe--experience-manager-forms
+- adobe--flash-player
+- adobe--reader
+- advantive--veracore
+- ahsay--ahsaycbs
+- ajax-net-professional--ajax-net-professional
+- ami--megarac-spx
+- android--framework
+- android--kernel
+- android--pixel
+- android--runtime
+- apache--activemq
+- apache--axis
+- apache--flink
+- apache--hugegraph-server
+- apache--ofbiz
+- apache--roller
+- apache--struts
+- apache--superset
+- apache--tomcat
+- apple--ios
+- apple--ios-and-ipados
+- apple--macos
+- apple--multiple-products
+- arista--extensible-operating-system
+- arista--velocloud-orchestrator
+- arm--mali-gpu-kernel-driver
+- asus--live-update
+- asus--routers
+- atlassian--confluence-data-center
+- atlassian--jira-server
+- atlassian--multiple-products
+- audinate--dante-discovery
+- aviatrix--controllers
+- balbooa--forms
+- berriai--litellm
+- broadcom--brocade-fabric-os
+- check-point--smartconsole
+- cisco--broadworks
+- cisco--catalyst-sd-wan-controller
+- cisco--catalyst-sd-wan-manager
+- cisco--catalyst-sd-wan-manger
+- cisco--expressway
+- cisco--ios
+- cisco--ios-xe
+- cisco--nx-os
+- cisco--sd-wan
+- cisco--small-business-rv-series-routers
+- cisco--smart-licensing-utility
+- cisco--unified-communications-manager
+- collabora--online-built-in-code-server
+- commvault--command-center
+- craft-cms--craft-cms
+- cwp--control-web-panel
+- cyberpersons--cyberpanel
+- d-link--dcs-2530l-and-dcs-2670l
+- d-link--dir-600-router
+- d-link--dir-605-router
+- d-link--dir-820-router
+- d-link--dir-823x
+- d-link--dir-859-router
+- d-link--dnr-322l
+- d-link--dsl-2750b
+- d-link--multiple-nas
+- d-link--routers
+- daemon--tools-lite
+- dahua--ip-camera-firmware
+- danfoss--ak-sm-800a
+- dassault-systemes--delmia-apriso
+- dd-wrt--dd-wrt
+- dell--recoverpoint-for-virtual-machines
+- digiever--ds-2105-pro
+- draytek--vigor-routers
+- draytek--vigorconnect
+- drupal--core
+- edimax--ic-7100-ip-camera
+- eg-secure-solutions--siteguard-server-edition
+- erlang--erlang-otp
+- fortinet--forticlient-ems
+- fortinet--fortimanager
+- fortinet--fortisandbox
+- freetype--freetype
+- fxc--ae1021-ae1021pe
+- geovision--multiple
+- git--git
+- gnu--bash
+- gnu--inetutils
+- google--brotli
+- google--chromium
+- google--chromium-mojo
+- google--chromium-v8
+- google--chromium-webrtc
+- google--dawn
+- google--pixel
+- google--skia
+- gpustack--gpustack
+- grafana-labs--grafana
+- hewlett-packard-enterprise-hpe--oneview
+- hikvision--multiple-products
+- hitachi-vantara--pentaho-business-analytics-server
+- ibm--langflow
+- icagenda--icagenda
+- idunno--anticsrf
+- igel--os
+- imagemagick--imagemagick
+- isc--bind
+- ivanti--cloud-services-appliance
+- ivanti--endpoint-manager
+- ivanti--endpoint-manager-cloud-service-appliance
+- ivanti--endpoint-manager-mobile
+- ivanti--mobileiron-core
+- ivanti--neurons
+- ivanti--sentry
+- joomla--joomla
+- joomlack--page-builder
+- joomshaper--sp-page-builder
+- jquery--jquery
+- juniper--junos-os
+- juniper--session-smart-conductor
+- juniper--session-smart-router
+- justice-av-solutions--viewer
+- kentico--xperience
+- kentico--xperience-cms
+- kestra--oss
+- kingsoft--wps-office
+- kludex--starlette
+- knx-association--knx-protocol-connection-authorization-option-1
+- langflow--langflow
+- lantronix--eds5000
+- laravel--framework
+- laravel--livewire
+- linux--kernel
+- looking-glass--multi-router-looking-glass
+- marimo--marimo
+- meta--react-server-components
+- meta-platforms--whatsapp
+- metabase--metabase
+- microsoft--configuration-manager
+- microsoft--defender
+- microsoft--directx
+- microsoft--dwm-core-library
+- microsoft--internet-explorer
+- microsoft--internet-key-exchange-service-extensions
+- microsoft--net-framework
+- microsoft--office
+- microsoft--office-outlook
+- microsoft--partner-center
+- microsoft--power-pages
+- microsoft--project
+- microsoft--publisher
+- microsoft--sharepoint
+- microsoft--smartscreen-prompt
+- microsoft--sql-server
+- microsoft--streaming-service
+- microsoft--visual-basic-for-applications
+- microsoft--windows
+- microsoft--windows-ancillary-function-driver-for-winsock
+- mikrotik--routeros
+- mirasvit--full-page-cache-warmer
+- mitel--micollab
+- mitel--sip-phones
+- mlflow--mlflow
+- mongodb--mongodb
+- motex--lanscope-endpoint-manager
+- mozilla--firefox
+- mozilla--multiple-products
+- n8n--n8n
+- nakivo--backup-and-replication
+- nextgen-healthcare--mirth-connect
+- nice--linear-emerge-e3
+- notepad--notepad
+- nuuo--nvrmini
+- nuuo--nvrmini2
+- nx--console
+- omnissa--workspace-one-uem
+- onlyoffice--docs
+- openbsd--openssh
+- openplc--scadabr
+- optimizely--web-experimentation
+- oracle--adf-faces
+- oracle--agile-product-lifecycle-management
+- oracle--e-business-suite
+- oracle--peoplesoft-enterprise-peopletools
+- oracle--weblogic-server
+- osgeo--geoserver
+- osgeo--jai-ext
+- owncloud--graphapi
+- owncloud--owncloud
+- paessler--prtg-network-monitor
+- palo-alto-networks--expedition
+- papercut--ng-mf
+- perforce--puppet-enterprise
+- php-group--php
+- plex--media-server
+- prettier--eslint-config-prettier
+- progress--whatsup-gold
+- project-monai--monai-label
+- projectsend--projectsend
+- ptc--windchill-and-flexplm
+- ptzoptics--pt30x-sdi-ndi-cameras
+- qlik--sense
+- qnap--viostor-nvr
+- qualcomm--multiple-chipsets
+- quest--kace-systems-management-appliance
+- rails--ruby-on-rails
+- rarlab--winrar
+- ray-project--ray
+- react-native-community--cli
+- red-hat--automatic-bug-reporting-tool
+- red-hat--libuser
+- reolink--multiple-ip-cameras
+- reolink--rlc-410w-ip-camera
+- reviewdog--action-setup-github-action
+- rockwell--multiple-products
+- samsung--magicinfo-9-server
+- samsung--mobile
+- sangoma--freepbx
+- sangoma--switchvox
+- sap--commerce-cloud
+- sap--netweaver
+- sciencelogic--sl1
+- servicenow--utah-vancouver-and-washington-dc-now-platform
+- siemens--software-center
+- sierra-wireless--airlink-aleos
+- signalwire--freeswitch
+- sitecore--cms-and-experience-platform
+- sitecore--multiple-products
+- skysea--client-view
+- smartbedded--meteobridge
+- solarwinds--web-help-desk
+- soliton-systems-k-k--filezen
+- splunk--splunk
+- spreadsheet-parseexcel--spreadsheet-parseexcel
+- srimax--output-messenger
+- strapi--strapi
+- sudo--sudo
+- sunhillo--sureline
+- synology--diskstation-manager
+- sysaid--on-prem
+- teamt5--threatsonar-anti-ransomware
+- telemessage--tm-sgnl
+- telerik--report-server
+- tj-actions--changed-files-github-action
+- tp-link--multiple-routers
+- tp-link--tl-wa855re
+- trend-micro--apex-one
+- trueconf--client
+- trueconf--server
+- twilio--authy
+- ubiquiti--unifi-os
+- unitronics--vision-plc-and-hmi
+- unrealircd--unrealircd
+- vanderbilt-university--research-electronic-data-capture
+- vates--xen-orchestra
+- veeam--backup-replication
+- versa--director
+- vite--vitejs
+- vmware--aria-operations
+- vmware--fusion
+- vmware--tools
+- vmware--workstation
+- wazuh--wazuh-server
+- webpros--cpanel-whm
+- webpros--wp2
+- widget-factory--joomla-content-editor
+- wordpress--core
+- xwiki--platform
+- yiiframework--yii
+- zammad-gmbh--zammad
+- zkteco--biotime
+- zyxel--dsl-cpe
+- zyxel--gs1900-series-switches

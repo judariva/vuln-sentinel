@@ -1,0 +1,407 @@
+{
+ "source": "Common Crawl CC-MAIN-2026-47, cabecera Server de una muestra de WAT",
+ "url": "https://data.commoncrawl.org/crawl-data/CC-MAIN-2026-47/wat.paths.gz",
+ "license": "Common Crawl Terms of Use (2024-03-07): licencia limitada, no sublicenciable",
+ "terms_url": "https://commoncrawl.org/terms-of-use",
+ "survey_date": "2026-11-26",
+ "category": "web-proxy",
+ "method": {
+  "version": 1,
+  "crawl": "CC-MAIN-2026-47",
+  "sample_files": 32,
+  "prefix_bytes": 4194304,
+  "unit": "host",
+  "files": [
+   "crawl-data/CC-MAIN-2026-47/segments/1793958566747.35/wat/CC-MAIN-20261106121738-20261106151738-00000.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958566905.23/wat/CC-MAIN-20261106213008-20261107003008-00125.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567063.49/wat/CC-MAIN-20261107064056-20261107094056-00250.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567121.50/wat/CC-MAIN-20261107155244-20261107185244-00375.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567173.51/wat/CC-MAIN-20261108010334-20261108040334-00500.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567207.72/wat/CC-MAIN-20261108101423-20261108131423-00625.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567237.10/wat/CC-MAIN-20261108192613-20261108222613-00750.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567262.20/wat/CC-MAIN-20261109043801-20261109073801-00875.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567333.54/wat/CC-MAIN-20261109165115-20261109195115-00000.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567364.76/wat/CC-MAIN-20261110020654-20261110050654-00125.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567408.73/wat/CC-MAIN-20261110112238-20261110142238-00250.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567449.7/wat/CC-MAIN-20261110203727-20261110233727-00375.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567499.60/wat/CC-MAIN-20261111055107-20261111085107-00500.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567538.56/wat/CC-MAIN-20261111150350-20261111180350-00625.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567582.38/wat/CC-MAIN-20261112001835-20261112031835-00750.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567606.45/wat/CC-MAIN-20261112093621-20261112123621-00875.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567688.53/wat/CC-MAIN-20261112215553-20261113005553-00000.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567727.12/wat/CC-MAIN-20261113070939-20261113100939-00125.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567831.6/wat/CC-MAIN-20261113162338-20261113192338-00250.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567860.40/wat/CC-MAIN-20261114014033-20261114044033-00375.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958567913.36/wat/CC-MAIN-20261114105316-20261114135316-00500.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958568023.11/wat/CC-MAIN-20261114201204-20261114231204-00625.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958568063.2/wat/CC-MAIN-20261115052653-20261115082653-00750.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958568204.79/wat/CC-MAIN-20261115144151-20261115174151-00875.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958568618.24/wat/CC-MAIN-20261116030221-20261116060221-00000.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958569021.67/wat/CC-MAIN-20261116122020-20261116152020-00125.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958854233.70/wat/CC-MAIN-20261116213416-20261117003416-00250.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958857821.83/wat/CC-MAIN-20261117064820-20261117094820-00375.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958860579.85/wat/CC-MAIN-20261117155813-20261117185813-00500.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958862556.68/wat/CC-MAIN-20261118011213-20261118041213-00625.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958863536.81/wat/CC-MAIN-20261118102712-20261118132712-00750.warc.wat.gz",
+   "crawl-data/CC-MAIN-2026-47/segments/1793958864361.99/wat/CC-MAIN-20261118194114-20261118224114-00875.warc.wat.gz"
+  ],
+  "inputs_sha256": "sha256:911e4247d555f26525fec6e8ecfd996d69ffa1bf8d6d6a92c33531a1aa236026"
+ },
+ "hosts": 19789,
+ "ranking": [
+  {
+   "name": "apache",
+   "share": 0.341907,
+   "hosts": 6766
+  },
+  {
+   "name": "nginx",
+   "share": 0.304563,
+   "hosts": 6027
+  },
+  {
+   "name": "litespeed",
+   "share": 0.075042,
+   "hosts": 1485
+  },
+  {
+   "name": "microsoft-iis",
+   "share": 0.052403,
+   "hosts": 1037
+  },
+  {
+   "name": "openresty",
+   "share": 0.033453,
+   "hosts": 662
+  },
+  {
+   "name": "tengine",
+   "share": 0.003841,
+   "hosts": 76
+  },
+  {
+   "name": "apache-coyote",
+   "share": 0.002729,
+   "hosts": 54
+  },
+  {
+   "name": "lighttpd",
+   "share": 0.002173,
+   "hosts": 43
+  },
+  {
+   "name": "caddy",
+   "share": 0.000606,
+   "hosts": 12
+  },
+  {
+   "name": "lotus-domino",
+   "share": 0.000505,
+   "hosts": 10
+  },
+  {
+   "name": "kestrel",
+   "share": 0.000455,
+   "hosts": 9
+  },
+  {
+   "name": "werkzeug",
+   "share": 0.000303,
+   "hosts": 6
+  },
+  {
+   "name": "gunicorn",
+   "share": 0.000152,
+   "hosts": 3
+  },
+  {
+   "name": "jetty",
+   "share": 0.000152,
+   "hosts": 3
+  },
+  {
+   "name": "resin",
+   "share": 0.000152,
+   "hosts": 3
+  },
+  {
+   "name": "zope",
+   "share": 0.000152,
+   "hosts": 3
+  },
+  {
+   "name": "thttpd",
+   "share": 0.000101,
+   "hosts": 2
+  },
+  {
+   "name": "abyss",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "istio-envoy",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "microsoft-httpapi",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "webrick",
+   "share": 5.1e-05,
+   "hosts": 1
+  }
+ ],
+ "excluded": [
+  {
+   "name": "cloudflare",
+   "share": 0.091768,
+   "hosts": 1816
+  },
+  {
+   "name": "gse",
+   "share": 0.01324,
+   "hosts": 262
+  },
+  {
+   "name": "squarespace",
+   "share": 0.006064,
+   "hosts": 120
+  },
+  {
+   "name": "ddos-guard",
+   "share": 0.004396,
+   "hosts": 87
+  },
+  {
+   "name": "gws",
+   "share": 0.003638,
+   "hosts": 72
+  },
+  {
+   "name": "github.com",
+   "share": 0.002678,
+   "hosts": 53
+  },
+  {
+   "name": "sucuri",
+   "share": 0.001415,
+   "hosts": 28
+  },
+  {
+   "name": "amazons3",
+   "share": 0.001061,
+   "hosts": 21
+  },
+  {
+   "name": "heroku",
+   "share": 0.000657,
+   "hosts": 13
+  },
+  {
+   "name": "dps",
+   "share": 0.000455,
+   "hosts": 9
+  },
+  {
+   "name": "qrator",
+   "share": 0.000202,
+   "hosts": 4
+  },
+  {
+   "name": "cdn77-turbo",
+   "share": 0.000101,
+   "hosts": 2
+  },
+  {
+   "name": "google",
+   "share": 0.000101,
+   "hosts": 2
+  },
+  {
+   "name": "aliyunoss",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "cloudfront",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "esf",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "fly",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "flywheel",
+   "share": 5.1e-05,
+   "hosts": 1
+  },
+  {
+   "name": "windows-azure-blob",
+   "share": 5.1e-05,
+   "hosts": 1
+  }
+ ],
+ "needs_review": [
+  {
+   "name": "nginx-reuseport",
+   "share": 0.009096,
+   "hosts": 180
+  },
+  {
+   "name": "wts",
+   "share": 0.005912,
+   "hosts": 117
+  },
+  {
+   "name": "f-web",
+   "share": 0.004548,
+   "hosts": 90
+  },
+  {
+   "name": "o2switch-powerboost-v3",
+   "share": 0.002678,
+   "hosts": 53
+  },
+  {
+   "name": "httpd",
+   "share": 0.002527,
+   "hosts": 50
+  },
+  {
+   "name": "simply.com",
+   "share": 0.001819,
+   "hosts": 36
+  },
+  {
+   "name": "hcdn",
+   "share": 0.001718,
+   "hosts": 34
+  },
+  {
+   "name": "rmw-web",
+   "share": 0.001668,
+   "hosts": 33
+  },
+  {
+   "name": "bitninja-wafpro",
+   "share": 0.001567,
+   "hosts": 31
+  },
+  {
+   "name": "blogger-renderd",
+   "share": 0.001061,
+   "hosts": 21
+  },
+  {
+   "name": "http",
+   "share": 0.000859,
+   "hosts": 17
+  },
+  {
+   "name": "ideawebserver",
+   "share": 0.000809,
+   "hosts": 16
+  },
+  {
+   "name": "slt-mid",
+   "share": 0.000809,
+   "hosts": 16
+  },
+  {
+   "name": "ningtron",
+   "share": 0.000707,
+   "hosts": 14
+  },
+  {
+   "name": "apisix",
+   "share": 0.000556,
+   "hosts": 11
+  },
+  {
+   "name": "angie",
+   "share": 0.000505,
+   "hosts": 10
+  },
+  {
+   "name": "hws",
+   "share": 0.000505,
+   "hosts": 10
+  },
+  {
+   "name": "aruba-proxy",
+   "share": 0.000455,
+   "hosts": 9
+  },
+  {
+   "name": "esa",
+   "share": 0.000404,
+   "hosts": 8
+  },
+  {
+   "name": "nginx2018",
+   "share": 0.000404,
+   "hosts": 8
+  },
+  {
+   "name": "kangle",
+   "share": 0.000354,
+   "hosts": 7
+  },
+  {
+   "name": "sws",
+   "share": 0.000354,
+   "hosts": 7
+  },
+  {
+   "name": "xcdn",
+   "share": 0.000354,
+   "hosts": 7
+  },
+  {
+   "name": "httpv18.0",
+   "share": 0.000303,
+   "hosts": 6
+  },
+  {
+   "name": "iis",
+   "share": 0.000303,
+   "hosts": 6
+  },
+  {
+   "name": "none",
+   "share": 0.000303,
+   "hosts": 6
+  },
+  {
+   "name": "wits",
+   "share": 0.000303,
+   "hosts": 6
+  },
+  {
+   "name": "server",
+   "share": 0.000253,
+   "hosts": 5
+  },
+  {
+   "name": "wpx",
+   "share": 0.000253,
+   "hosts": 5
+  },
+  {
+   "name": "www",
+   "share": 0.000253,
+   "hosts": 5
+  }
+ ]
+}

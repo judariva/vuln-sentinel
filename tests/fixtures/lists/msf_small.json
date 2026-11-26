@@ -1,0 +1,50 @@
+{
+  "exploit_linux/http/acme_vpn_rce": {
+    "fullname": "exploit/linux/http/acme_vpn_rce",
+    "type": "exploit",
+    "disclosure_date": "2026-01-10",
+    "author": ["Alice Example <alice@example.org>", "bob"]
+  },
+  "exploit_multi/http/globex_mail_rce": {
+    "fullname": "exploit/multi/http/globex_mail_rce",
+    "type": "exploit",
+    "disclosure_date": "2025-06-01",
+    "author": ["alice example", "Carol https://github.com/carol-example", "Dan <dan-handle>"]
+  },
+  "exploit_windows/old_module": {
+    "fullname": "exploit/windows/old_module",
+    "type": "exploit",
+    "disclosure_date": "2019-01-01",
+    "author": ["Dave Old"]
+  },
+  "auxiliary_scanner/http/acme_scan": {
+    "fullname": "auxiliary/scanner/http/acme_scan",
+    "type": "auxiliary",
+    "disclosure_date": "2026-02-02",
+    "author": ["Eve Aux"]
+  },
+  "exploit_multi/handler_like": {
+    "fullname": "exploit/multi/handler_like",
+    "type": "exploit",
+    "disclosure_date": null,
+    "author": ["Frank Nodate"]
+  },
+  "exploit_unix/http/email_only": {
+    "fullname": "exploit/unix/http/email_only",
+    "type": "exploit",
+    "disclosure_date": "2026-03-03",
+    "author": ["only@example.org"]
+  },
+  "exploit_unix/http/team": {
+    "fullname": "exploit/unix/http/team",
+    "type": "exploit",
+    "disclosure_date": "2026-04-04",
+    "author": ["Team X and friends", "Unknown"]
+  },
+  "exploit_unix/http/future": {
+    "fullname": "exploit/unix/http/future",
+    "type": "exploit",
+    "disclosure_date": "2026-12-24",
+    "author": ["Grace Future"]
+  }
+}

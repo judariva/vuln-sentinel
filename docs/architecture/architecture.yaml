@@ -150,6 +150,10 @@ components:
     name: ntfy
     service: "ntfy (servicio público o instancia propia): tema de nombre aleatorio con control de acceso (G-16); recibe los avisos de los dos vigilantes (P-9)"
     status: planned
+  - id: CMP-035
+    name: list-generators
+    service: Scripts reproducibles src/vs/lists (exposed-products y trusted-exploit-authors; F1a-0)
+    status: implemented
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -166,6 +170,7 @@ sources:
   - {id: SRC-012, name: GitHub search}
   - {id: SRC-013, name: avisos de fabricante y CERT}
   - {id: SRC-014, name: EUVD (ENISA), status: excluded, note: "licencia de reutilización SIN VERIFICAR (reintentado en T3, 2026-11-26); fuera hasta poder leerla; ADR-0022"}
+  - {id: SRC-015, name: Common Crawl (WAT), note: "solo para la pata de despliegue de exposed-products (cabecera Server de una muestra fija); términos en deployment_leg"}
 
 trust_boundaries:
   - {id: TB-001, name: Internet ↔ borde Cloudflare}
@@ -213,6 +218,10 @@ flows:
   - {id: FLW-037, from: CMP-033, to: CMP-012, note: "POST de la fila del latido a la Logs Ingestion API con token de la identidad gestionada (Metrics Publisher solo sobre la DCR)"}
   - {id: FLW-038, from: CMP-005, to: CMP-022, note: "al terminar cada ejecución, el job fija el estado del índice «head» (modified y salud de las fuentes) que lee el vigilante externo"}
   - {id: FLW-039, from: CMP-013, to: CMP-034, crosses: [TB-001], note: "si el vigilante falla, paso if: failure() publica en el tema con su token (secrets); el correo lo manda GitHub"}
+  - {id: FLW-040, from: SRC-002, to: CMP-035, note: catálogo KEV para exposed-products (local, sin IA)}
+  - {id: FLW-041, from: SRC-008, to: CMP-035, note: metadata de módulos para trusted-exploit-authors (local, sin IA)}
+  - {id: FLW-042, from: SRC-001, to: CMP-035, note: "registros CVE de los productos incluidos: pares vendor/product del CNA y prefijos CPE (local, sin IA)"}
+  - {id: FLW-043, from: SRC-015, to: CMP-035, note: "prefijos de 32 ficheros WAT por rango HTTPS anónimo; solo nombres y cuentas agregadas de la cabecera Server (local, sin IA)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}

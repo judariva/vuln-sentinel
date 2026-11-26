@@ -22,6 +22,8 @@ local/
 # herramientas
 .pytest_cache/
 .ruff_cache/
+# descargas de los generadores y cachés del código
+.cache/
 *.egg-info/
 # generado desde uv.lock en el build de la imagen (images.yml)
 requirements.lock.txt
