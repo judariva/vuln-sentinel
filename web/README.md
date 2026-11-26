@@ -14,8 +14,8 @@ consumidor más de la API pública (D10): solo `GET`, sin credenciales.
 | `/gestion` | Administración (detrás de Access) | datos de ejemplo |
 
 Movimiento y 3D (ADR-0024): Motion, Magic UI (`src/components/magicui/`) y la escena del embudo
-(`src/components/funnel/`), que se carga aparte tras la primera interacción. Con
-`prefers-reduced-motion` o sin WebGL, SVG estático con las mismas cifras.
+(`src/components/funnel/`), que se carga aparte y sola, después de `load` y con el navegador libre
+(T8c). Con `prefers-reduced-motion` o sin WebGL, SVG estático con las mismas cifras.
 
 ## Configuración
 
@@ -32,8 +32,9 @@ npm test            # Vitest + Testing Library
 npx playwright install chromium   # una vez (en Linux puede pedir --with-deps)
 npm run test:smoke  # build + API de T6 con fixtures (uv run) + 5 pantallas + axe
 npm run budget      # tras el build: JS inicial <= 250 KB y bloque 3D <= 400 KB (gzip)
-npm run perf        # tras el build: Lighthouse (móvil, mediana de 3) en las 5 pantallas
-npm run shots       # capturas: 5 pantallas x tema x movimiento, en ../local/tmp/shots
+npm run perf        # tras el build: Lighthouse (móvil y escritorio, mediana de 3, umbrales de ADR-0024)
+                    # en las 5 pantallas; en local solo orienta, el juez es el job `lighthouse` de CI
+npm run shots       # capturas con el fixture de volumen (--volume 240), en ../local/tmp/shots
 ```
 
 La prueba de humo arranca `uv run python -m tests.portal_fixture` desde la raíz del repo: sirve en

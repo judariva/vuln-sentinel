@@ -14,7 +14,8 @@
     "test:smoke": "npm run build && playwright test",
     "budget": "node scripts/check-budgets.mjs dist",
     "perf": "node scripts/lighthouse.mjs",
-    "perf:desktop": "VS_PERF_PRESET=desktop node scripts/lighthouse.mjs ../local/tmp/lighthouse-desktop",
+    "perf:mobile": "VS_PERF_PROFILES=mobile node scripts/lighthouse.mjs ../local/tmp/lighthouse-mobile",
+    "perf:desktop": "VS_PERF_PROFILES=desktop node scripts/lighthouse.mjs ../local/tmp/lighthouse-desktop",
     "shots": "playwright test -c playwright.shots.config.ts",
     "lint": "eslint . && tsc -b --noEmit"
   },

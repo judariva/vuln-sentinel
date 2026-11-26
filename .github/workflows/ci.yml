@@ -109,3 +109,50 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Prueba de humo y axe
         run: npx playwright test
+
+  # Lighthouse (T8c, ADR-0024): la medida que vale es esta, en una máquina estable, no la de WSL.
+  # Mediana de 3 pasadas por pantalla en los perfiles móvil y escritorio. Falla si no se cumple:
+  # móvil >= 90 en Detalle, Fuentes y Administración y >= 85 en Hoy y Métricas; escritorio >= 90
+  # en las 5. Los informes y `summary.json` quedan como artefacto.
+  lighthouse:
+    needs: web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.18.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Dependencias de Python (API con fixtures)
+        working-directory: .
+        run: uv sync --locked
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Navegador de Playwright
+        run: npx playwright install --with-deps chromium
+      # Sin GPU no hay WebGL: el script arranca Chromium con SwiftShader (por software) para que la
+      # escena 3D de Hoy cargue y se mida, y falla si Hoy se midió sin ella (`scene3d` en el resumen).
+      - name: Lighthouse (móvil y escritorio, mediana de 3)
+        run: npm run perf -- "$RUNNER_TEMP/lighthouse"
+      - name: Informes de Lighthouse
+        if: always()
+        # SHA de la etiqueta v7.0.2 leído en la API de GitHub (git/ref/tags/v7.0.2) el 2026-11-26.
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse
+          path: |
+            ${{ runner.temp }}/lighthouse/summary.json
+            ${{ runner.temp }}/lighthouse/mobile/*.json
+            ${{ runner.temp }}/lighthouse/desktop/*.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -26,16 +26,16 @@ for (const theme of ["dark", "light"] as const) {
         await page.goto(s.path);
         if (s.ready) await expect(page.getByTestId(s.ready)).toBeVisible();
         else await expect(page.locator(".recharts-surface").first()).toBeVisible();
-        // Mover el ratón despierta la escena 3D (Hoy) y desplazarse monta las gráficas (Métricas).
-        await page.mouse.move(640, 300);
-        await page.mouse.wheel(0, 4000);
-        await page.waitForTimeout(800);
-        await page.mouse.wheel(0, -4000);
         if (s.slug === "hoy" && motion === "movimiento") {
-          // Con WebGL, la escena 3D; se espera a que las alertas caigan sobre su plataforma.
+          // La escena 3D llega sola (T8c). Captura a mitad de animación: las primeras alertas ya
+          // brillan sobre su plataforma y siguen entrando CVE por arriba.
           await expect(page.getByTestId("funnel-3d")).toBeVisible({ timeout: 15_000 });
-          await page.waitForTimeout(9000);
+          await page.waitForTimeout(Number(process.env.VS_SHOTS_SCENE_MS ?? 7000));
         } else {
+          // Desplazarse monta las gráficas (Métricas).
+          await page.mouse.wheel(0, 4000);
+          await page.waitForTimeout(800);
+          await page.mouse.wheel(0, -4000);
           await page.waitForTimeout(1500);
         }
         await page.screenshot({ path: path.join(DIR,`${s.slug}-${theme}-${motion}.png`), fullPage: true });

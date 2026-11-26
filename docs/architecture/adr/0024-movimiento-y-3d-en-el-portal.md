@@ -34,12 +34,30 @@ Decisión de Juan (T8b): **Motion**, **Magic UI** (solo contadores, haces y bent
   sobre la columna de su tarjeta. Al pasar el ratón, la CVE (drei `Html`). Posiciones por hash del id,
   no por azar. Como mucho 1500 partículas; las alertas siempre se dibujan y el texto dice cuántas de
   cuántas.
-- **Robustez.** La escena es otro bloque (`lazy`) y se pide **tras la primera interacción con la
-  página** (ratón, tecla, toque, desplazamiento) y con el navegador libre. Medido con CPU ×4: evaluar
-  three.js y montar la escena son ~1,7 s de hilo principal; si entra sola al cargar compite con los
-  datos. Mientras llega, si falla (error de WebGL o bloque que no llega) y con `prefers-reduced-motion`
-  o sin WebGL se ve `FunnelStatic` (SVG) con las mismas cifras. El embudo tiene su propia petición
-  (`/v1/feed/all/changes`) y se monta después de pintar las alertas: si falla, solo falla su tarjeta.
+- **Robustez.** La escena es otro bloque (`lazy`). **Revisado en T8c (decisión de Juan): viva al
+  llegar, sin esperar a que se interactúe**, pero nunca antes que los datos: `load` del documento →
+  dos fotogramas → navegador libre (`requestIdleCallback`, o `setTimeout` sin él) → se descarga y
+  evalúa el bloque → en otro momento libre se monta el `Canvas` (el trabajo, partido en dos tareas).
+  En T8b se pedía tras la primera interacción. Mientras llega, si falla (error de WebGL o bloque que
+  no llega) y con `prefers-reduced-motion` o sin WebGL se ve `FunnelStatic` (SVG) con las mismas
+  cifras. El embudo tiene su propia petición (`/v1/feed/all/changes`) y se monta después de pintar
+  las alertas: si falla, solo falla su tarjeta. Un e2e comprueba que el bloque se pide sin
+  interacción y después de `loadEventEnd` y de la última respuesta de la API.
+- **Dirección de arte (T8c).** Todas las CVE del día entran por arriba, escalonadas, y bajan en
+  espiral; las que no tienen nivel se apagan y se posan en el fondo como polvo; las A, B y C se
+  encienden con el color de su nivel, **con brillo** y caen sobre su plataforma. El brillo es un
+  **sprite aditivo** (máscara radial generada en un canvas, `Points` con `AdditiveBlending` en oscuro
+  y mezcla normal en claro), no el bloom de `@react-three/postprocessing`: sin dependencia nueva,
+  sin coste de presupuesto y sin el problema del bloom con un lienzo transparente (trata mal el alfa
+  y en el tema claro no se ve). El embudo tiene superficie (malla de revolución translúcida, anillos
+  y meridianos), niebla con el color de la tarjeta y un vaivén lento de cámara (±0,2 rad, para que
+  las plataformas sigan sobre su etiqueta). Las etiquetas de los destinos (`A · n`) salen de la
+  escena a HTML (`FunnelLabels`), bajo el lienzo, compartidas con el SVG; en la escena solo queda la
+  etiqueta de la CVE bajo el ratón.
+- **Hoy en bento de 4 columnas (T8c):** embudo en 3, tarjeta «El día en cifras» al lado (CVE con
+  cambios, cuántas acaban en alerta, cuántas sin nivel, cambios del feed de alertas y una barra de
+  reparto por nivel con su leyenda en texto), A, B y C debajo de su plataforma y los cambios del día a
+  lo ancho.
 - **Rendimiento del resto del portal** (para Lighthouse): todas las pantallas salvo Hoy en bloques
   aparte; en Métricas, Recharts en su propio bloque, cada gráfica se monta al entrar en pantalla y con
   el navegador libre, y sin animación de Recharts (anima volviendo a pintar React en cada fotograma).
@@ -48,10 +66,16 @@ Decisión de Juan (T8b): **Motion**, **Magic UI** (solo contadores, haces y bent
   JS inicial sin 3D ≤ 250 KB y bloque 3D ≤ 400 KB. Falla si la escena entra en el JS inicial o deja de
   ser un bloque dinámico.
 - **Lighthouse** (`web/scripts/lighthouse.mjs`, `npm run perf`): CLI fijada `lighthouse@13.6.0` por
-  `npx`, perfil móvil por defecto, mediana de 3 pasadas, contra el build servido por
-  `tests/portal_fixture.py`. El script arranca el Chromium de Playwright y Lighthouse solo se conecta
-  (`--port`): en WSL, chrome-launcher ignora `--chrome-path` y abre el Chrome de Windows. No va en la
-  CI (varía demasiado en máquinas compartidas).
+  `npx`, mediana de 3 pasadas, contra el build servido por `tests/portal_fixture.py`. El script
+  arranca el Chromium de Playwright y Lighthouse solo se conecta (`--port`): en WSL, chrome-launcher
+  ignora `--chrome-path` y abre el Chrome de Windows. **Revisado en T8c (decisión de Juan): la medida
+  que vale es la de CI** (job `lighthouse` de `ci.yml`, tras `web`), perfiles móvil y escritorio, y
+  falla si no se cumple: móvil ≥ 90 en Detalle, Fuentes y Administración y ≥ 85 en Hoy y Métricas;
+  escritorio ≥ 90 en las 5. Deja `summary.json` y los informes como artefacto
+  (`actions/upload-artifact` v7.0.2, fijada por SHA). En WSL solo orienta. En el runner no hay GPU:
+  se arranca Chromium con `--enable-unsafe-swiftshader` (WebGL por software) para que la escena 3D
+  cargue y se mida; el resumen dice por pantalla de Hoy si cargó (`scene3d`). Por defecto se mide el
+  montaje base del fixture (comparable con T8b); `VS_PERF_VOLUME` permite medir con volumen.
 - El servidor de fixtures sirve con gzip HTML, JS, CSS y JSON, como el borde: sin eso Lighthouse mide
   el JS sin comprimir.
 
@@ -80,8 +104,11 @@ salvo `webgl-constants` 1.1.1 (vía `detect-gpu`, de drei), que no declara `lice
 
 ## Alternativas descartadas
 
-- Cargar la escena 3D en cuanto el navegador queda libre: en las pruebas entraba dentro de la carga y
-  hundía el rendimiento de Hoy (Lighthouse 56–72 con la escena; 92–94 sin ella).
+- (T8b) Cargar la escena 3D en cuanto el navegador queda libre: en las pruebas de T8b entraba dentro de
+  la carga y hundía Hoy en WSL (Lighthouse 56–72 con la escena; 92–94 sin ella). T8b la dejó tras la
+  primera interacción; Juan lo revisó en T8c (viva al llegar, umbral de Hoy en móvil 85, medido en CI).
+- (T8c) Bloom de `@react-three/postprocessing`: ver «Dirección de arte»; el sprite aditivo da el
+  brillo sin librería nueva.
 - `layoutId` de Motion para mover una alerta de tarjeta al cambiar de nivel: necesita `domMax` (más JS
   inicial) y mide el DOM en cada render. Se usa una clave por nivel y la entrada por CSS.
 - Texto 3D (drei `Text`): troika descarga una fuente de un CDN si no se le da una. Las etiquetas van
@@ -89,11 +116,12 @@ salvo `webgl-constants` 1.1.1 (vía `detect-gpu`, de drei), que no declara `lice
 
 ## Consecuencias
 
-- En escritorio la escena aparece al mover el ratón; en móvil, al tocar o desplazarse. Quien solo mira
-  sin interactuar ve el SVG estático, con las mismas cifras.
-- **Lighthouse ≥ 90 no se cumple en Métricas** con el perfil móvil (79–87 con la máquina tranquila).
-  Hoy (92–94) y Detalle (95–97) sí. El coste que queda es el render de Recharts. Ver el informe de
-  T8b y la pregunta abierta.
+- La escena aparece sola poco después de cargar (T8c). Hasta entonces, y con menos movimiento o sin
+  WebGL, el SVG estático con las mismas cifras.
+- Lighthouse: en T8b Métricas no llegaba a 90 en móvil (79–87 en WSL). Con los umbrales de T8c
+  (Métricas ≥ 85 en móvil) el juez es el job de CI; las cifras de WSL de T8c, en su informe.
+- Compresión en Workers: queda como comprobación del primer despliegue, en el runbook
+  (`infra/README.md`, decisión de Juan en T8c).
 - El manifiesto de Vite (`dist/.vite/manifest.json`) va en el build; solo lista nombres de ficheros.
 - Control nuevo: CTL-025 frente a THR-021.
 - Compresión en Cloudflare: la página general
@@ -108,3 +136,8 @@ salvo `webgl-constants` 1.1.1 (vía `detect-gpu`, de drei), que no declara `lice
 - Registro npm, 2026-11-26. Registro de Magic UI y su LICENSE, 2026-11-26.
 - Trazas de Chrome con CPU ×4 y Lighthouse 13.6.0 sobre el build, 2026-11-26 (informe de T8b).
 - Decisión de stack: Juan, tarea T8b de la noche del 2026-11-25.
+- Decisiones de carga de la escena, umbrales de Lighthouse en CI y compresión: Juan (por la sesión
+  directora), tarea T8c, 2026-11-26.
+- `actions/upload-artifact`: última release `v7.0.2` (publicada el 2026-10-07, no preliminar) y SHA
+  `cf430e030ddbb5b0abf93d22962f4752f3646cd9`, leídos en `https://api.github.com/repos/actions/upload-artifact/releases/latest`
+  y `…/git/ref/tags/v7.0.2` el 2026-11-26.

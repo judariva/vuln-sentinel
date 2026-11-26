@@ -10,7 +10,8 @@ import { LevelBadge } from "@/components/LevelBadge";
 import { NumberTicker } from "@/components/magicui/number-ticker";
 import { SourceBeams } from "@/components/SourceBeams";
 import { SOURCES } from "@/fixtures/restricted";
-import { canUseWebGL, prefersReducedMotion } from "@/lib/capabilities";
+import { FunnelLabels } from "@/components/funnel/FunnelLabels";
+import { afterLoadIdle, canUseWebGL, prefersReducedMotion } from "@/lib/capabilities";
 import { alertCount, MAX_PARTICLES, summarizeFunnel, unitHash } from "@/lib/funnel";
 import { CHANGES, DAY, LATEST, fakeFetch } from "./data";
 
@@ -99,6 +100,78 @@ describe("embudo estático (SVG)", () => {
   });
 });
 
+describe("etiquetas de los destinos (HTML, fuera de la escena)", () => {
+  it("una por nivel con la cifra de la API, en el orden de las tarjetas", () => {
+    const f = summarizeFunnel(ALL.generated_at, ALL.entries, LATEST.alerts, true);
+    render(<FunnelLabels data={f} />);
+    expect(screen.getByTestId("funnel-pad-A")).toHaveTextContent("A · 1");
+    expect(screen.getByTestId("funnel-pad-B")).toHaveTextContent("B · 0");
+    expect(screen.getByTestId("funnel-pad-C")).toHaveTextContent("C · 1");
+    const order = screen.getAllByTestId(/^funnel-pad-/).map((e) => e.dataset.testid);
+    expect(order).toEqual(["funnel-pad-A", "funnel-pad-B", "funnel-pad-C"]);
+  });
+});
+
+describe("carga de la escena 3D: después de `load` y con el navegador libre (T8c)", () => {
+  function fakeWindow() {
+    const listeners: Record<string, () => void> = {};
+    const frames: (() => void)[] = [];
+    const win = {
+      addEventListener: (t: string, fn: () => void) => (listeners[t] = fn),
+      removeEventListener: (t: string) => delete listeners[t],
+      requestAnimationFrame: (fn: () => void) => frames.push(fn),
+      cancelAnimationFrame: () => undefined,
+    } as unknown as Window;
+    const flushFrames = () => {
+      while (frames.length) frames.shift()!();
+    };
+    return { win, listeners, flushFrames };
+  }
+
+  it("con la página aún cargando, espera a `load`, a dos fotogramas y al reposo", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestIdleCallback", undefined);
+    try {
+      const { win, listeners, flushFrames } = fakeWindow();
+      const fn = vi.fn();
+      afterLoadIdle(fn, { readyState: "loading" } as Document, win);
+      flushFrames();
+      vi.runAllTimers();
+      expect(fn).not.toHaveBeenCalled();
+      listeners.load();
+      flushFrames();
+      expect(fn).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(fn).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("si la página ya cargó, no espera a nadie; y se puede cancelar", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestIdleCallback", undefined);
+    try {
+      const { win, flushFrames } = fakeWindow();
+      const fn = vi.fn();
+      afterLoadIdle(fn, { readyState: "complete" } as Document, win);
+      flushFrames();
+      vi.runAllTimers();
+      expect(fn).toHaveBeenCalledTimes(1);
+      const later = vi.fn();
+      const cancel = afterLoadIdle(later, { readyState: "complete" } as Document, win);
+      flushFrames();
+      cancel();
+      vi.runAllTimers();
+      expect(later).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("contadores de KPI", () => {
   it("la cifra real está en el DOM desde el principio (lectores de pantalla y data-value)", () => {
     render(<NumberTicker value={1234} data-testid="kpi" />);
@@ -129,6 +202,11 @@ describe("Hoy con el embudo", () => {
     await waitFor(() => expect(funnel).toHaveAttribute("data-total", "4"));
     expect(funnel).toHaveAttribute("data-complete", "true");
     expect(within(funnel).getByTestId("funnel-static")).toBeInTheDocument();
+    // KPI en su tarjeta de la rejilla: CVE del día y cuántas acaban en alerta (de la API).
+    const kpi = screen.getByTestId("funnel-kpi");
+    const values = [...kpi.querySelectorAll("dd [data-value]")].map((e) => e.getAttribute("data-value"));
+    expect(values.slice(0, 2)).toEqual(["4", "2"]);
+    expect(within(funnel).getByTestId("funnel-pad-A")).toHaveTextContent("A · 1");
     expect(within(screen.getByTestId("level-A")).getByText("VS-CVE-2099-1001")).toBeInTheDocument();
     expect(calls.every((u) => u.startsWith("/v1/"))).toBe(true);
   });

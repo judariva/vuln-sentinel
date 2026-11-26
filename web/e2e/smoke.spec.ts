@@ -92,7 +92,14 @@ async function expectedFunnel(request: import("@playwright/test").APIRequestCont
     if (!prev || e.modified >= prev.modified) last.set(e.id, e);
   }
   const levels = [...last.entries()].map(([id, e]) => current.get(id) ?? e.level);
-  return { total: last.size, alerts: levels.filter((l) => l === "A" || l === "B" || l === "C").length, hasMore: page.has_more };
+  const byLevel = { A: 0, B: 0, C: 0 };
+  for (const l of levels) if (l === "A" || l === "B" || l === "C") byLevel[l] += 1;
+  return {
+    total: last.size,
+    alerts: byLevel.A + byLevel.B + byLevel.C,
+    byLevel,
+    hasMore: page.has_more,
+  };
 }
 
 test("Hoy: el embudo enseña las cifras de la API y las alertas no lo esperan", async ({ page, request }) => {
@@ -106,8 +113,13 @@ test("Hoy: el embudo enseña las cifras de la API y las alertas no lo esperan", 
   await expect(funnel).toHaveAttribute("data-complete", "true");
   const label = await funnel.locator('[role="img"]').first().getAttribute("aria-label");
   expect(label).toContain(`${want.total} CVE con cambios`);
-  // El KPI de alertas del embudo coincide con la API.
-  await expect(funnel.locator(`[data-value="${want.alerts}"]`)).toHaveCount(1);
+  // Los KPI del embudo (en su tarjeta de la rejilla) y las etiquetas de los destinos coinciden con la API.
+  const kpi = page.getByTestId("funnel-kpi");
+  await expect(kpi.locator("dd").nth(0).locator("[data-value]")).toHaveAttribute("data-value", String(want.total));
+  await expect(kpi.locator("dd").nth(1).locator("[data-value]")).toHaveAttribute("data-value", String(want.alerts));
+  for (const lv of ["A", "B", "C"] as const) {
+    await expect(funnel.getByTestId(`funnel-pad-${lv}`)).toHaveText(`${lv} · ${want.byLevel[lv]}`);
+  }
 });
 
 test("con prefers-reduced-motion el embudo es SVG estático y la escena 3D no se descarga", async ({ page }) => {
@@ -146,15 +158,29 @@ test("si el bloque 3D no llega, los datos y el SVG siguen ahí", async ({ page }
   expect(asked).toBe(webgl);
 });
 
-test("sin interacción, la escena 3D no se descarga: primero los datos", async ({ page }) => {
-  const scene: string[] = [];
-  page.on("request", (r) => {
-    if (/FunnelScene/.test(r.url())) scene.push(r.url());
+test("sin interacción, la escena 3D llega sola, pero después de cargar la página y los datos", async ({ page }) => {
+  const webgl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
   });
+  test.skip(!webgl, "este Chromium no tiene WebGL: se ve la versión estática (probada arriba)");
   await page.goto("/");
-  await expect(page.getByTestId("funnel-static")).toBeVisible();
-  await page.waitForTimeout(2500);
-  expect(scene).toEqual([]);
+  // Ni ratón ni teclado: la escena aparece sola.
+  await expect(page.getByTestId("funnel-3d")).toBeVisible({ timeout: 15_000 });
+  const order = await page.evaluate(() => {
+    const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+    const res = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+    const scene = res.find((r) => /FunnelScene/.test(r.name));
+    const data = res.filter((r) => r.name.includes("/v1/feed/"));
+    return {
+      load: nav.loadEventEnd,
+      scene: scene?.startTime ?? -1,
+      lastData: Math.max(...data.map((r) => r.responseEnd)),
+    };
+  });
+  expect(order.scene).toBeGreaterThan(0);
+  expect(order.scene).toBeGreaterThanOrEqual(order.load);
+  expect(order.scene).toBeGreaterThanOrEqual(order.lastData);
 });
 
 test("con WebGL, la escena 3D se carga aparte y enseña la CVE al pasar el ratón", async ({ page }) => {
@@ -164,20 +190,19 @@ test("con WebGL, la escena 3D se carga aparte y enseña la CVE al pasar el rató
   });
   test.skip(!webgl, "este Chromium no tiene WebGL: se ve la versión estática (probada arriba)");
   await page.goto("/");
-  await expect(page.getByTestId("funnel-static")).toBeVisible();
-  await page.mouse.move(100, 100);
   const scene = page.getByTestId("funnel-3d");
   await expect(scene).toBeVisible({ timeout: 15_000 });
   await expect(scene.locator("canvas")).toBeVisible();
-  // La etiqueta de cada plataforma lleva la cifra de la API.
-  await expect(scene.getByTestId("funnel-pad-A")).toHaveText("A · 1");
-  // La alerta de A acaba sobre su plataforma (a la izquierda de la etiqueta): se busca con el ratón.
-  test.setTimeout(90_000);
-  await page.waitForTimeout(9000);
-  const pad = (await scene.getByTestId("funnel-pad-A").boundingBox())!;
+  // La etiqueta de cada destino, en HTML bajo el lienzo, lleva la cifra de la API.
+  const label = page.getByTestId("funnel").getByTestId("funnel-pad-A");
+  await expect(label).toHaveText("A · 1");
+  // La alerta de A acaba sobre su plataforma, justo encima de su etiqueta: se busca con el ratón.
+  test.setTimeout(120_000);
+  await page.waitForTimeout(14_000);
+  const pad = (await label.boundingBox())!;
   let seen = "";
-  for (let y = pad.y - 20; y < pad.y + 30 && !seen; y += 3) {
-    for (let x = pad.x - 140; x < pad.x && !seen; x += 3) {
+  for (let y = pad.y - 90; y < pad.y && !seen; y += 4) {
+    for (let x = pad.x - 70; x < pad.x + pad.width + 70 && !seen; x += 4) {
       await page.mouse.move(x, y);
       seen = await page.evaluate(() => document.querySelector('[data-testid="funnel-tooltip"]')?.textContent ?? "");
     }

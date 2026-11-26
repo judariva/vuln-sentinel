@@ -20,25 +20,6 @@ export function canUseWebGL(doc: Document | undefined = globalThis.document): bo
   }
 }
 
-const INTERACTION = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
-
-/**
- * Ejecuta `fn` (una vez) cuando la persona haga algo en la página: mover el ratón, tocar, una tecla
- * o desplazarse. Devuelve la cancelación.
- */
-export function onFirstInteraction(fn: () => void, target: Pick<Window, "addEventListener" | "removeEventListener"> = window): () => void {
-  let done = false;
-  const handler = () => {
-    if (done) return;
-    done = true;
-    off();
-    fn();
-  };
-  const off = () => INTERACTION.forEach((t) => target.removeEventListener(t, handler));
-  INTERACTION.forEach((t) => target.addEventListener(t, handler, { passive: true }));
-  return off;
-}
-
 /**
  * Ejecuta `fn` cuando el navegador esté libre (tras pintar los datos). Devuelve la cancelación.
  * Sin `requestIdleCallback` (Safari), con un `setTimeout`.
@@ -54,4 +35,33 @@ export function whenIdle(fn: () => void, timeout = 2000): () => void {
   }
   const id = setTimeout(fn, 200);
   return () => clearTimeout(id);
+}
+
+/**
+ * Ejecuta `fn` (una vez) cuando la página ya cargó (`load`), se pintó (dos fotogramas) y el
+ * navegador queda libre (`whenIdle`). Es el momento de la escena 3D (T8c, ADR-0024): viva al
+ * llegar, sin esperar a que nadie interactúe, pero nunca antes que los datos. Devuelve la
+ * cancelación.
+ */
+export function afterLoadIdle(fn: () => void, doc: Document = document, win: Window = window): () => void {
+  let cancelled = false;
+  let cancelIdle: (() => void) | undefined;
+  let raf = 0;
+  const go = () => {
+    if (cancelled) return;
+    raf = win.requestAnimationFrame(() => {
+      raf = win.requestAnimationFrame(() => {
+        raf = 0;
+        if (!cancelled) cancelIdle = whenIdle(fn);
+      });
+    });
+  };
+  if (doc.readyState === "complete") go();
+  else win.addEventListener("load", go, { once: true });
+  return () => {
+    cancelled = true;
+    win.removeEventListener("load", go);
+    if (raf) win.cancelAnimationFrame(raf);
+    cancelIdle?.();
+  };
 }
