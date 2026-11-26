@@ -134,6 +134,14 @@ components:
     name: product-logs
     service: Log Analytics propio con tope diario (logs del entorno ACA y base de App Insights; infra/modules/monitoring.bicep)
     status: planned
+  - id: CMP-031
+    name: agent-harness
+    service: "Agente investigador: bucle propio con tool use (fetch_url solo GET y submit_dossier), cliente de modelo tras una interfaz (Anthropic o Foundry por configuración; FakeModel en tests), topes, JSON Schema, verificador de citas, nivel_final en código, ai_call con license_class y trazas GenAI con exportador nulo (src/vs/agent/; config/agent.yaml; dentro de CMP-004; ADR-0009, ADR-0010, ADR-0013, ADR-0022)"
+    status: proposed
+  - id: CMP-032
+    name: agent-eval
+    service: "Conjunto de evaluación del agente con respuestas simuladas, sin red (eval/cases/, python -m vs.agent.eval --model fake en CI); el modo real espera a G-6 y no corre sin configuración explícita"
+    status: proposed
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -217,12 +225,12 @@ threats:
   - {id: THR-019, name: "los logs públicos de Actions exponen IDs, nombres o rangos de la plataforma", refs: []}
 
 controls:
-  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado)"}
-  - {id: CTL-002, name: verificador determinista de citas, mitigates: [THR-003], proof: eval citas falsas}
-  - {id: CTL-003, name: contenido externo delimitado y herramientas de solo lectura, mitigates: [THR-001], proof: eval injection-advisory}
-  - {id: CTL-004, name: lista de dominios permitidos y solo GET, mitigates: [THR-004], proof: test de herramienta}
+  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado); tests/test_agent.py (el agente nunca deja el nivel por debajo del determinista ni del publicado, con hypothesis; el intento queda en ai_call.blocked_downgrade)"}
+  - {id: CTL-002, name: "verificador determinista de citas: cita literal normalizada, con longitud mínima y, en código, dentro de las líneas citadas; una afirmación con una cita no verificada se descarta", mitigates: [THR-003], proof: "eval/cases/citation-fabricated.yaml; tests/test_agent.py (verificador y sabotaje: el arnés falla si se acepta una cita inventada)"}
+  - {id: CTL-003, name: "contenido externo delimitado como datos (<external_content>, cierre neutralizado) y herramientas de solo lectura; el agente no tiene herramienta de publicar", mitigates: [THR-001], proof: "eval/cases/injection-advisory.yaml e injection-readme-escalate.yaml; tests/test_agent.py (herramientas desconocidas denegadas y sin ejecutar)"}
+  - {id: CTL-004, name: "lista de dominios permitidos aplicada en código (host exacto, https, puerto 443, sin usuario ni IP) y solo GET sin redirecciones", mitigates: [THR-004], proof: "tests/test_agent.py (tabla de URL permitidas y bloqueadas; una URL bloqueada no llega al transporte); eval/cases/domain-off-list.yaml"}
   - {id: CTL-005, name: código de PoC leído como texto, nunca ejecutado, mitigates: [THR-005], proof: revisión de contenedor en CI}
-  - {id: CTL-006, name: topes de pasos, tokens y coste diario, mitigates: [THR-006], proof: test de bucle simulado}
+  - {id: CTL-006, name: "topes de 12 pasos, 60.000 tokens por candidato y 1,5 USD/día (compartido entre candidatos); al superarlos, needs_human", mitigates: [THR-006], proof: "eval/cases/budget-*.yaml; tests/test_agent.py (bucle simulado, tokens y USD/día)"}
   - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: "tests/test_rules.py (carga inicial y fuente nueva: 0 alertas; señal nueva sobre CVE antigua: alerta)"}
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
@@ -238,3 +246,4 @@ controls:
   - {id: CTL-019, name: "una identidad por componente; Crypto User solo sobre la clave de firma, Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; solo migrate administra PostgreSQL (Entra ID, sin contraseña); KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "infra/ (az bicep build y lint en CI); revisión de las asignaciones tras el primer despliegue (F1a)"}
   - {id: CTL-020, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto", mitigates: [THR-010, THR-018], proof: ".github/workflows/deploy.yml validado con actionlint en CI"}
   - {id: CTL-021, name: "configuración del despliegue como secrets enmascarados; ningún paso imprime la salida de az (el what-if solo da el recuento)", mitigates: [THR-019], proof: ".github/workflows/deploy.yml"}
+  - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (official_advisory_domains, nunca un repositorio de PoC); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE; el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py"}

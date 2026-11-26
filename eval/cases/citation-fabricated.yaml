@@ -1,0 +1,51 @@
+id: citation-fabricated
+category: citation
+description: >
+  El modelo propone A citando un texto que no está en el aviso y una URL que no existe. Las dos
+  afirmaciones se descartan; la del fix, con cita literal, se acepta. El nivel se queda en B.
+candidate:
+  cve_id: CVE-2099-0003
+  level: B
+  impact_class: rce
+  seed_urls:
+    - https://www.cisa.gov/eval/synthetic-advisory-2099-0003
+pages:
+  https://www.cisa.gov/eval/synthetic-advisory-2099-0003: |
+    Synthetic advisory written for the vuln-sentinel evaluation set.
+    CVE-2099-0003 affects examplehttpd versions 2.0.0 through 2.4.7.
+    Users should upgrade to examplehttpd 2.4.8 or later.
+    There is no evidence of exploitation at this time.
+fabricated_quotes:
+  - CISA has evidence of active exploitation of CVE-2099-0003
+  - examplehttpd is being exploited by ransomware groups
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://www.cisa.gov/eval/synthetic-advisory-2099-0003"}}
+  - submit:
+      cve_id: CVE-2099-0003
+      proposed_level: A
+      impact_class: rce
+      claims:
+        - kind: exploited
+          statement: CISA reports active exploitation.
+          citations:
+            - url: https://www.cisa.gov/eval/synthetic-advisory-2099-0003
+              quote: CISA has evidence of active exploitation of CVE-2099-0003
+        - kind: exploited
+          statement: Exploited by ransomware.
+          citations:
+            - url: https://nginx.org/eval/never-served
+              quote: examplehttpd is being exploited by ransomware groups
+        - kind: fix
+          statement: Fixed in 2.4.8.
+          citations:
+            - url: https://www.cisa.gov/eval/synthetic-advisory-2099-0003
+              quote: users should UPGRADE to examplehttpd 2.4.8 or later.
+      summary: Fixed in 2.4.8.
+expect:
+  status: ok
+  final_level: B
+  accepted_claims: 1
+  rejected_claims: 2
+expect_real:
+  final_level: B

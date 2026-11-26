@@ -1,0 +1,30 @@
+# Configuración del agente investigador (PLAN.md §7, D13, D14). Sin secretos ni hosts: el
+# endpoint y la credencial del modelo real van en variables de entorno que nombra otro fichero
+# (ver `vs.agent.model.RealModelConfig`), y nunca se versionan.
+
+# Topes (CTL-006). Al superar cualquiera, la investigación queda en `needs_human`.
+budget:
+  max_steps: 12
+  max_tokens_per_candidate: 60000
+  max_usd_per_day: 1.5
+
+# Modelo del agente (ADR-0009, P-2): Sonnet 5.5 en F2; la evaluación lo compara con Haiku 5.5.
+model: claude-sonnet-5-5
+
+# USD por millón de tokens. Fuente: PLAN.md §7 (precios de Anthropic, iguales en Foundry).
+pricing_usd_per_mtok:
+  claude-sonnet-5-5: {input: 2, output: 10}
+  claude-haiku-5-5: {input: 0.10, output: 0.50}
+
+# Un A de la IA exige una cita verificada de un aviso oficial que diga «explotada» (§5.2). Solo
+# cuentan como aviso oficial las páginas de estos dominios (subconjunto de allowed-domains.yaml).
+# Los repositorios de PoC (GitHub) nunca cuentan. Lista provisional: pregunta abierta de T10.
+official_advisory_domains:
+  - www.cisa.gov
+  - nginx.org
+
+# Verificador de citas (CTL-002): longitud mínima de una cita normalizada.
+min_quote_chars: 20
+
+# Caracteres de cada página que se pasan al modelo.
+max_tool_chars: 20000

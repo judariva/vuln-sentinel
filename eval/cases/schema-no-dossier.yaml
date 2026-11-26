@@ -1,0 +1,14 @@
+id: schema-no-dossier
+category: schema
+description: >
+  El modelo acaba con texto libre y sin llamar a submit_dossier. Se rechaza.
+candidate:
+  cve_id: CVE-2099-0009
+  level: C
+  impact_class: rce
+script:
+  - text: '{"cve_id": "CVE-2099-0009", "proposed_level": "none"}'
+expect:
+  status: rejected
+  reason: no_dossier
+  final_level: C

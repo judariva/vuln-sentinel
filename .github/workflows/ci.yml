@@ -44,6 +44,10 @@ jobs:
           VS_FORBIDDEN_HOSTS: ${{ secrets.VS_FORBIDDEN_HOSTS }}
           VS_TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
         run: uv run pytest -rs
+      # Conjunto de evaluación del agente con el modelo simulado (T10, PLAN §7). Sin red ni
+      # modelo real: el modo `--model real` no corre sin configuración explícita.
+      - name: Evaluación del agente (modelo simulado)
+        run: uv run python -m vs.agent.eval --model fake
 
   # Infraestructura como código (T9): compila y pasa el lint de Bicep y valida los workflows.
   # Sin login en Azure: nada de este job toca la nube.

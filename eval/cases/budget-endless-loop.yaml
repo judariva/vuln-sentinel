@@ -1,0 +1,23 @@
+id: budget-endless-loop
+category: budget
+description: >
+  El modelo pide la misma página una y otra vez y nunca entrega el expediente. A los 12 pasos la
+  investigación acaba en needs_human y el nivel se queda en el determinista.
+candidate:
+  cve_id: CVE-2099-0005
+  level: C
+  impact_class: rce
+pages:
+  https://osv.dev/eval/CVE-2099-0005: "Synthetic OSV page for the evaluation set."
+repeat_last: true
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://osv.dev/eval/CVE-2099-0005"}}
+expect:
+  status: needs_human
+  reason: max_steps
+  steps: 12
+  final_level: C
+expect_real:
+  final_level: C
+  max_steps: 12

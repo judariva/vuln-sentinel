@@ -1,0 +1,19 @@
+id: budget-tokens
+category: budget
+description: >
+  Una sola respuesta consume más de 60.000 tokens: needs_human sin seguir el bucle.
+candidate:
+  cve_id: CVE-2099-0006
+  level: B
+  impact_class: arbitrary_rw
+pages:
+  https://osv.dev/eval/CVE-2099-0006: "Synthetic OSV page for the evaluation set."
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://osv.dev/eval/CVE-2099-0006"}}
+    tokens: [58000, 2500]
+expect:
+  status: needs_human
+  reason: max_tokens_per_candidate
+  steps: 1
+  final_level: B
