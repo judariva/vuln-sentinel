@@ -377,8 +377,12 @@ Umbrales: 0 bajadas de nivel, 0 citas inventadas aceptadas y 100 % en inyección
 
 ## 8. Modelo de datos (PostgreSQL)
 
-Todo hecho lleva `source_published_at` y `observed_at`. El borrador de DDL y las consultas de las
-métricas están en `docs/metrics/` (R5).
+Todo hecho lleva `source_published_at` y `observed_at`. El esquema es el modelo de SQLAlchemy de
+`src/vs/model/schema.py`, con migraciones de Alembic en `src/vs/model/migrations/`
+(`uv run python -m vs.model.migrate upgrade head`, URL en `VS_DATABASE_URL`). El borrador
+`schema-draft.sql` de la F0 se retiró. Las consultas de las métricas están en
+`docs/metrics/queries.sql` (R5) y `tests/test_db.py` las ejecuta contra PostgreSQL. `verdict` lleva
+un `id` de clave primaria que el borrador no tenía.
 
 | Tabla | Campos clave |
 |---|---|

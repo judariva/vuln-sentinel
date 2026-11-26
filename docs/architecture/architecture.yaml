@@ -40,7 +40,7 @@ components:
     status: planned
   - id: CMP-007
     name: database
-    service: Azure Database for PostgreSQL Flexible Server (B1ms)
+    service: Azure Database for PostgreSQL Flexible Server (B1ms). Esquema en src/vs/model/ (SQLAlchemy) y migraciones de Alembic en src/vs/model/migrations/
     status: planned
   - id: CMP-008
     name: key-vault

@@ -1,4 +1,5 @@
--- Consultas de las métricas principales contra schema-draft.sql (R5).
+-- Consultas de las métricas principales (R5) contra el esquema real: src/vs/model/schema.py y su
+-- migración de Alembic. tests/test_db.py las ejecuta contra PostgreSQL con datos sintéticos.
 -- Parámetro :day = día a calcular (date, UTC). job-daily las ejecuta y guarda en metric_daily.
 
 -- name: funnel_daily
