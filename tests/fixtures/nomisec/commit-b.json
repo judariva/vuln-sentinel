@@ -1,0 +1,7 @@
+{
+  "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "files": [
+    {"filename": "2018/CVE-2018-3260.json", "status": "modified"},
+    {"filename": "2099/CVE-2099-0302.json", "status": "removed"}
+  ]
+}

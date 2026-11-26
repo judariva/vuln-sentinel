@@ -18,7 +18,18 @@ import pytest
 from tests.fakes import FakeTransport, fixture_bytes, ok
 from vs.instance import load_instance
 from vs.model import schema
-from vs.sources import BUILTIN, cisa_kev, cvelistv5, epss, ghsa, osv
+from vs.sources import (
+    BUILTIN,
+    cisa_kev,
+    cvelistv5,
+    epss,
+    exploitdb,
+    ghsa,
+    github_search,
+    metasploit,
+    nomisec,
+    osv,
+)
 from vs.sources.base import (
     ENTITY_COLUMNS,
     REGISTRY,
@@ -129,12 +140,94 @@ def osv_setup(config=None, modified: Response | None = None) -> Setup:
     return Setup(conn, t, osv.DEFAULT_MODIFIED_URL, OSV_BASE + "crates.io/RUSTSEC-2021-0003.json")
 
 
+def msf_setup(config=None) -> Setup:
+    body = fixture_bytes("metasploit", "modules_metadata_base.json")
+    t = FakeTransport({metasploit.DEFAULT_URL: ok(body)})
+    return Setup(metasploit.MetasploitConnector(config, transport=t), t, metasploit.DEFAULT_URL)
+
+
+def edb_setup(config=None) -> Setup:
+    body = fixture_bytes("exploitdb", "files_exploits.csv")
+    t = FakeTransport({exploitdb.DEFAULT_URL: ok(body)})
+    return Setup(exploitdb.ExploitDbConnector(config, transport=t), t, exploitdb.DEFAULT_URL)
+
+
+NOMI_API = nomisec.DEFAULT_API_URL
+NOMI_RAW = nomisec.DEFAULT_RAW_BASE_URL
+SHA_A, SHA_B = "a" * 40, "b" * 40
+NOMI_COMMITS = NOMI_API + "/commits?per_page=100"
+NOMI_FILE_A = NOMI_RAW + SHA_A + "/2099/CVE-2099-0301.json"
+NOMI_FILE_B = NOMI_RAW + SHA_B + "/2018/CVE-2018-3260.json"
+
+
+def nomi_setup(config=None) -> Setup:
+    t = FakeTransport(
+        {
+            NOMI_COMMITS: ok(fixture_bytes("nomisec", "commits.json")),
+            NOMI_API + "/commits/" + SHA_A: ok(fixture_bytes("nomisec", "commit-a.json")),
+            NOMI_API + "/commits/" + SHA_B: ok(fixture_bytes("nomisec", "commit-b.json")),
+            NOMI_FILE_A: ok(fixture_bytes("nomisec", "CVE-2099-0301.json")),
+            NOMI_FILE_B: ok(fixture_bytes("nomisec", "CVE-2018-3260.json")),
+        }
+    )
+    conn = nomisec.NomiSecConnector(config, transport=t)
+    return Setup(conn, t, NOMI_COMMITS, NOMI_FILE_B)
+
+
+SEARCH_CVE = "CVE-2099-0401"
+SEARCH_URL = (
+    github_search.DEFAULT_API_URL
+    + "/search/repositories?q=%22CVE-2099-0401%22+in%3Aname%2Cdescription%2Creadme"
+    + "&sort=updated&order=desc&per_page=30"
+)
+# La búsqueda es en vivo: la respuesta del fixture es de 10 minutos antes de NOW.
+SEARCH_DATE = "Thu, 26 Nov 2026 08:50:00 GMT"
+
+
+def search_items(*repos: tuple[str, bool]) -> bytes:
+    items = [
+        {
+            "id": 990000500 + i,
+            "full_name": name,
+            "owner": {"login": name.split("/")[0]},
+            "html_url": "https://github.com/" + name,
+            "fork": fork,
+            "created_at": "2026-11-25T10:00:00Z",
+        }
+        for i, (name, fork) in enumerate(repos)
+    ]
+    body = {"total_count": len(items), "incomplete_results": False, "items": items}
+    return json.dumps(body).encode()
+
+
+def search_setup(config=None) -> Setup:
+    body = search_items(("example-research/CVE-2099-0401", False))
+    t = FakeTransport({SEARCH_URL: ok(body, headers={"Date": SEARCH_DATE})})
+    cfg = {"candidates": [SEARCH_CVE], **(config or {})}
+    conn = github_search.GithubSearchConnector(cfg, transport=t, limiter=NoWaitLimiter())
+    return Setup(conn, t, SEARCH_URL)
+
+
+class NoWaitLimiter:
+    """Limitador de los tests: cuenta las peticiones y no espera."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def acquire(self) -> None:
+        self.calls += 1
+
+
 SETUPS: dict[str, Callable[..., Setup]] = {
     "cisa_kev": kev_setup,
     "epss": epss_setup,
     "cvelistv5": cve_setup,
     "ghsa": ghsa_setup,
     "osv": osv_setup,
+    "metasploit": msf_setup,
+    "exploitdb": edb_setup,
+    "nomisec": nomi_setup,
+    "github_search": search_setup,
 }
 
 
@@ -279,6 +372,10 @@ BROKEN = {
     "cvelistv5": b"[{]",
     "ghsa": b"[{]",
     "osv": b"no-es-una-fecha,sin-barra\n",
+    "metasploit": b'{"m": {"fullname": "exploit/x", "mod_time": "ayer"}}',
+    "exploitdb": b"esto,no,es,el,CSV\n1,2,3,4,5\n",
+    "nomisec": b'[{"sha": "no-es-un-sha"}]',
+    "github_search": b'{"total_count": 1}',
 }
 
 
@@ -302,7 +399,7 @@ def test_stale_threshold_is_configurable(name):
     _assert_unknown(run(SETUPS[name]({"freshness_hours": 1 / 60}).connector), "umbral")
 
 
-@pytest.mark.parametrize("name", ["cvelistv5", "ghsa", "osv"])
+@pytest.mark.parametrize("name", ["cvelistv5", "ghsa", "osv", "nomisec"])
 def test_failure_in_a_later_request_drops_the_whole_run(name):
     """Si falla una petición secundaria, no se guarda media ejecución: UNKNOWN y nada más."""
     s = SETUPS[name]()

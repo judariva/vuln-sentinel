@@ -14,6 +14,15 @@ hacen llamadas de red: un transporte simulado (`tests/fakes.py`) sirve estos fic
 | `osv/modified_id.csv` | **Sintético**, con el formato de `modified_id.csv` | — | Líneas inventadas para probar la política por fuente |
 | `osv/Alpine/ALPINE-CVE-2099-0001.json` | **Sintético** | — | No se guarda ningún registro real de Alpine ni de Ubuntu (CC-BY-SA) |
 | `osv/npm/GHSA-0000-0000-0001.json` | **Sintético** | — | Aviso inventado con un `affected` de Wolfi, que el conector descarta |
+| `metasploit/modules_metadata_base.json` (T7) | `https://raw.githubusercontent.com/rapid7/metasploit-framework/master/db/modules_metadata_base.json` | BSD-3-Clause, Copyright 2006-2026, Rapid7, Inc. | 3 módulos reales (un `exploit/`, un `auxiliary/dos/` y un `post/` sin CVE); sin `author`, `description` ni campos de red |
+| `exploitdb/files_exploits.csv` (T7) | **Sintético**, con la cabecera real de `files_exploits.csv` | — | 4 filas inventadas (`remote`, `dos`, `webapps`, `local`); no se guarda ninguna fila real (GPL-2.0, solo metadatos) |
+| `nomisec/commits.json`, `nomisec/commit-a.json`, `nomisec/commit-b.json` (T7) | **Sintéticos**, con la forma de la API de commits de GitHub | — | SHA inventados; solo los campos que lee el conector |
+| `nomisec/CVE-2099-0301.json` (T7) | **Sintético**, con la forma de un fichero de PoC-in-GitHub | — | Repositorios y cuentas ficticios; la descripción lleva un intento de inyección que no se debe guardar |
+| `nomisec/CVE-2018-3260.json` (T7) | `https://raw.githubusercontent.com/nomi-sec/PoC-in-GitHub/master/2018/CVE-2018-3260.json` | CC0 1.0 | 1 entrada real, sin `description` ni campos de avatar |
+
+Las heurísticas `poc_suspicious` se prueban con repositorios, ficheros, binarios y blobs
+**sintéticos** que se fabrican en `tests/test_exploit_sources.py`: no hay código de PoC ni malware
+real en el repositorio.
 
 No hay ningún fichero de Chainguard/Wolfi (CC-BY-NC-ND), de VulnCheck ni de la EUVD. Las CVE
 `CVE-2099-*` son ficticias.

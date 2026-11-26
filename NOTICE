@@ -19,9 +19,12 @@ Datos de terceros que el feed redistribuye o de los que deriva, con sus condicio
 - CERT-EU: CC-BY 4.0.
 - INCIBE-CERT y avisos de fabricante sin licencia (p. ej. nginx.org, © F5, Inc.): solo se usan
   hechos (identificadores, versiones) y se enlaza; no se reproduce su texto.
+- nuclei-templates (ProjectDiscovery): MIT.
+- PoC-in-GitHub (nomi-sec): CC0. Solo se guardan el repositorio, su dueño, su fecha y el
+  resultado de las heurísticas; no la descripción.
+- API de GitHub (búsqueda y metadatos de repositorios de PoC): dentro de sus límites, según los
+  GitHub Terms of Service. El código de cada PoC conserva la licencia de su autor.
 
 Fuentes excluidas por sus términos (ADR-0020): VulnCheck KEV; Chainguard/Wolfi en OSV.
-- nuclei-templates (ProjectDiscovery): MIT.
-- PoC-in-GitHub (nomi-sec): CC0.
 
 El feed solo enlaza a código de exploits; no lo aloja ni lo redistribuye.

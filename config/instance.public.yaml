@@ -19,3 +19,13 @@ instance:
       config:
         token_env: VS_GITHUB_TOKEN
     - name: osv
+    # Exploits (T7). Solo metadatos; el código de un PoC nunca se clona ni se ejecuta.
+    - name: metasploit
+    - name: exploitdb
+    - name: nomisec
+      config:
+        token_env: VS_GITHUB_TOKEN
+    # Solo para candidatos B/C, que fija el job de investigación; 30 búsquedas/min con token.
+    - name: github_search
+      config:
+        token_env: VS_GITHUB_TOKEN

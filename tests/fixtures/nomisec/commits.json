@@ -1,0 +1,14 @@
+[
+  {
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "commit": {"committer": {"name": "example-bot", "date": "2026-11-26T07:54:39Z"}, "message": "Auto Update 2026/11/26 07:54:39"}
+  },
+  {
+    "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "commit": {"committer": {"name": "example-bot", "date": "2026-11-26T01:53:54Z"}, "message": "Auto Update 2026/11/26 01:53:54"}
+  },
+  {
+    "sha": "cccccccccccccccccccccccccccccccccccccccc",
+    "commit": {"committer": {"name": "example-bot", "date": "2026-11-24T07:00:00Z"}, "message": "Auto Update 2026/11/24 07:00:00"}
+  }
+]
