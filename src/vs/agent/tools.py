@@ -2,7 +2,9 @@
 
 - `DomainPolicy` carga `config/allowed-domains.yaml` y decide **en código** si una URL se puede
   pedir: `https`, sin usuario ni contraseña, puerto 443 o ninguno, y el host exacto en la lista (sin
-  comodines: `nginx.org.evil.example` no es `nginx.org`). Una IP nunca está en la lista.
+  comodines: `www.cisa.gov.evil.example` no es `www.cisa.gov`). Una IP nunca está en la lista.
+  La lista de cada investigación es la fija más los hosts de los avisos del fabricante de **esa**
+  CVE (`vs.agent.scope`); `extended` crea una lista nueva sin tocar la fija.
 - `AgentTransport` es el transporte de producción: solo GET y **sin redirecciones** (una
   redirección podría sacar la petición de la lista).
 - `Toolbox` expone al modelo una única herramienta de red, `fetch_url`, más `submit_dossier`
@@ -36,6 +38,34 @@ DEFAULT_MAX_TOOL_CHARS = 20_000
 DEFAULT_MAX_BYTES = 2 * 1024 * 1024
 
 
+def https_host(url: object) -> str | None:
+    """Host de una URL que cumple la forma exigida; None si no.
+
+    `https`, sin usuario ni contraseña, puerto 443 o ninguno, y un nombre (nunca una IP). No mira
+    ninguna lista: eso lo hace `DomainPolicy`.
+    """
+    if not isinstance(url, str):
+        return None
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
+    if parts.scheme != "https" or parts.username or parts.password:
+        return None
+    if port not in (None, 443):
+        return None
+    host = (parts.hostname or "").lower().rstrip(".")
+    if not host or "." not in host:
+        return None
+    try:
+        ipaddress.ip_address(host)
+        return None
+    except ValueError:
+        pass
+    return host
+
+
 class DomainPolicy:
     """Lista de dominios permitidos, aplicada en código (D14, CTL-004)."""
 
@@ -49,23 +79,13 @@ class DomainPolicy:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         return cls(doc.get("domains") or [])
 
+    def extended(self, extra: Iterable[str]) -> DomainPolicy:
+        """La misma lista más `extra`. No modifica esta: cada investigación tiene la suya."""
+        return DomainPolicy(self.domains | frozenset(extra))
+
     def host(self, url: str) -> str | None:
         """Host de la URL si se puede pedir; None si no."""
-        try:
-            parts = urlsplit(url)
-            port = parts.port
-        except ValueError:
-            return None
-        if parts.scheme != "https" or parts.username or parts.password:
-            return None
-        if port not in (None, 443):
-            return None
-        host = (parts.hostname or "").lower().rstrip(".")
-        try:
-            ipaddress.ip_address(host)
-            return None
-        except ValueError:
-            pass
+        host = https_host(url)
         return host if host in self.domains else None
 
     def allows(self, url: str) -> bool:

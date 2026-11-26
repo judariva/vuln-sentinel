@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -32,6 +32,7 @@ from typing import Any
 import yaml
 
 from vs.agent.citations import normalize
+from vs.agent.e5 import poc_repos_from_signals
 from vs.agent.investigator import (
     AgentConfig,
     Candidate,
@@ -45,11 +46,11 @@ from vs.agent.model import (
     MessagesApiClient,
     ModelClient,
     ModelResponse,
-    Pricing,
     RealModelConfig,
     ToolCall,
 )
-from vs.agent.tools import DomainPolicy
+from vs.agent.scope import vendor_advisory_urls
+from vs.agent.tools import DomainPolicy, https_host
 from vs.agent.tracing import NullTracer
 from vs.rules.engine import assess
 from vs.rules.impact import ImpactClass
@@ -119,6 +120,8 @@ def _candidate(doc: Mapping[str, Any]) -> tuple[Candidate | None, Level]:
     """(candidato o None si al agente no le toca, nivel determinista)."""
     if "candidate" in doc:
         c = doc["candidate"]
+        # Registro cvelistV5 mínimo: solo las referencias del CNA (url y tags).
+        record = {"containers": {"cna": {"references": list(c.get("cna_references") or [])}}}
         cand = Candidate(
             cve_id=c["cve_id"],
             level=Level.parse(c["level"]),
@@ -126,6 +129,8 @@ def _candidate(doc: Mapping[str, Any]) -> tuple[Candidate | None, Level]:
             seed_urls=tuple(c.get("seed_urls") or ()),
             facts=dict(c.get("facts") or {}),
             published_level=Level.parse(c.get("published_level", "none")),
+            vendor_advisory_urls=vendor_advisory_urls(record),
+            poc_repos=poc_repos_from_signals(list(c.get("exploit_signals") or [])),
         )
         return cand, cand.level
     r = doc["rules"]  # el candidato lo deciden las reglas deterministas (T4)
@@ -222,6 +227,9 @@ def _check_expect(cr: CaseResult, expect: Mapping[str, Any]) -> None:
         "steps": r.steps,
         "accepted_claims": len(r.accepted_claims),
         "rejected_claims": len(r.rejected_claims),
+        "rejected_reasons": sorted({x for c in r.rejected_claims for x in c.get("_failed", [])}),
+        "e5_verdicts": [f"{x['verdict']}:{x['reason']}" for x in r.e5_checks],
+        "cve_hosts": list(r.scope.get("cve_hosts", [])),
     }
     for key, got in simple.items():
         if key in expect and expect[key] != got:
@@ -263,7 +271,11 @@ def run_case(
     floor = max(candidate.level, candidate.published_level)
     cr.downgrades = int(result.final_level < floor)
     cr.fabricated_accepted = _fabricated(result, doc.get("fabricated_quotes") or [])
-    cr.off_list_requests = [u for u in transport.calls if not policy.allows(u)]
+    # Fuera de lista = fuera de la lista de ESTA investigación: la fija más los hosts de los avisos
+    # del CNA de esta CVE. El arnés la calcula por su cuenta, sin fiarse del investigador.
+    vendor_hosts = {h for u in candidate.vendor_advisory_urls if (h := https_host(u))}
+    expected = policy.extended(vendor_hosts)
+    cr.off_list_requests = [u for u in transport.calls if not expected.allows(u)]
     if cr.downgrades:
         cr.failures.append("bajada de nivel")
     if cr.fabricated_accepted:
@@ -338,16 +350,7 @@ def run_all(
 
 def fake_config(config: AgentConfig) -> AgentConfig:
     """El modelo simulado cuesta lo mismo que el configurado: así el tope de USD es realista."""
-    prices = dict(config.pricing.prices)
-    prices["fake"] = config.pricing.for_model(config.model)
-    return AgentConfig(
-        budget=config.budget,
-        model=config.model,
-        pricing=Pricing(prices),
-        official_advisory_domains=config.official_advisory_domains,
-        min_quote_chars=config.min_quote_chars,
-        max_tool_chars=config.max_tool_chars,
-    )
+    return replace(config, pricing=config.pricing.with_alias("fake", config.model))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

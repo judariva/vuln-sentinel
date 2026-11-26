@@ -11,20 +11,59 @@ budget:
 # Modelo del agente (ADR-0009, P-2): Sonnet 5.5 en F2; la evaluación lo compara con Haiku 5.5.
 model: claude-sonnet-5-5
 
-# USD por millón de tokens. Fuente: PLAN.md §7 (precios de Anthropic, iguales en Foundry).
-pricing_usd_per_mtok:
-  claude-sonnet-5-5: {input: 2, output: 10}
-  claude-haiku-5-5: {input: 0.10, output: 0.50}
+# Precios (USD por millón de tokens). Si `verified` es false, o falta la fuente o la fecha, el tope
+# diario usa el precio más alto de esta tabla para cualquier modelo (`vs.agent.model.Pricing`).
+pricing:
+  verified: true
+  source:
+    url: https://platform.claude.com/docs/en/about-claude/pricing
+    checked: 2026-11-26
+    # Citas literales de la tabla «Model pricing» (columnas: base input, 5m cache writes, 1h cache
+    # writes, cache hits, output):
+    quotes:
+      - "| Claude Sonnet 5.5 | $2 / MTok | $2.50 / MTok | $4 / MTok | $0.10 / MTok<sup>2</sup> | $10 / MTok |"
+      - "| Claude Haiku 5.5 (for prompts up to 100,000 tokens) | $0.10 / MTok | $0.125 / MTok | $0.20 / MTok | $0.01 / MTok | $0.50 / MTok |"
+      - "| Claude Haiku 5.5 (for prompts over 100,000 tokens) | $0.50 / MTok | $0.625 / MTok | $1 / MTok | $0.05 / MTok | $2.50 / MTok |"
+      # Foundry: «Token usage rated in USD at standard per-model, per-feature rates (same as Model
+      # pricing)».
+  # «Deployments hosted on Azure can use the US Data Zone Standard deployment type [...] and
+  # applies the same 1.1x pricing multiplier» (misma página). El tipo de despliegue se fija en G-6;
+  # hasta entonces, el peor caso conocido.
+  multiplier: 1.1
+  usd_per_mtok:
+    claude-sonnet-5-5: {input: 2, output: 10}
+    claude-haiku-5-5:
+      input: 0.10
+      output: 0.50
+      long_context: {above_input_tokens: 100000, input: 0.50, output: 2.50}
 
-# Un A de la IA exige una cita verificada de un aviso oficial que diga «explotada» (§5.2). Solo
-# cuentan como aviso oficial las páginas de estos dominios (subconjunto de allowed-domains.yaml).
-# Los repositorios de PoC (GitHub) nunca cuentan. Lista provisional: pregunta abierta de T10.
+# Avisos oficiales (§5.2): un A de la IA exige una cita verificada, sobre esta CVE, de un aviso
+# oficial que diga «explotada». Cuentan como aviso oficial:
+# - estos dominios fijos de autoridad (subconjunto de allowed-domains.yaml);
+# - y, solo durante la investigación de cada CVE, los hosts de las referencias de su registro
+#   cvelistV5 que el CNA etiqueta `vendor-advisory` (`vs.agent.scope`). Ningún dominio de
+#   fabricante se escribe aquí a mano.
 official_advisory_domains:
   - www.cisa.gov
-  - nginx.org
+
+# Alojamiento de código: nunca cuenta como aviso oficial, aunque el CNA lo etiquete
+# `vendor-advisory` (un repositorio lo puede escribir cualquiera).
+code_hosting_domains:
+  - github.com
+  - api.github.com
+  - raw.githubusercontent.com
+  - gist.github.com
+  - gist.githubusercontent.com
+  - codeload.github.com
+  - gitlab.com
+  - bitbucket.org
 
 # Verificador de citas (CTL-002): longitud mínima de una cita normalizada.
 min_quote_chars: 20
+
+# Una afirmación `exploited` es sobre esta CVE solo si su identificador aparece en la cita o a
+# ±N líneas de ella en el documento.
+cve_window_lines: 3
 
 # Caracteres de cada página que se pasan al modelo.
 max_tool_chars: 20000

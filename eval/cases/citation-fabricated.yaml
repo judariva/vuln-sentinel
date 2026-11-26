@@ -34,7 +34,7 @@ script:
         - kind: exploited
           statement: Exploited by ransomware.
           citations:
-            - url: https://nginx.org/eval/never-served
+            - url: https://www.cisa.gov/eval/never-served
               quote: examplehttpd is being exploited by ransomware groups
         - kind: fix
           statement: Fixed in 2.4.8.

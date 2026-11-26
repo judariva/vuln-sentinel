@@ -12,10 +12,17 @@ Normalizar es: NFKC, minúsculas (casefold), comillas y guiones tipográficos a 
 colapsados. No es una búsqueda difusa: o está, o no está.
 
 Una afirmación con **alguna** cita no válida se rechaza entera.
+
+Una afirmación `exploited` tiene que ser **sobre esta CVE** (T10b): el identificador exacto de la
+CVE tiene que aparecer en la cita o a ±N líneas de ella en el documento (`cve_window_lines` de
+`config/agent.yaml`). Si no, la cita se rechaza con `other_cve`: una frase literal del catálogo KEV
+entero o de un aviso de otra CVE no prueba que esta se explote.
 """
 
 from __future__ import annotations
 
+import bisect
+import re
 import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -24,6 +31,7 @@ from typing import Any
 from vs.agent.tools import Document, Fetcher
 
 DEFAULT_MIN_QUOTE_CHARS = 20
+DEFAULT_CVE_WINDOW_LINES = 3
 
 _TRANSLATE = str.maketrans(
     {
@@ -56,7 +64,7 @@ def normalize(text: str) -> str:
 class CitationCheck:
     url: str
     ok: bool
-    reason: str  # ok | domain | unavailable | too_short | not_found | lines
+    reason: str  # ok | domain | unavailable | too_short | not_found | lines | other_cve
 
 
 @dataclass
@@ -81,12 +89,80 @@ def _in_lines(doc: Document, quote: str, start: int, end: int) -> bool:
     return quote in normalize(window)
 
 
+def locate(
+    lines: list[str], quote: str, lo: int = 1, hi: int | None = None
+) -> list[tuple[int, int]]:
+    """Tramos `(inicio, fin)` (1-based) de `lines[lo..hi]` donde aparece la cita normalizada.
+
+    `quote` ya viene normalizada. Una cita puede ocupar varias líneas: se normaliza cada línea, se
+    unen con un espacio (lo mismo que hace `normalize` con los saltos de línea) y cada aparición
+    se traduce a la primera y la última línea que toca.
+    """
+    hi = len(lines) if hi is None else min(hi, len(lines))
+    starts: list[int] = []  # desplazamiento de cada línea no vacía en `joined`
+    numbers: list[int] = []  # su número de línea
+    parts: list[str] = []
+    pos = 0
+    for n in range(max(lo, 1), hi + 1):
+        norm = normalize(lines[n - 1])
+        if not norm:
+            continue
+        if parts:
+            pos += 1  # el espacio que las une
+        starts.append(pos)
+        numbers.append(n)
+        parts.append(norm)
+        pos += len(norm)
+    joined = " ".join(parts)
+    out: list[tuple[int, int]] = []
+    if not quote:
+        return out
+    i = joined.find(quote)
+    while i != -1:
+        first = bisect.bisect_right(starts, i) - 1
+        last = bisect.bisect_right(starts, i + len(quote) - 1) - 1
+        out.append((numbers[first], numbers[last]))
+        i = joined.find(quote, i + 1)
+    return sorted(set(out))
+
+
+def cve_pattern(cve_id: str) -> re.Pattern[str]:
+    """El identificador exacto, normalizado: `CVE-2099-0012` no casa con `CVE-2099-00123`."""
+    return re.compile(r"(?<![0-9a-z])" + re.escape(normalize(cve_id)) + r"(?![0-9])")
+
+
+def mentions_cve(doc: Document, quote: str, cve_id: str, window: int) -> bool:
+    """La CVE aparece en la cita o a ±`window` líneas de alguna aparición de la cita."""
+    pat = cve_pattern(cve_id)
+    if pat.search(quote):
+        return True
+    lines = doc.text.splitlines()
+    for start, end in locate(lines, quote):
+        lo, hi = max(start - window, 1), min(end + window, len(lines))
+        if pat.search(normalize("\n".join(lines[lo - 1 : hi]))):
+            return True
+    return False
+
+
 class CitationVerifier:
-    def __init__(self, fetcher: Fetcher, min_quote_chars: int = DEFAULT_MIN_QUOTE_CHARS) -> None:
+    def __init__(
+        self,
+        fetcher: Fetcher,
+        min_quote_chars: int = DEFAULT_MIN_QUOTE_CHARS,
+        *,
+        cve_id: str | None = None,
+        cve_window_lines: int = DEFAULT_CVE_WINDOW_LINES,
+    ) -> None:
         self.fetcher = fetcher
         self.min_quote_chars = min_quote_chars
+        self.cve_id = cve_id
+        self.cve_window_lines = cve_window_lines
 
-    def check(self, citation: Mapping[str, Any]) -> CitationCheck:
+    def document(self, url: str) -> Document | None:
+        """El documento ya descargado de una cita (para comprobaciones posteriores)."""
+        return self.fetcher.corpus.get(url)
+
+    def check(self, citation: Mapping[str, Any], *, about_cve: bool = False) -> CitationCheck:
         url = str(citation.get("url", ""))
         quote = normalize(str(citation.get("quote", "")))
         if not self.fetcher.policy.allows(url):
@@ -104,7 +180,19 @@ class CitationVerifier:
             end = int(end if end is not None else start)
             if not _in_lines(doc, quote, start, end):
                 return CitationCheck(url, False, "lines")
+        if about_cve:
+            if self.cve_id is None:
+                raise ValueError("comprobar que una cita es sobre la CVE exige cve_id")
+            if not mentions_cve(doc, quote, self.cve_id, self.cve_window_lines):
+                return CitationCheck(url, False, "other_cve")
         return CitationCheck(url, True, "ok")
 
     def check_claims(self, claims: list[Mapping[str, Any]]) -> list[ClaimCheck]:
-        return [ClaimCheck(c, [self.check(cit) for cit in c.get("citations", [])]) for c in claims]
+        out = []
+        for c in claims:
+            # Solo `exploited` exige que la cita sea sobre esta CVE (sube a A).
+            about = self.cve_id is not None and str(c.get("kind")) == "exploited"
+            out.append(
+                ClaimCheck(c, [self.check(x, about_cve=about) for x in c.get("citations", [])])
+            )
+        return out

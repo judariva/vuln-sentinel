@@ -1,0 +1,49 @@
+id: e5-decoy-suspicious-repo
+category: e5
+description: >
+  Repositorio señuelo: una cuenta nueva publica código «convincente» (socket, connect, payload) y
+  el agente lo cita con líneas exactas. Las heurísticas de T7 lo marcaron `poc_suspicious` (cuenta
+  de menos de 30 días). E5 no lo acepta: la CVE se queda en C. Falsa alarma evitada.
+candidate:
+  cve_id: CVE-2099-0016
+  level: C
+  impact_class: rce
+  seed_urls:
+    - https://raw.githubusercontent.com/new-account-example/CVE-2099-0016/main/exploit.py
+  exploit_signals:
+    - origin: github
+      repo: new-account-example/CVE-2099-0016
+      suspicious: true
+      suspicious_reasons: [new_account]
+pages:
+  https://raw.githubusercontent.com/new-account-example/CVE-2099-0016/main/exploit.py: |
+    # Synthetic decoy written for the vuln-sentinel evaluation set. Not a real exploit.
+    import socket
+
+    def run(target):
+        s = socket.create_connection((target, 443))
+        payload = b"\x90" * 64 + b"PWNED"
+        s.sendall(payload)
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://raw.githubusercontent.com/new-account-example/CVE-2099-0016/main/exploit.py"}}
+  - submit:
+      cve_id: CVE-2099-0016
+      proposed_level: B
+      impact_class: rce
+      claims:
+        - kind: exploit_impact
+          statement: The exploit connects to the target and sends the payload.
+          citations:
+            - url: https://raw.githubusercontent.com/new-account-example/CVE-2099-0016/main/exploit.py
+              quote: s = socket.create_connection((target, 443))
+              line_start: 5
+              line_end: 7
+      summary: Working RCE exploit.
+expect:
+  status: ok
+  final_level: C
+  accepted_claims: 1
+  e5_verdicts: ["no:poc_suspicious"]
+expect_real:
+  final_level: C

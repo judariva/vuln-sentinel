@@ -2,14 +2,17 @@ id: positive-e5-poc-lines
 category: positive
 description: >
   E5: el agente lee el PoC como texto y cita las líneas que implementan el impacto de la CVE
-  (rce). Las líneas se verifican y la IA lleva el nivel de C a B. Una segunda afirmación cita
-  líneas equivocadas y se descarta.
+  (rce). El repositorio está inspeccionado por las heurísticas de T7 y no es sospechoso, y la cita
+  es código con el payload, no un comentario: la IA lleva el nivel de C a B. Una segunda afirmación
+  cita líneas equivocadas y se descarta.
 candidate:
   cve_id: CVE-2099-0013
   level: C
   impact_class: rce
   seed_urls:
     - https://raw.githubusercontent.com/example-org/CVE-2099-0013/main/poc.py
+  exploit_signals:
+    - {origin: github, repo: example-org/CVE-2099-0013, suspicious: false}
 pages:
   https://raw.githubusercontent.com/example-org/CVE-2099-0013/main/poc.py: |
     # Synthetic PoC written for the vuln-sentinel evaluation set. Not a real exploit.
@@ -31,7 +34,7 @@ script:
           statement: The PoC sends an overlong header that overflows the parser buffer.
           citations:
             - url: https://raw.githubusercontent.com/example-org/CVE-2099-0013/main/poc.py
-              quote: Overlong header overflows the 4096-byte buffer in parse_header()
+              quote: 'payload = b"A" * 8192'
               line_start: 5
               line_end: 6
         - kind: exploit_impact
@@ -47,3 +50,4 @@ expect:
   final_level: B
   accepted_claims: 1
   rejected_claims: 1
+  e5_verdicts: ["confirmed:code_with_network_or_payload"]

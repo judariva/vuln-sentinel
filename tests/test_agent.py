@@ -16,9 +16,11 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from vs.agent import citations as citations_mod
+from vs.agent import e5 as e5_mod
 from vs.agent import eval as agent_eval
 from vs.agent import investigator as inv_mod
-from vs.agent.citations import CitationCheck, CitationVerifier, normalize
+from vs.agent.citations import CitationCheck, CitationVerifier, locate, normalize
 from vs.agent.dossier import DOSSIER_SCHEMA, SchemaError, validate
 from vs.agent.investigator import (
     AgentConfig,
@@ -34,9 +36,11 @@ from vs.agent.model import (
     ModelError,
     ModelRequest,
     ModelResponse,
+    Pricing,
     RealModelConfig,
     ToolCall,
 )
+from vs.agent.scope import build_scope, vendor_advisory_urls
 from vs.agent.tools import (
     TOOL_SPECS,
     AgentTransport,
@@ -64,8 +68,14 @@ NOW = datetime(2099, 1, 15, 12, 0, tzinfo=UTC)
 
 ADVISORY = "https://www.cisa.gov/eval/a"
 POC = "https://raw.githubusercontent.com/example-org/x/main/poc.py"
+POC_REPO = "example-org/x"
 ADVISORY_TEXT = "Synthetic advisory.\nCISA is aware of active exploitation of CVE-2099-0100.\n"
-POC_TEXT = "# synthetic\nimport socket\n# Overlong header overflows the parser buffer (CWE-787)\n"
+POC_TEXT = (
+    "# synthetic PoC for CVE-2099-0100\nimport socket\n"
+    "# Overlong header overflows the parser buffer (CWE-787)\n"
+    'payload = b"A" * 8192  # overflows the parser buffer\n'
+)
+CLEAN = {POC_REPO: False}  # repositorio inspeccionado por T7 y no sospechoso
 
 
 @pytest.fixture(scope="module")
@@ -119,10 +129,10 @@ def run(script, config, policy, candidate=None, **kw):
 @pytest.mark.parametrize(
     "url",
     [
-        "https://nginx.org/en/security_advisories.html",
-        "https://NGINX.org/x",
-        "https://nginx.org./x",
-        "https://nginx.org:443/x",
+        "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+        "https://WWW.CISA.gov/x",
+        "https://www.cisa.gov./x",
+        "https://www.cisa.gov:443/x",
         "https://api.github.com/repos/example-org/x/contents/poc.py",
     ],
 )
@@ -133,24 +143,32 @@ def test_domain_policy_allows(policy, url):
 @pytest.mark.parametrize(
     "url",
     [
-        "http://nginx.org/",
-        "https://nginx.org:8443/",
-        "https://nginx.org.evil.example/",
-        "https://evil.example/?u=https://nginx.org/",
-        "https://user:pass@nginx.org/",
-        "https://user@nginx.org/",
+        "http://www.cisa.gov/",
+        "https://www.cisa.gov:8443/",
+        "https://www.cisa.gov.evil.example/",
+        "https://evil.example/?u=https://www.cisa.gov/",
+        "https://user:pass@www.cisa.gov/",
+        "https://user@www.cisa.gov/",
         "https://203.0.113.7/",
         "https://[::1]/",
-        "https://sub.nginx.org/",
+        "https://sub.www.cisa.gov/",
         "file:///etc/passwd",
-        "ftp://nginx.org/",
-        "https://nginx.org:99999/",
+        "ftp://www.cisa.gov/",
+        "https://www.cisa.gov:99999/",
         "",
-        "nginx.org/x",
+        "www.cisa.gov/x",
     ],
 )
 def test_domain_policy_blocks(policy, url):
     assert not policy.allows(url)
+
+
+def test_no_vendor_domain_is_hardcoded():
+    """R7: ningún dominio de fabricante (ni del caso de prueba) escrito a mano (T10b)."""
+    for path in (DOMAINS, AGENT_YAML):
+        assert "nginx" not in path.read_text(encoding="utf-8").lower()
+    cfg = AgentConfig.load(AGENT_YAML)
+    assert cfg.official_advisory_domains == {"www.cisa.gov"}
 
 
 def test_blocked_url_never_reaches_transport(policy):
@@ -170,7 +188,7 @@ def test_fetch_non_2xx_is_an_error_not_content(policy):
 def test_agent_transport_does_not_follow_redirects():
     assert _NoRedirect().redirect_request(None, None, 302, "Found", {}, "https://evil") is None
     with pytest.raises(Exception, match="HTTPS"):
-        AgentTransport().get("http://nginx.org/")
+        AgentTransport().get("http://www.cisa.gov/")
 
 
 def test_only_read_tools_exist():
@@ -206,7 +224,7 @@ INVALID = [
     {**VALID, "cve_id": "CVE-99-1"},
     {k: v for k, v in VALID.items() if k != "summary"},
     {**VALID, "claims": [{"kind": "fix", "statement": "x", "citations": []}]},
-    {**VALID, "claims": [claim("fix", "http://nginx.org/", "q")]},
+    {**VALID, "claims": [claim("fix", "http://www.cisa.gov/", "q")]},
     {**VALID, "claims": [claim("fix", ADVISORY, "q", line_start=0)]},
     {**VALID, "claims": [claim("fix", ADVISORY, "q", line_start=True)]},
     {**VALID, "claims": [claim("guess", ADVISORY, "q")]},
@@ -253,7 +271,10 @@ def test_normalize():
         ({"url": ADVISORY, "quote": "CISA has evidence of exploitation"}, "not_found"),
         ({"url": ADVISORY, "quote": "CISA is"}, "too_short"),
         ({"url": "https://evil.example/a", "quote": "CISA is aware of active"}, "domain"),
-        ({"url": "https://nginx.org/missing", "quote": "CISA is aware of active"}, "unavailable"),
+        (
+            {"url": "https://www.cisa.gov/missing", "quote": "CISA is aware of active"},
+            "unavailable",
+        ),
         ({"url": POC, "quote": "Overlong header overflows", "line_start": 3}, "ok"),
         (
             {"url": POC, "quote": "Overlong header overflows", "line_start": 1, "line_end": 2},
@@ -323,16 +344,21 @@ def test_a_needs_official_advisory(config, policy):
 
 
 def test_e5_only_from_c_with_lines_and_same_impact(config, policy):
-    e5 = claim("exploit_impact", POC, "Overlong header overflows the parser", line_start=3)
-    r, _, _ = run([submit("B", [e5])], config, policy)
+    clean = cand(poc_repos=CLEAN)
+    e5c = claim("exploit_impact", POC, 'payload = b"A" * 8192', line_start=4)
+    r, _, _ = run([submit("B", [e5c])], config, policy, clean)
     assert r.final_level is Level.B and r.level_reason == ["B.exploit:E5"]
-    no_lines = claim("exploit_impact", POC, "Overlong header overflows the parser")
-    assert run([submit("B", [no_lines])], config, policy)[0].final_level is Level.C
+    assert r.dossier()["e5"][0]["verdict"] == "confirmed"
+    no_lines = claim("exploit_impact", POC, 'payload = b"A" * 8192')
+    assert run([submit("B", [no_lines])], config, policy, clean)[0].final_level is Level.C
     # Impacto distinto del de la CVE: se registra y no sube.
-    r, _, _ = run([submit("B", [e5], impact="auth_bypass")], config, policy)
+    r, _, _ = run([submit("B", [e5c], impact="auth_bypass")], config, policy, clean)
     assert r.final_level is Level.C and r.blocked_impact_inflation
     # E5 nunca lleva a A.
-    assert run([submit("A", [e5])], config, policy)[0].final_level is Level.B
+    assert run([submit("A", [e5c])], config, policy, clean)[0].final_level is Level.B
+    # Y nunca desde B (solo de C a B).
+    r, _, _ = run([submit("A", [e5c])], config, policy, cand(Level.B, poc_repos=CLEAN))
+    assert r.final_level is Level.B and r.e5_checks == []
 
 
 def test_impact_other_is_allowed_and_not_inflation(config, policy):
@@ -418,11 +444,11 @@ def test_token_cap(config, policy):
 
 def test_daily_usd_cap_is_shared_between_candidates(config, policy):
     ledger = SpendLedger()
-    # 0,02 USD por paso con los precios de Sonnet 5.5 (2 y 10 USD/MTok).
+    # 0,022 USD por paso con los precios de Sonnet 5.5 (2 y 10 USD/MTok) por 1,1 (peor geografía).
     step = replace(fetch(ADVISORY), tokens_in=5_000, tokens_out=1_000)
     cfg = replace(config, budget=replace(config.budget, max_usd_per_day=Decimal("0.05")))
     r1, _, _ = run([step, step, submit("C")], cfg, policy, ledger=ledger)
-    assert r1.status is Status.OK and r1.cost_usd == Decimal("0.042")  # + 0,002 del submit
+    assert r1.status is Status.OK and r1.cost_usd == Decimal("0.0462")  # + 0,0022 del submit
     r2, _, model = run([step, step, submit("C")], cfg, policy, ledger=ledger)
     assert r2.status is Status.NEEDS_HUMAN and r2.reason == "max_usd_per_day"
     assert len(model.requests) == 1
@@ -446,7 +472,7 @@ def test_model_without_price_is_refused(policy):
 
 def test_official_domains_must_be_in_allowlist(config):
     with pytest.raises(ValueError, match="oficiales"):
-        Investigator(FakeModel([submit()]), transport(), DomainPolicy(["nginx.org"]), config)
+        Investigator(FakeModel([submit()]), transport(), DomainPolicy(["osv.dev"]), config)
 
 
 # -- ai_call y licencia (ADR-0022) ---------------------------------------------------------------
@@ -460,7 +486,7 @@ def test_ai_call_row_matches_model(config, policy):
     assert row["kind"] == "agent" and row["proposed_level"] == "none"
     assert row["final_level"] == "B" and row["blocked_downgrade"] is True
     assert row["license_class"] is LicenseClass.OPEN and row["licensee"] is None
-    assert row["cost_usd"] == Decimal("0.004")
+    assert row["cost_usd"] == Decimal("0.0044")
     json.dumps(row["dossier"])  # JSONB
 
 
@@ -633,7 +659,9 @@ def test_eval_detects_broken_monotonicity(monkeypatch, config, policy):
 
 
 def test_eval_detects_broken_citation_verifier(monkeypatch, config, policy):
-    monkeypatch.setattr(CitationVerifier, "check", lambda self, c: CitationCheck("u", True, "ok"))
+    monkeypatch.setattr(
+        CitationVerifier, "check", lambda self, c, **k: CitationCheck("u", True, "ok")
+    )
     s = _summary(config, policy)
     assert s.fabricated_accepted > 0 and not s.ok
 
@@ -651,3 +679,362 @@ def test_eval_detects_official_domain_misconfiguration(config, policy):
     )
     s = _summary(loose, policy)
     assert s.injection_rate < 1 and not s.ok
+
+
+def test_eval_detects_citation_about_other_cve(monkeypatch, config, policy):
+    monkeypatch.setattr(citations_mod, "mentions_cve", lambda *a, **k: True)
+    s = _summary(config, policy)
+    failed = {r.case.id for r in s.results if not r.passed}
+    assert "exploited-other-cve" in failed and not s.ok
+
+
+def test_eval_detects_e5_without_repo_or_code_checks(monkeypatch, config, policy):
+    monkeypatch.setattr(
+        e5_mod, "check_citation", lambda *a, **k: e5_mod.E5Check(e5_mod.Verdict.CONFIRMED, "x")
+    )
+    s = _summary(config, policy)
+    failed = {r.case.id for r in s.results if not r.passed}
+    assert {"e5-decoy-suspicious-repo", "e5-comments-only", "e5-repo-not-inspected"} <= failed
+
+
+def test_eval_detects_scope_ignoring_tags(monkeypatch, config, policy):
+    """Si el alcance abriera todas las referencias del CNA, no solo `vendor-advisory`."""
+
+    def all_refs(record):
+        refs = record["containers"]["cna"]["references"]
+        return tuple(r["url"] for r in refs)
+
+    monkeypatch.setattr(agent_eval, "vendor_advisory_urls", all_refs)
+    s = _summary(config, policy)
+    assert "scope-vendor-advisory" in {r.case.id for r in s.results if not r.passed}
+
+
+# -- T10b · alcance por CVE: avisos del fabricante del CNA -------------------------------------
+
+VENDOR = "https://security.examplehttpd.example/advisories/2099-0100"
+VENDOR_TEXT = "Vendor advisory.\nCVE-2099-0100 is being exploited in limited, targeted attacks.\n"
+
+
+def cve_record(*refs: tuple[str, list[str]], adp: tuple = ()) -> dict:
+    return {
+        "containers": {
+            "cna": {"references": [{"url": u, "tags": t} for u, t in refs]},
+            "adp": [{"references": [{"url": u, "tags": t} for u, t in adp]}],
+        }
+    }
+
+
+def test_vendor_advisory_urls_only_cna_and_tagged():
+    rec = cve_record(
+        (VENDOR, ["vendor-advisory", "patch"]),
+        ("https://blog.example/x", ["third-party-advisory"]),
+        ("https://untagged.example/x", []),
+        (VENDOR, ["vendor-advisory"]),
+        adp=(("https://adp.example/x", ["vendor-advisory"]),),
+    )
+    assert vendor_advisory_urls(rec) == (VENDOR,)
+    assert vendor_advisory_urls(None) == () and vendor_advisory_urls({"containers": []}) == ()
+
+
+def test_vendor_advisory_opens_its_host_and_untagged_does_not(config, policy):
+    rec = cve_record((VENDOR, ["vendor-advisory"]), ("https://blog.example/p", ["exploit"]))
+    c = candidate_for("CVE-2099-0100", Level.C, ImpactClass.RCE, cve_record=rec)
+    t = FakeTransport(
+        {VENDOR: ok(VENDOR_TEXT.encode()), "https://blog.example/p": ok(b"CVE-2099-0100 exploited")}
+    )
+    exploited = claim("exploited", VENDOR, "is being exploited in limited, targeted attacks")
+    script = [fetch(VENDOR), fetch("https://blog.example/p", 1), submit("A", [exploited])]
+    tracer = RecordingTracer()
+    r, t, _ = run(script, config, policy, c, transport=t, tracer=tracer)
+    assert t.urls() == [VENDOR]
+    assert r.tool_log.blocked_urls == ["https://blog.example/p"]
+    assert r.final_level is Level.A  # el host del CNA cuenta como aviso oficial de esta CVE
+    assert r.scope["cve_hosts"] == ["security.examplehttpd.example"]
+    assert "security.examplehttpd.example" in r.allowed_domains
+    root = tracer.spans[0].attributes
+    assert root["vs.scope.cve_hosts"] == "security.examplehttpd.example"
+    assert "security.examplehttpd.example" in root["vs.scope.official_domains"]
+    # La lista fija no ha cambiado.
+    assert "security.examplehttpd.example" not in policy.domains
+
+
+def test_host_opened_for_one_cve_is_not_valid_for_another(config, policy):
+    rec = cve_record((VENDOR, ["vendor-advisory"]))
+    one = candidate_for("CVE-2099-0100", Level.C, ImpactClass.RCE, cve_record=rec)
+    other = Candidate("CVE-2099-0101", Level.C, ImpactClass.RCE)
+    t = FakeTransport({VENDOR: ok(VENDOR_TEXT.encode())})
+    model = FakeModel(
+        [
+            fetch(VENDOR),
+            submit("C"),
+            fetch(VENDOR),
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        "s",
+                        "submit_dossier",
+                        {
+                            "cve_id": "CVE-2099-0101",
+                            "proposed_level": "A",
+                            "impact_class": "rce",
+                            "claims": [
+                                claim("exploited", VENDOR, "CVE-2099-0100 is being exploited")
+                            ],
+                            "summary": "s",
+                        },
+                    ),
+                )
+            ),
+        ]
+    )
+    inv = Investigator(model, t, policy, config, clock=lambda: NOW)
+    r1 = inv.investigate(one)
+    r2 = inv.investigate(other)
+    assert r1.tool_log.fetched == [VENDOR]
+    assert r2.tool_log.blocked_urls == [VENDOR]  # la herramienta; el verificador da `domain`
+    assert t.urls() == [VENDOR]  # la segunda investigación no llega al transporte
+    assert r2.final_level is Level.C and r2.scope["cve_hosts"] == []
+    assert r2.rejected_claims[0]["_failed"] == ["domain"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://security.examplehttpd.example/a",
+        "https://203.0.113.7/a",
+        "https://security.examplehttpd.example:8443/a",
+        "https://user@security.examplehttpd.example/a",
+        "https://localhost/a",
+        "not a url",
+    ],
+)
+def test_malformed_vendor_reference_opens_nothing(config, policy, url):
+    scope = build_scope("CVE-2099-0100", [url], policy, {"www.cisa.gov"}, set())
+    assert scope.cve_hosts == frozenset() and scope.rejected_urls == (url,)
+    assert scope.policy.domains == policy.domains
+
+
+def test_code_hosting_tagged_by_cna_is_never_official(config, policy):
+    rec = cve_record(
+        ("https://github.com/example-org/x/security/advisories/1", ["vendor-advisory"])
+    )
+    c = candidate_for("CVE-2099-0100", Level.C, ImpactClass.RCE, cve_record=rec)
+    inv = Investigator(FakeModel([submit()]), transport(), policy, config)
+    scope = inv.scope_for(c)
+    assert "github.com" in scope.policy.domains  # se puede leer…
+    assert "github.com" not in scope.official  # …pero no es un aviso oficial
+
+
+# -- T10b · `exploited` tiene que ser sobre esta CVE -------------------------------------------
+
+CATALOG = "https://www.cisa.gov/eval/catalog"
+CATALOG_TEXT = "\n".join(
+    [
+        "Entry: CVE-2099-0099",  # 1
+        "CISA is aware of active exploitation of this vulnerability.",  # 2
+        "x",  # 3
+        "x",  # 4
+        "x",  # 5
+        "Entry: CVE-2099-0100",  # 6
+        "Entry: CVE-2099-01000 shows that exploitation is widespread now.",  # 7
+    ]
+)
+
+
+@pytest.mark.parametrize(
+    ("quote", "window", "ok_"),
+    [
+        ("CISA is aware of active exploitation of this vulnerability", 3, False),  # 4 líneas
+        ("CISA is aware of active exploitation of this vulnerability", 4, True),
+        ("exploitation is widespread now.", 0, False),  # CVE-2099-01000 no es CVE-2099-0100
+        ("exploitation is widespread now.", 1, True),  # la línea 6 está a 1
+        ("Entry: CVE-2099-0100", 0, True),  # en la propia cita
+    ],
+)
+def test_exploited_citation_must_mention_this_cve(policy, quote, window, ok_):
+    t = FakeTransport({CATALOG: ok(CATALOG_TEXT.encode())})
+    v = CitationVerifier(
+        Fetcher(t, policy, Corpus(), ToolLog()), 20, cve_id="CVE-2099-0100", cve_window_lines=window
+    )
+    got = v.check({"url": CATALOG, "quote": quote}, about_cve=True)
+    assert got.ok is ok_ and got.reason == ("ok" if ok_ else "other_cve")
+    # Sin `about_cve` (afirmaciones que no son `exploited`) la cita literal basta.
+    assert v.check({"url": CATALOG, "quote": quote}).ok
+
+
+def test_exploited_about_other_cve_does_not_reach_a(config, policy):
+    t = FakeTransport({CATALOG: ok(CATALOG_TEXT.encode())})
+    other = claim("exploited", CATALOG, "CISA is aware of active exploitation of this")
+    fix = claim("fix", CATALOG, "CISA is aware of active exploitation of this")
+    r, _, _ = run([submit("A", [other, fix])], config, policy, transport=t)
+    assert r.final_level is Level.C
+    assert [c["_failed"] for c in r.rejected_claims] == [["other_cve"]]
+    assert len(r.accepted_claims) == 1
+
+
+def test_locate_spans_lines():
+    lines = ["alpha beta", "", "gamma  delta", "epsilon"]
+    assert locate(lines, normalize("beta gamma")) == [(1, 3)]
+    assert locate(lines, normalize("delta epsilon"), 3, 4) == [(3, 4)]
+    assert locate(lines, normalize("alpha"), 2) == []
+    assert locate(["a b", "a b"], "a b") == [(1, 1), (2, 2)]
+
+
+def test_config_window_comes_from_yaml():
+    assert AgentConfig.load(AGENT_YAML).cve_window_lines == 3
+
+
+# -- T10b · E5 con repositorios señuelo ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("url", "repo"),
+    [
+        ("https://raw.githubusercontent.com/Example-Org/X/main/poc.py", "example-org/x"),
+        ("https://api.github.com/repos/example-org/x/contents/poc.py", "example-org/x"),
+        ("https://github.com/example-org/x/blob/main/poc.py", "example-org/x"),
+        ("https://api.github.com/users/example-org", None),
+        ("https://raw.githubusercontent.com/example-org", None),
+        ("https://www.cisa.gov/example-org/x", None),
+        ("https://raw.githubusercontent.com/../x/poc.py", None),
+    ],
+)
+def test_repo_of(url, repo):
+    assert e5_mod.repo_of(url) == repo
+
+
+def test_poc_repos_from_signals_keeps_worst_verdict():
+    sig = [
+        {"origin": "github", "repo": "A/x", "suspicious": False},
+        {"origin": "github", "repo": "a/x", "suspicious": None},
+        {"origin": "github", "repo": "b/y", "suspicious": False},
+        {"origin": "github", "repo": "b/y", "suspicious": True},
+        {"origin": "github", "repo": "c/z", "suspicious": "yes"},  # no booleano → sin decidir
+        {"origin": "metasploit", "repo": "d/w", "suspicious": False},
+    ]
+    assert e5_mod.poc_repos_from_signals(sig) == {"a/x": None, "b/y": True, "c/z": None}
+
+
+def e5_run(config, policy, repos, quote, start, end=None, text=POC_TEXT, url=POC):
+    t = FakeTransport({url: ok(text.encode())})
+    c = claim("exploit_impact", url, quote, line_start=start, line_end=end or start)
+    return run([submit("B", [c])], config, policy, cand(poc_repos=repos), transport=t)[0]
+
+
+def test_e5_suspicious_repo_does_not_raise(config, policy):
+    r = e5_run(config, policy, {POC_REPO: True}, 'payload = b"A" * 8192', 4)
+    assert r.status is Status.OK and r.final_level is Level.C
+    assert r.e5_checks[0]["reason"] == "poc_suspicious" and len(r.accepted_claims) == 1
+
+
+@pytest.mark.parametrize("repos", [{}, {POC_REPO: None}])
+def test_e5_repo_without_verdict_needs_human(config, policy, repos):
+    r = e5_run(config, policy, repos, 'payload = b"A" * 8192', 4)
+    assert r.status is Status.NEEDS_HUMAN and r.reason == "e5_undecided"
+    assert r.final_level is Level.C and r.e5_checks[0]["reason"] == "repo_not_inspected"
+
+
+def test_e5_comment_only_does_not_raise(config, policy):
+    r = e5_run(config, policy, CLEAN, "Overlong header overflows the parser buffer", 3)
+    assert r.status is Status.OK and r.final_level is Level.C
+    assert r.e5_checks[0]["reason"] == "only_comments"
+
+
+def test_e5_trailing_comment_on_code_line_is_not_code(config, policy):
+    # La línea 4 es código con payload, pero la cita es solo su comentario final: no cuenta.
+    r = e5_run(config, policy, CLEAN, "# overflows the parser buffer", 4)
+    assert r.final_level is Level.C and r.e5_checks[0]["reason"] == "only_comments"
+
+
+def test_e5_code_without_network_or_payload_needs_human(config, policy):
+    text = "# synthetic\nimport os\nvalue = compute_offsets(4096, 8192)\n"
+    r = e5_run(config, policy, CLEAN, "value = compute_offsets(4096, 8192)", 3, text=text)
+    assert r.status is Status.NEEDS_HUMAN and r.final_level is Level.C
+    assert r.e5_checks[0]["reason"] == "code_without_network_or_payload"
+
+
+def test_e5_python_string_is_not_code(config, policy):
+    text = 'x = 1\nDOC = """\nsock.sendall(payload) to the target host\n"""\n'
+    r = e5_run(config, policy, CLEAN, "sock.sendall(payload) to the target host", 3, text=text)
+    assert r.final_level is Level.C and r.e5_checks[0]["reason"] == "only_comments"
+
+
+def test_e5_untokenizable_python_needs_human(config, policy):
+    text = 'payload = """never closed\nsock.sendall(payload) to the target\n'
+    r = e5_run(config, policy, CLEAN, "sock.sendall(payload) to the target", 2, text=text)
+    assert r.status is Status.NEEDS_HUMAN and r.e5_checks[0]["reason"] == "python_not_tokenizable"
+
+
+@pytest.mark.parametrize(
+    ("text", "quote", "line", "level"),
+    [
+        (
+            "int main() {\n  connect(fd, &addr, sizeof(addr));\n}\n",
+            "connect(fd, &addr, sizeof",
+            2,
+            "B",
+        ),
+        (
+            "/* connect(fd, &addr, sizeof(addr));\n   still a comment */\nint x;\n",
+            "connect(fd, &addr",
+            1,
+            "C",
+        ),
+        ("// send(fd, payload, len, 0) here\nint x;\n", "send(fd, payload, len, 0) here", 1, "C"),
+        ('puts("connect(fd) and send payload");\n', "connect(fd) and send payload", 1, "C"),
+        ('curl -sk "https://$T/cgi" -d "$BODY"\n', 'curl -sk "https://$t/cgi"', 1, "B"),
+    ],
+)
+def test_e5_generic_languages(config, policy, text, quote, line, level):
+    url = "https://raw.githubusercontent.com/example-org/x/main/poc.c"
+    r = e5_run(config, policy, CLEAN, quote, line, text=text, url=url)
+    assert r.final_level.label == level
+
+
+def test_e5_candidate_from_t7_signals():
+    sig = [{"origin": "github", "repo": "example-org/x", "suspicious": True}]
+    c = candidate_for("CVE-2099-0100", Level.C, ImpactClass.RCE, exploit_signals=sig)
+    assert c is not None and c.poc_repos == {"example-org/x": True}
+
+
+# -- T10b · precios con fuente --------------------------------------------------------------------
+
+
+def test_pricing_cites_its_source():
+    p = AgentConfig.load(AGENT_YAML).pricing
+    assert p.verified
+    assert p.source_url == "https://platform.claude.com/docs/en/about-claude/pricing"
+    assert p.checked == "2026-11-26"
+    sonnet = p.for_model("claude-sonnet-5-5")
+    assert (sonnet.input_per_mtok, sonnet.output_per_mtok) == (Decimal(2), Decimal(10))
+    assert p.multiplier == Decimal("1.1")
+
+
+def test_unverified_pricing_uses_highest_known_price():
+    doc = {
+        "usd_per_mtok": {
+            "cheap": {
+                "input": 0.1,
+                "output": 0.5,
+                "long_context": {"above_input_tokens": 100000, "input": 3, "output": 4},
+            },
+            "dear": {"input": 2, "output": 10},
+        }
+    }
+    for extra in ({}, {"verified": True}, {"verified": True, "source": {"url": "https://x"}}):
+        p = Pricing.parse({**doc, **extra})
+        assert not p.verified  # sin URL y fecha no cuenta como verificado
+        price = p.for_model("cheap")
+        assert (price.input_per_mtok, price.output_per_mtok) == (Decimal(3), Decimal(10))
+    with pytest.raises(ValueError, match="precio"):
+        Pricing.parse(doc).for_model("unknown")
+
+
+def test_long_context_tier_and_multiplier():
+    p = AgentConfig.load(AGENT_YAML).pricing
+    haiku = p.for_model("claude-haiku-5-5")
+    # Hasta 100.000 tokens de entrada: 0,10 y 0,50 USD/MTok; × 1,1.
+    assert haiku.cost(100_000, 1_000_000) == Decimal("0.561")
+    # Por encima: 0,50 y 2,50 USD/MTok; × 1,1.
+    assert haiku.cost(100_001, 0) == Decimal("0.05500055")
+    assert haiku.cost(200_000, 1_000_000) == Decimal("2.86")

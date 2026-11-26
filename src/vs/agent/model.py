@@ -235,32 +235,98 @@ class MessagesApiClient:
 
 @dataclass(frozen=True)
 class Price:
+    """USD por millón de tokens. Con `long_above`, las peticiones con más tokens de entrada que
+    ese umbral se cobran a `long_input`/`long_output` (tramo de contexto largo)."""
+
     input_per_mtok: Decimal
     output_per_mtok: Decimal
+    multiplier: Decimal = Decimal(1)
+    long_above: int | None = None
+    long_input_per_mtok: Decimal | None = None
+    long_output_per_mtok: Decimal | None = None
+
+    def rates(self, tokens_in: int) -> tuple[Decimal, Decimal]:
+        if self.long_above is not None and tokens_in > self.long_above:
+            return (
+                self.long_input_per_mtok or self.input_per_mtok,
+                self.long_output_per_mtok or self.output_per_mtok,
+            )
+        return self.input_per_mtok, self.output_per_mtok
+
+    def highest(self) -> tuple[Decimal, Decimal]:
+        """Las tarifas más altas de este modelo, sea cual sea el tramo."""
+        return (
+            max(self.input_per_mtok, self.long_input_per_mtok or Decimal(0)),
+            max(self.output_per_mtok, self.long_output_per_mtok or Decimal(0)),
+        )
 
     def cost(self, tokens_in: int, tokens_out: int) -> Decimal:
+        rate_in, rate_out = self.rates(tokens_in)
         m = Decimal(1_000_000)
-        return (tokens_in * self.input_per_mtok + tokens_out * self.output_per_mtok) / m
+        return (tokens_in * rate_in + tokens_out * rate_out) * self.multiplier / m
 
 
 @dataclass(frozen=True)
 class Pricing:
-    """USD por millón de tokens y modelo (`config/agent.yaml`, PLAN.md §7)."""
+    """Precios por modelo (`config/agent.yaml` → `pricing`, PLAN.md §7).
+
+    - `verified`: los precios se han leído en la fuente (`source_url`, `checked`). Si no, el tope
+      diario usa **el precio más alto conocido** de todos los modelos configurados, sea cual sea
+      el modelo: un precio sin fuente no puede abaratar el tope.
+    - `multiplier`: recargo por geografía de inferencia (p. ej. 1,1 para solo EE. UU.).
+    """
 
     prices: Mapping[str, Price] = field(default_factory=dict)
+    verified: bool = False
+    multiplier: Decimal = Decimal(1)
+    source_url: str | None = None
+    checked: str | None = None
 
     def for_model(self, model: str) -> Price:
-        try:
-            return self.prices[model]
-        except KeyError:
+        if model not in self.prices:
             # Sin precio no se puede aplicar el tope de USD: no se llama al modelo.
-            raise ValueError(f"no hay precio configurado para el modelo {model!r}") from None
+            raise ValueError(f"no hay precio configurado para el modelo {model!r}")
+        if not self.verified:
+            highest = [p.highest() for p in self.prices.values()]
+            return Price(max(h[0] for h in highest), max(h[1] for h in highest), self.multiplier)
+        p = self.prices[model]
+        return Price(
+            p.input_per_mtok,
+            p.output_per_mtok,
+            self.multiplier,
+            p.long_above,
+            p.long_input_per_mtok,
+            p.long_output_per_mtok,
+        )
+
+    def with_alias(self, alias: str, model: str) -> Pricing:
+        """Mismos precios, con `alias` costando lo mismo que `model` (el modelo simulado)."""
+        prices = dict(self.prices)
+        prices[alias] = self.prices[model]
+        return Pricing(prices, self.verified, self.multiplier, self.source_url, self.checked)
 
     @classmethod
     def parse(cls, doc: Mapping[str, Any]) -> Pricing:
+        doc = doc or {}
+        prices: dict[str, Price] = {}
+        for name, p in (doc.get("usd_per_mtok") or {}).items():
+            long = p.get("long_context") or {}
+            prices[str(name)] = Price(
+                Decimal(str(p["input"])),
+                Decimal(str(p["output"])),
+                long_above=int(long["above_input_tokens"]) if long else None,
+                long_input_per_mtok=Decimal(str(long["input"])) if long else None,
+                long_output_per_mtok=Decimal(str(long["output"])) if long else None,
+            )
+        source = doc.get("source") or {}
+        url = source.get("url")
+        checked = source.get("checked")
+        # Solo cuenta como verificado si dice de dónde sale y cuándo se leyó.
+        verified = bool(doc.get("verified")) and bool(url) and bool(checked)
         return cls(
-            {
-                str(name): Price(Decimal(str(p["input"])), Decimal(str(p["output"])))
-                for name, p in (doc or {}).items()
-            }
+            prices,
+            verified=verified,
+            multiplier=Decimal(str(doc.get("multiplier", 1))),
+            source_url=str(url) if url else None,
+            checked=str(checked) if checked else None,
         )

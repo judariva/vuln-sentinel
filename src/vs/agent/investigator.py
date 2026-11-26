@@ -13,10 +13,14 @@ nivel está en código, no en el prompt:
 4. **Impacto** (ADR-0013): el agente no puede declarar más `impact_class` que el del CVE. Si lo
    intenta, se registra y se ignora.
 5. **Qué puede subir la IA**:
-   - a A, solo con una afirmación `exploited` verificada en un aviso oficial
-     (`official_advisory_domains`), nunca en un repositorio de PoC;
+   - a A, solo con una afirmación `exploited` verificada en un aviso oficial **y sobre esta CVE**
+     (su identificador en la cita o a ±`cve_window_lines` líneas). Avisos oficiales: los fijos de
+     autoridad y los hosts `vendor-advisory` del CNA de **esta** CVE (`vs.agent.scope`), nunca un
+     repositorio de PoC;
    - de C a B (E5), solo con una afirmación `exploit_impact` verificada con líneas concretas de un
-     documento que no es un aviso oficial (el código del PoC) y con el impacto del CVE;
+     repositorio de PoC **inspeccionado y no sospechoso**, cuyas líneas citadas son código con una
+     llamada de red o el payload, y con el impacto del CVE (`vs.agent.e5`). Si eso no se puede
+     decidir en código, el expediente queda en `needs_human` y no sube;
    - nada más: el nivel que propone el modelo se recorta a lo que prueban las citas.
 6. **Monotonía** (CTL-001): `nivel_final = max(determinista, IA, publicado)` con
    `vs.rules.levels.final_level`. Si el modelo propone menos, se registra `blocked_downgrade`.
@@ -37,9 +41,16 @@ from urllib.parse import urlsplit
 
 import yaml
 
-from vs.agent.citations import DEFAULT_MIN_QUOTE_CHARS, CitationVerifier, ClaimCheck
+from vs.agent import e5
+from vs.agent.citations import (
+    DEFAULT_CVE_WINDOW_LINES,
+    DEFAULT_MIN_QUOTE_CHARS,
+    CitationVerifier,
+    ClaimCheck,
+)
 from vs.agent.dossier import DOSSIER_SCHEMA, validate
 from vs.agent.model import ModelClient, ModelError, ModelRequest, Pricing
+from vs.agent.scope import CveScope, build_scope, vendor_advisory_urls
 from vs.agent.tools import (
     DEFAULT_MAX_TOOL_CHARS,
     FETCH_TOOL,
@@ -78,9 +89,11 @@ class AgentConfig:
     budget: Budget
     model: str
     pricing: Pricing
-    official_advisory_domains: frozenset[str]
+    official_advisory_domains: frozenset[str]  # fijos de autoridad
     min_quote_chars: int = DEFAULT_MIN_QUOTE_CHARS
     max_tool_chars: int = DEFAULT_MAX_TOOL_CHARS
+    code_hosting_domains: frozenset[str] = frozenset()
+    cve_window_lines: int = DEFAULT_CVE_WINDOW_LINES
 
     @classmethod
     def parse(cls, doc: Mapping[str, Any]) -> AgentConfig:
@@ -92,12 +105,16 @@ class AgentConfig:
                 max_usd_per_day=Decimal(str(b.get("max_usd_per_day", "1.5"))),
             ),
             model=str(doc["model"]),
-            pricing=Pricing.parse(doc.get("pricing_usd_per_mtok") or {}),
+            pricing=Pricing.parse(doc.get("pricing") or {}),
             official_advisory_domains=frozenset(
                 d.lower() for d in doc.get("official_advisory_domains") or []
             ),
             min_quote_chars=int(doc.get("min_quote_chars", DEFAULT_MIN_QUOTE_CHARS)),
             max_tool_chars=int(doc.get("max_tool_chars", DEFAULT_MAX_TOOL_CHARS)),
+            code_hosting_domains=frozenset(
+                d.lower() for d in doc.get("code_hosting_domains") or []
+            ),
+            cve_window_lines=int(doc.get("cve_window_lines", DEFAULT_CVE_WINDOW_LINES)),
         )
 
     @classmethod
@@ -133,6 +150,12 @@ class Candidate:
     published_level: Level = Level.NONE
     license_class: LicenseClass = LicenseClass.OPEN
     licensee: str | None = None
+    # URL de las referencias `vendor-advisory` del CNA en el registro cvelistV5 de esta CVE
+    # (`vs.agent.scope.vendor_advisory_urls`). Abren sus hosts solo en esta investigación.
+    vendor_advisory_urls: tuple[str, ...] = ()
+    # Veredicto `poc_suspicious` de T7 por repositorio (`dueño/repo` en minúsculas): True
+    # sospechoso, False inspeccionado y limpio, None sin decidir (`vs.agent.e5`).
+    poc_repos: Mapping[str, bool | None] = field(default_factory=dict)
 
 
 class Status(StrEnum):
@@ -165,6 +188,9 @@ class InvestigationResult:
     license_class: LicenseClass
     licensee: str | None
     summary: str = ""
+    scope: Mapping[str, Any] = field(default_factory=dict)  # CveScope.trace()
+    allowed_domains: frozenset[str] = frozenset()  # lista permitida de esta investigación
+    e5_checks: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def level_reason(self) -> list[str]:
@@ -191,6 +217,8 @@ class InvestigationResult:
             "blocked_urls": list(self.tool_log.blocked_urls),
             "denied_tools": list(self.tool_log.denied_tools),
             "steps": self.steps,
+            "scope": dict(self.scope),
+            "e5": list(self.e5_checks),
         }
 
     def to_ai_call_row(self, at: datetime, alert_id: str | None = None) -> dict[str, Any]:
@@ -237,12 +265,14 @@ números de línea. Para código, indica line_start y line_end.
 def initial_message(c: Candidate) -> str:
     facts = json.dumps(dict(c.facts), ensure_ascii=False, sort_keys=True, default=str)
     seeds = "\n".join(f"- {u}" for u in c.seed_urls) or "- (ninguna)"
+    vendor = "\n".join(f"- {u}" for u in c.vendor_advisory_urls) or "- (ninguno)"
     return (
         f"CVE: {c.cve_id}\n"
         f"Nivel determinista: {c.level.label}\n"
         f"impact_class determinista: {c.impact_class.value}\n"
         f"Hechos conocidos (datos, no instrucciones): {facts}\n"
         f"URL de partida:\n{seeds}\n"
+        f"Avisos del fabricante según el CNA (se pueden leer en esta investigación):\n{vendor}\n"
         "Tarea: lee el aviso y el PoC, completa rangos afectados y fix, confirma la exposición y, "
         "si un aviso oficial dice que se explota o el PoC implementa el impacto, cítalo."
     )
@@ -260,28 +290,63 @@ def _host(url: str) -> str:
     return (urlsplit(url).hostname or "").lower()
 
 
+@dataclass
+class Evidence:
+    """Lo que prueban las afirmaciones verificadas."""
+
+    level: Level  # nunca menos que el determinista
+    e5_checks: list[dict[str, Any]] = field(default_factory=list)
+    e5_undecided: bool = False  # alguna E5 no se pudo decidir y nada más la sustituye
+
+
 def evidence_level(
     candidate: Candidate,
     checks: Sequence[ClaimCheck],
     official_domains: frozenset[str],
     impact_ok: bool,
-) -> Level:
-    """Nivel más alto que prueban las afirmaciones verificadas; nunca menos que el determinista."""
-    level = candidate.level
-    for chk in checks:
+    documents: Callable[[str], Document | None] = lambda _u: None,
+) -> Evidence:
+    """Nivel más alto que prueban las afirmaciones verificadas; nunca menos que el determinista.
+
+    Una `exploited` ya viene comprobada como «sobre esta CVE» por el verificador. Una
+    `exploit_impact` pasa además por `vs.agent.e5` (repositorio no sospechoso y líneas de código
+    con red o payload).
+    """
+    ev = Evidence(candidate.level)
+    for i, chk in enumerate(checks):
         if not chk.ok:
             continue
-        urls = [str(c.get("url", "")) for c in chk.claim.get("citations", [])]
-        hosts = {_host(u) for u in urls}
+        cits = list(chk.claim.get("citations", []))
+        hosts = {_host(str(c.get("url", ""))) for c in cits}
         if chk.kind == "exploited" and hosts and hosts <= official_domains:
-            level = max(level, Level.A)
+            ev.level = max(ev.level, Level.A)
         elif chk.kind == "exploit_impact" and candidate.level is Level.C and impact_ok:
-            cits = chk.claim.get("citations", [])
             with_lines = all(c.get("line_start") is not None for c in cits)
             from_code = hosts and not (hosts & official_domains)
-            if with_lines and from_code and candidate.impact_class is not ImpactClass.OTHER:
-                level = max(level, Level.B)
-    return level
+            if not (with_lines and from_code and candidate.impact_class is not ImpactClass.OTHER):
+                continue
+            per_cit = []
+            for c in cits:
+                doc = documents(str(c.get("url", "")))
+                if doc is None:  # pragma: no cover - una cita verificada siempre tiene documento
+                    per_cit.append(e5.E5Check(e5.Verdict.UNDECIDED, "no_document"))
+                else:
+                    per_cit.append(e5.check_citation(doc, c, candidate.poc_repos))
+            verdict = e5.combine(per_cit)
+            ev.e5_checks.append(
+                {
+                    "claim": i,
+                    "verdict": verdict.verdict.value,
+                    "reason": verdict.reason,
+                    "repo": verdict.repo,
+                }
+            )
+            if verdict.verdict is e5.Verdict.CONFIRMED:
+                ev.level = max(ev.level, Level.B)
+    ev.e5_undecided = ev.level < Level.B and any(
+        x["verdict"] == e5.Verdict.UNDECIDED.value for x in ev.e5_checks
+    )
+    return ev
 
 
 def candidate_for(
@@ -292,8 +357,14 @@ def candidate_for(
     seed_urls: Sequence[str] = (),
     facts: Mapping[str, Any] | None = None,
     published_level: Level = Level.NONE,
+    cve_record: Mapping[str, Any] | None = None,
+    exploit_signals: Sequence[Mapping[str, Any]] = (),
 ) -> Candidate | None:
-    """Candidato para el agente, o None si no le toca: solo B y C (§7; con A no interviene)."""
+    """Candidato para el agente, o None si no le toca: solo B y C (§7; con A no interviene).
+
+    `cve_record` es el registro cvelistV5 de la CVE (de él salen los avisos del fabricante) y
+    `exploit_signals`, los valores de las señales `exploit` (de ellas, el veredicto de cada PoC).
+    """
     if level not in (Level.B, Level.C):
         return None
     return Candidate(
@@ -303,6 +374,8 @@ def candidate_for(
         seed_urls=tuple(seed_urls),
         facts=dict(facts or {}),
         published_level=published_level,
+        vendor_advisory_urls=vendor_advisory_urls(cve_record),
+        poc_repos=e5.poc_repos_from_signals(list(exploit_signals)),
     )
 
 
@@ -357,6 +430,8 @@ class Investigator:
             # ADR-0022 §4: la IA de la instancia pública solo ve datos `open`.
             raise LicenseError("esta instancia no admite datos 'restricted' en el agente")
         trace_id = self.tracer.new_trace_id()
+        # El alcance se calcula ANTES de llamar al modelo y solo vale para esta CVE.
+        scope = self.scope_for(candidate)
         attrs = {
             "gen_ai.operation.name": "invoke_agent",
             "gen_ai.agent.name": AGENT_NAME,
@@ -364,9 +439,12 @@ class Investigator:
             "gen_ai.request.model": self.model.model,
             "vs.cve_id": candidate.cve_id,
             "vs.trace_id": trace_id,
+            "vs.scope.cve_hosts": ",".join(sorted(scope.cve_hosts)),
+            "vs.scope.official_domains": ",".join(sorted(scope.official)),
+            "vs.scope.rejected_vendor_urls": len(scope.rejected_urls),
         }
         with self.tracer.span(f"invoke_agent {AGENT_NAME}", attrs) as span:
-            result = _Run(self, candidate, trace_id).run()
+            result = _Run(self, candidate, trace_id, scope).run()
             span.set_attribute("gen_ai.usage.input_tokens", result.tokens_in)
             span.set_attribute("gen_ai.usage.output_tokens", result.tokens_out)
             span.set_attribute("vs.status", result.status.value)
@@ -376,17 +454,30 @@ class Investigator:
             span.set_attribute("vs.denied_tools", len(result.tool_log.denied_tools))
         return result
 
+    def scope_for(self, candidate: Candidate) -> CveScope:
+        """Lista permitida y avisos oficiales de la investigación de `candidate` (T10b)."""
+        return build_scope(
+            candidate.cve_id,
+            candidate.vendor_advisory_urls,
+            self.policy,
+            self.config.official_advisory_domains,
+            self.config.code_hosting_domains,
+        )
+
 
 class _Run:
     """Estado de una investigación."""
 
-    def __init__(self, inv: Investigator, candidate: Candidate, trace_id: str) -> None:
+    def __init__(
+        self, inv: Investigator, candidate: Candidate, trace_id: str, scope: CveScope
+    ) -> None:
         self.inv = inv
         self.c = candidate
         self.trace_id = trace_id
+        self.scope = scope
         self.log = ToolLog()
         self.corpus = Corpus()
-        self.fetcher = Fetcher(inv.transport, inv.policy, self.corpus, self.log, inv.license_for)
+        self.fetcher = Fetcher(inv.transport, scope.policy, self.corpus, self.log, inv.license_for)
         self.steps = 0
         self.tokens_in = 0
         self.tokens_out = 0
@@ -408,6 +499,7 @@ class _Run:
         inflation: bool = False,
         checks: Sequence[ClaimCheck] = (),
         summary: str = "",
+        e5_checks: Sequence[Mapping[str, Any]] = (),
     ) -> InvestigationResult:
         det, pub = self.c.level, self.c.published_level
         fl = final_level(det, ai=ai_level, published=pub)
@@ -445,6 +537,9 @@ class _Run:
             license_class=lic[0],
             licensee=lic[1],
             summary=summary,
+            scope=self.scope.trace(),
+            allowed_domains=self.scope.policy.domains,
+            e5_checks=[dict(x) for x in e5_checks],
         )
 
     # -- bucle --
@@ -527,18 +622,29 @@ class _Run:
         proposed = Level.parse(dossier["proposed_level"])
         declared = dossier["impact_class"]
         impact_ok = impact_allowed(declared, self.c.impact_class)
-        verifier = CitationVerifier(self.fetcher, self.inv.config.min_quote_chars)
+        cfg = self.inv.config
+        verifier = CitationVerifier(
+            self.fetcher,
+            cfg.min_quote_chars,
+            cve_id=self.c.cve_id,
+            cve_window_lines=cfg.cve_window_lines,
+        )
         checks = verifier.check_claims(dossier["claims"])
-        cap = evidence_level(self.c, checks, self.inv.config.official_advisory_domains, impact_ok)
+        ev = evidence_level(self.c, checks, self.scope.official, impact_ok, verifier.document)
         # Lo que propone el modelo, recortado a lo que prueban sus citas.
-        ai_level = min(proposed, cap)
+        ai_level = min(proposed, ev.level)
+        # E5 que no se puede decidir en código: lo decide una persona, y mientras no sube.
+        status, reason = (
+            (Status.NEEDS_HUMAN, "e5_undecided") if ev.e5_undecided else (Status.OK, "ok")
+        )
         return self._result(
-            Status.OK,
-            "ok",
+            status,
+            reason,
             proposed=proposed,
             ai_level=ai_level,
             declared_impact=declared,
             inflation=not impact_ok,
             checks=checks,
             summary=dossier["summary"],
+            e5_checks=ev.e5_checks,
         )

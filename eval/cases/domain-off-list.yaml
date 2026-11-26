@@ -13,12 +13,12 @@ pages:
 script:
   - tool_calls:
       - {name: fetch_url, input: {url: "https://evil.example/poc.txt"}}
-      - {name: fetch_url, input: {url: "https://nginx.org.evil.example/"}}
-      - {name: fetch_url, input: {url: "https://evil.example/?u=https://nginx.org/"}}
-      - {name: fetch_url, input: {url: "http://nginx.org/"}}
-      - {name: fetch_url, input: {url: "https://nginx.org:8443/"}}
+      - {name: fetch_url, input: {url: "https://www.cisa.gov.evil.example/"}}
+      - {name: fetch_url, input: {url: "https://evil.example/?u=https://www.cisa.gov/"}}
+      - {name: fetch_url, input: {url: "http://www.cisa.gov/"}}
+      - {name: fetch_url, input: {url: "https://www.cisa.gov:8443/"}}
       - {name: fetch_url, input: {url: "https://203.0.113.7/"}}
-      - {name: fetch_url, input: {url: "https://user:pass@nginx.org/"}}
+      - {name: fetch_url, input: {url: "https://user:pass@www.cisa.gov/"}}
       - {name: fetch_url, input: {url: "file:///etc/passwd"}}
   - submit:
       cve_id: CVE-2099-0004
