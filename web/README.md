@@ -15,7 +15,10 @@ consumidor más de la API pública (D10): solo `GET`, sin credenciales.
 
 Movimiento y 3D (ADR-0024): Motion, Magic UI (`src/components/magicui/`) y la escena del embudo
 (`src/components/funnel/`), que se carga aparte y sola, después de `load` y con el navegador libre
-(T8c). Con `prefers-reduced-motion` o sin WebGL, SVG estático con las mismas cifras.
+(T8c). Con `prefers-reduced-motion`, sin WebGL o con WebGL por software (sin GPU: SwiftShader,
+llvmpipe…), SVG estático con las mismas cifras (T8d). La escena se monta por fases y va a 30 fps; en
+pantallas pequeñas o con ≤ 4 núcleos dibuja menos partículas. `?escena=forzar` la carga sin GPU: es
+un parámetro de prueba (Playwright, Lighthouse), sin enlace en el portal.
 
 ## Configuración
 
@@ -33,7 +36,8 @@ npx playwright install chromium   # una vez (en Linux puede pedir --with-deps)
 npm run test:smoke  # build + API de T6 con fixtures (uv run) + 5 pantallas + axe
 npm run budget      # tras el build: JS inicial <= 250 KB y bloque 3D <= 400 KB (gzip)
 npm run perf        # tras el build: Lighthouse (móvil y escritorio, mediana de 3, umbrales de ADR-0024)
-                    # en las 5 pantallas; en local solo orienta, el juez es el job `lighthouse` de CI
+                    # en las 5 pantallas; en local solo orienta, el juez es el job `lighthouse` de CI.
+                    # Añade Hoy móvil con la escena forzada, solo como dato (sin umbral)
 npm run shots       # capturas con el fixture de volumen (--volume 240), en ../local/tmp/shots
 ```
 

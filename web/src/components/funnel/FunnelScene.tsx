@@ -13,6 +13,9 @@
  *   y la cámara gira despacio;
  * - las etiquetas de los destinos están fuera, en HTML (`FunnelLabels`); aquí solo queda la de la
  *   CVE bajo el ratón.
+ *
+ * Coste (T8d): se monta por fases (`useStages`), va a 30 fps (`frameloop="demand"` + `FrameRate`) y,
+ * en pantallas pequeñas o con ≤ 4 núcleos, dibuja como mucho `MAX_PARTICLES_LITE` partículas.
  */
 import { Html } from "@react-three/drei";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
@@ -34,7 +37,14 @@ import {
   type InstancedMesh,
 } from "three";
 import { funnelLabel, LEVEL_COLUMN } from "@/components/funnel/geometry";
-import { unitHash, type FunnelData, type FunnelParticle } from "@/lib/funnel";
+import { liteScene, yieldToMain } from "@/lib/capabilities";
+import {
+  limitParticles,
+  MAX_PARTICLES_LITE,
+  unitHash,
+  type FunnelData,
+  type FunnelParticle,
+} from "@/lib/funnel";
 import { ALERT_LEVELS, levelLabel, type Level } from "@/theme/tokens";
 
 const TOP_Y = 1.75;
@@ -154,9 +164,12 @@ interface ParticlesProps {
   palette: Palette;
   /** Contenedor fijo de la etiqueta (`Html`): sin él, drei cambia de destino al conectar los eventos y pierde la primera. */
   overlay: RefObject<HTMLElement>;
+  sprite: CanvasTexture;
+  /** Escena ligera: esferas con menos segmentos. */
+  lite: boolean;
 }
 
-function Particles({ data, palette, overlay }: ParticlesProps) {
+function Particles({ data, palette, overlay, sprite, lite }: ParticlesProps) {
   const mesh = useRef<InstancedMesh>(null);
   const seeded = useMemo(() => data.particles.map(seed), [data.particles]);
   const alertIdx = useMemo(
@@ -175,15 +188,12 @@ function Particles({ data, palette, overlay }: ParticlesProps) {
     g.boundingSphere = new Sphere(new Vector3(), 50);
     return g;
   }, [alertIdx]);
-  const sprite = useMemo(() => glowTexture(), []);
   useEffect(() => () => glowGeo.dispose(), [glowGeo]);
-  useEffect(() => () => sprite.dispose(), [sprite]);
 
   const [hover, setHover] = useState<number | null>(null);
   const [hoverAt, setHoverAt] = useState<[number, number, number]>([0, 0, 0]);
   const width = useThree((s) => s.viewport.width);
   const topR = topRadius(width);
-  const padX = (lv: Exclude<Level, "none">) => (LEVEL_COLUMN[lv] - 1) * (width / 3);
   const dummy = useMemo(() => new Object3D(), []);
   const tmp = useMemo(() => new Color(), []);
   // Polvo: el gris de «sin nivel» medio apagado hacia el fondo de la tarjeta.
@@ -244,7 +254,7 @@ function Particles({ data, palette, overlay }: ParticlesProps) {
           scale = 1 - 0.45 * d;
           tmp.copy(palette.none).lerp(dust, d);
         } else {
-          const target = padX(p.level);
+          const target = padX(p.level, width);
           const restX = target + p.jx * 0.5;
           const restZ = p.jz * 0.4;
           lit = 1;
@@ -304,7 +314,7 @@ function Particles({ data, palette, overlay }: ParticlesProps) {
         onPointerMove={onMove}
         onPointerOut={() => setHover(null)}
       >
-        <sphereGeometry args={[0.045, 10, 10]} />
+        <sphereGeometry args={lite ? [0.045, 8, 6] : [0.045, 10, 10]} />
         <meshBasicMaterial toneMapped={false} />
       </instancedMesh>
       <points geometry={glowGeo} raycast={() => null}>
@@ -330,11 +340,25 @@ function Particles({ data, palette, overlay }: ParticlesProps) {
           </div>
         </Html>
       ) : null}
+    </>
+  );
+}
+
+/** Las tres plataformas (A, B, C), cada una bajo su etiqueta HTML. */
+function Pads({ palette, sprite }: { palette: Palette; sprite: CanvasTexture }) {
+  const width = useThree((s) => s.viewport.width);
+  return (
+    <>
       {ALERT_LEVELS.map((lv) => (
-        <Pad key={lv} x={padX(lv)} color={palette[lv]} sprite={sprite} dark={palette.dark} />
+        <Pad key={lv} x={padX(lv, width)} color={palette[lv]} sprite={sprite} dark={palette.dark} />
       ))}
     </>
   );
+}
+
+/** Centro X de la plataforma de un nivel: un tercio del ancho visible por columna. */
+function padX(lv: Exclude<Level, "none">, width: number): number {
+  return (LEVEL_COLUMN[lv] - 1) * (width / 3);
 }
 
 /** Radio de la boca del embudo según el ancho visible (lo comparten el embudo y las partículas). */
@@ -444,26 +468,102 @@ function Fog({ color }: { color: Color }) {
   return <fog attach="fog" args={[color, CAM_R - 0.5, CAM_R + 5]} />;
 }
 
+/** Ritmo de la escena: 30 fps bastan para partículas que caen despacio y dejan la CPU libre. */
+const SCENE_FPS = 30;
+
+/**
+ * Con `frameloop="demand"`, pide un fotograma cada 1/30 s. El navegador ya para los
+ * `requestAnimationFrame` con la pestaña oculta.
+ */
+function FrameRate({ fps }: { fps: number }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    const step = 1000 / fps;
+    let last = -Infinity;
+    let raf = 0;
+    const tick = (now: number) => {
+      // Margen de 2 ms: con pantallas de 60 Hz los fotogramas llegan cada ~16,7 ms.
+      if (now - last >= step - 2) {
+        last = now;
+        invalidate();
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [fps, invalidate]);
+  return null;
+}
+
+/**
+ * Fases del montaje (T8d). Cada una añade piezas con sus materiales (y sus shaders, que se compilan
+ * en el primer fotograma que las pinta). Entre fase y fase se deja pintar un fotograma y se cede el
+ * hilo principal, para no juntar todo en una tarea larga: 0 lienzo vacío (contexto), 1 embudo,
+ * 2 plataformas, 3 partículas y brillo.
+ */
+const LAST_STAGE = 3;
+
+function useStages(): number {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (stage >= LAST_STAGE) return;
+    let cancelled = false;
+    // Un fotograma para que se pinte (y compile) la fase actual; después, ceder y seguir.
+    const raf = requestAnimationFrame(() => {
+      void yieldToMain().then(() => {
+        if (!cancelled) setStage((s) => s + 1);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [stage]);
+  return stage;
+}
+
 export default function FunnelScene({ data }: { data: FunnelData }) {
   const palette = usePalette();
+  const stage = useStages();
+  // Pantalla pequeña o ≤ 4 núcleos: menos partículas sin nivel (las cifras siguen siendo las de la API).
+  const lite = useMemo(() => liteScene(), []);
+  const drawn = useMemo(
+    () => (lite ? { ...data, particles: limitParticles(data.particles, MAX_PARTICLES_LITE) } : data),
+    [data, lite],
+  );
+  // Un solo sprite de brillo para las plataformas y las partículas.
+  const sprite = useMemo(() => glowTexture(), []);
+  useEffect(() => () => sprite.dispose(), [sprite]);
   // El div existe antes que el Canvas y que sus hijos: `null!` solo hasta el primer montaje.
   const overlay = useRef<HTMLDivElement>(null!);
   return (
-    <div data-testid="funnel-3d" role="img" aria-label={funnelLabel(data)} className="relative h-full w-full">
+    <div
+      data-testid="funnel-3d"
+      data-stage={stage}
+      data-lite={lite}
+      role="img"
+      aria-label={funnelLabel(data)}
+      className="relative h-full w-full"
+    >
       <div ref={overlay} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" />
       <Canvas
         // Sin MSAA y con densidad de píxel acotada: el raster es lo que más cuesta en cada fotograma
         // (medido con Lighthouse en T8c) y las partículas con brillo no lo necesitan.
-        dpr={[1, 1.25]}
+        dpr={lite ? 1 : [1, 1.25]}
         gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
+        frameloop="demand"
         camera={{ position: [0, CAM_Y, CAM_R], fov: 40 }}
         onCreated={({ camera }) => camera.lookAt(0, LOOK_Y, 0)}
         aria-hidden="true"
       >
+        <FrameRate fps={SCENE_FPS} />
         <Fog color={palette.bg} />
         <CameraDrift />
-        <FunnelShape color={palette.ring} />
-        <Particles data={data} palette={palette} overlay={overlay} />
+        {stage >= 1 ? <FunnelShape color={palette.ring} /> : null}
+        {stage >= 2 ? <Pads palette={palette} sprite={sprite} /> : null}
+        {stage >= 3 ? (
+          <Particles data={drawn} palette={palette} overlay={overlay} sprite={sprite} lite={lite} />
+        ) : null}
       </Canvas>
     </div>
   );

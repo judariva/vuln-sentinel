@@ -7,6 +7,12 @@ import { expect, test, type Page } from "@playwright/test";
  * defecto) y en claro. Ninguna petición sale de 127.0.0.1.
  */
 
+/**
+ * Hoy con la escena forzada (parámetro de prueba, T8d). El Chromium de Playwright no tiene GPU: con
+ * WebGL por software Hoy se queda en SVG, y los tests de la escena la fuerzan para poder probarla.
+ */
+const FORCED = "/?escena=forzar";
+
 const SCREENS = [
   { name: "Hoy", path: "/", ready: (p: Page) => expect(p.getByTestId("level-A").getByText("VS-CVE-2099-1001")).toBeVisible() },
   {
@@ -145,7 +151,8 @@ test("si el bloque 3D no llega, los datos y el SVG siguen ahí", async ({ page }
     asked = true;
     return route.abort();
   });
-  await page.goto("/");
+  // Forzada: sin GPU (CI, WSL) la escena no se pediría y el test no probaría nada.
+  await page.goto(FORCED);
   await expect(page.getByTestId("level-A")).toContainText("VS-CVE-2099-1001");
   await page.mouse.move(200, 200);
   await page.mouse.move(400, 300);
@@ -158,15 +165,35 @@ test("si el bloque 3D no llega, los datos y el SVG siguen ahí", async ({ page }
   expect(asked).toBe(webgl);
 });
 
+test("con WebGL por software (sin GPU) Hoy se queda en SVG y el bloque 3D no se pide", async ({ page }) => {
+  const renderer = await page.evaluate(() => {
+    const gl = document.createElement("canvas").getContext("webgl");
+    const info = gl?.getExtension("WEBGL_debug_renderer_info");
+    return gl && info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
+  });
+  test.skip(!/swiftshader|llvmpipe|software/i.test(renderer), `este Chromium tiene GPU (${renderer}) o no tiene WebGL`);
+  const scene: string[] = [];
+  page.on("request", (r) => {
+    if (/FunnelScene/.test(r.url())) scene.push(r.url());
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("level-A")).toContainText("VS-CVE-2099-1001");
+  await page.waitForTimeout(3000);
+  await expect(page.getByTestId("funnel-static")).toBeVisible();
+  await expect(page.getByTestId("funnel-3d")).toHaveCount(0);
+  expect(scene).toEqual([]);
+});
+
 test("sin interacción, la escena 3D llega sola, pero después de cargar la página y los datos", async ({ page }) => {
   const webgl = await page.evaluate(() => {
     const c = document.createElement("canvas");
     return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
   });
   test.skip(!webgl, "este Chromium no tiene WebGL: se ve la versión estática (probada arriba)");
-  await page.goto("/");
-  // Ni ratón ni teclado: la escena aparece sola.
+  await page.goto(FORCED);
+  // Ni ratón ni teclado: la escena aparece sola, y se monta por fases hasta la última (3).
   await expect(page.getByTestId("funnel-3d")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("funnel-3d")).toHaveAttribute("data-stage", "3", { timeout: 10_000 });
   const order = await page.evaluate(() => {
     const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
     const res = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
@@ -189,7 +216,7 @@ test("con WebGL, la escena 3D se carga aparte y enseña la CVE al pasar el rató
     return !!(c.getContext("webgl2") ?? c.getContext("webgl"));
   });
   test.skip(!webgl, "este Chromium no tiene WebGL: se ve la versión estática (probada arriba)");
-  await page.goto("/");
+  await page.goto(FORCED);
   const scene = page.getByTestId("funnel-3d");
   await expect(scene).toBeVisible({ timeout: 15_000 });
   await expect(scene.locator("canvas")).toBeVisible();

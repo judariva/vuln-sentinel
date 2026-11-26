@@ -139,8 +139,9 @@ jobs:
         run: npm run build
       - name: Navegador de Playwright
         run: npx playwright install --with-deps chromium
-      # Sin GPU no hay WebGL: el script arranca Chromium con SwiftShader (por software) para que la
-      # escena 3D de Hoy cargue y se mida, y falla si Hoy se midió sin ella (`scene3d` en el resumen).
+      # Sin GPU, Chromium usa WebGL por software (SwiftShader) y el portal deja Hoy en SVG, como lo
+      # vería una persona sin GPU: eso es lo que se mide con umbral (`render` en el resumen, T8d). Hoy
+      # móvil con la escena forzada se mide aparte, solo como dato (`forced`, sin umbral).
       - name: Lighthouse (móvil y escritorio, mediana de 3)
         run: npm run perf -- "$RUNNER_TEMP/lighthouse"
       - name: Informes de Lighthouse

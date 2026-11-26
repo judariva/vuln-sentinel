@@ -23,7 +23,8 @@ for (const theme of ["dark", "light"] as const) {
         await page.setViewportSize({ width: 1280, height: 900 });
         await page.emulateMedia({ reducedMotion: motion === "reducido" ? "reduce" : "no-preference" });
         await page.addInitScript((t) => window.localStorage.setItem("vs-theme", t), theme);
-        await page.goto(s.path);
+        // Sin GPU, Hoy se queda en SVG (T8d): para capturar la escena, se fuerza (parámetro de prueba).
+        await page.goto(s.slug === "hoy" && motion === "movimiento" ? `${s.path}?escena=forzar` : s.path);
         if (s.ready) await expect(page.getByTestId(s.ready)).toBeVisible();
         else await expect(page.locator(".recharts-surface").first()).toBeVisible();
         if (s.slug === "hoy" && motion === "movimiento") {

@@ -2,7 +2,7 @@ import { useReducedMotion } from "motion/react";
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { FunnelStatic } from "@/components/funnel/FunnelStatic";
 import { FunnelLabels } from "@/components/funnel/FunnelLabels";
-import { afterLoadIdle, canUseWebGL, whenIdle } from "@/lib/capabilities";
+import { afterLoadIdle, sceneForced, shouldLoadScene, webglTier, whenIdle } from "@/lib/capabilities";
 import type { FunnelData } from "@/lib/funnel";
 
 /**
@@ -11,7 +11,9 @@ import type { FunnelData } from "@/lib/funnel";
  *   datos: `load` del documento → dos fotogramas → navegador libre. Entonces se descarga y evalúa el
  *   bloque; montar el `Canvas` va en otro momento libre, para partir el trabajo en dos tareas.
  *   Mientras llega, y si falla, se ve el SVG con las mismas cifras;
- * - con `prefers-reduced-motion` o sin WebGL nunca se pide.
+ * - con `prefers-reduced-motion`, sin WebGL o con WebGL por software (sin GPU: SwiftShader,
+ *   llvmpipe…) nunca se pide (T8d). `?escena=forzar` la carga igualmente, solo para medirla;
+ * - la escena se monta por trozos y va a 30 fps (ver `FunnelScene`).
  * Las etiquetas de los destinos (A, B, C) van en HTML bajo el lienzo, iguales en las dos versiones.
  */
 const loadScene = () => import("@/components/funnel/FunnelScene");
@@ -36,7 +38,8 @@ export function LiveFunnel({ data }: { data: FunnelData }) {
     let cancelMount: (() => void) | undefined;
     let alive = true;
     const cancelLoad = afterLoadIdle(() => {
-      if (!canUseWebGL()) return;
+      // WebGL por software (o con aviso de rendimiento) → SVG: la escena iría a tirones (T8d).
+      if (!shouldLoadScene(webglTier(), sceneForced())) return;
       loadScene().then(
         () => {
           if (alive) cancelMount = whenIdle(() => setWant3d(true));

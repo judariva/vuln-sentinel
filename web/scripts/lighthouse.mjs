@@ -17,8 +17,14 @@
  * - `VS_PERF_RUNS`: pasadas por pantalla (3).
  * - `VS_PERF_VOLUME`: CVE sintéticas extra del fixture (0 = montaje base, como T8b).
  * - `VS_PERF_CHROME_FLAGS`: banderas extra del navegador, separadas por espacios. Siempre va
- *   `--enable-unsafe-swiftshader`, para que haya WebGL sin GPU y se mida la escena 3D.
- * - `VS_PERF_ALLOW_NO_SCENE=1`: no fallar si Hoy se midió sin la escena 3D (por defecto, falla).
+ *   `--enable-unsafe-swiftshader`: sin GPU hay WebGL, pero por software.
+ * - `VS_PERF_FORCED=0`: no hacer la medida extra de Hoy móvil con la escena forzada.
+ *
+ * Escena o SVG (T8d, decisión de Juan): con WebGL por software (SwiftShader en CI, sin GPU) Hoy se
+ * queda en SVG, como lo vería una persona sin GPU, y eso es lo que se mide con umbral. `summary.json`
+ * anota en cada fila de Hoy con qué se midió (`render`: `escena 3D` o `SVG`). Además, si el perfil
+ * móvil está incluido, se mide Hoy móvil con `?escena=forzar` (parámetro de prueba): solo como dato,
+ * en `forced`, **sin umbral**.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,11 +38,12 @@ const CDP_PORT = Number(process.env.VS_PERF_CDP_PORT ?? 9333);
 const RUNS = Number(process.env.VS_PERF_RUNS ?? 3);
 const VOLUME = Number(process.env.VS_PERF_VOLUME ?? 0);
 const PROFILES = (process.env.VS_PERF_PROFILES ?? "mobile,desktop").split(",").map((p) => p.trim());
-// SwiftShader (WebGL por software) solo entra si no hay GPU; sin él, el Chromium sin cabeza no tiene
-// WebGL en CI ni en WSL y Hoy se mediría con el SVG, no con la escena que ve quien tiene WebGL.
+// SwiftShader (WebGL por software) solo entra si no hay GPU. El portal lo detecta y se queda en SVG;
+// la medida forzada lo usa para pintar la escena sin GPU.
 const CHROME_FLAGS = ["--enable-unsafe-swiftshader", ...(process.env.VS_PERF_CHROME_FLAGS ?? "").split(/\s+/).filter(Boolean)];
-// Si Hoy se mide sin la escena 3D, la cifra no vale y el script falla (salvo que se pida lo contrario).
-const ALLOW_NO_SCENE = process.env.VS_PERF_ALLOW_NO_SCENE === "1";
+const FORCED = process.env.VS_PERF_FORCED !== "0";
+/** Parámetro de prueba del portal (`web/src/lib/capabilities.ts`): carga la escena aunque no haya GPU. */
+const FORCE_QUERY = "?escena=forzar";
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const OUT = path.resolve(process.argv[2] ?? path.join(ROOT, "local", "tmp", "lighthouse"));
 
@@ -67,7 +74,7 @@ async function waitFor(url, ms = 60_000) {
   throw new Error(`el servidor no respondió en ${url}`);
 }
 
-/** ¿Pidió la página el bloque de la escena 3D? (si no hubo WebGL, no se pide y se mide el SVG). */
+/** ¿Pidió la página el bloque de la escena 3D? (sin GPU o sin WebGL no se pide y se mide el SVG). */
 function sceneLoaded(report) {
   const items = report.audits["network-requests"]?.details?.items ?? [];
   return items.some((i) => /FunnelScene-/.test(i.url ?? ""));
@@ -92,6 +99,48 @@ function lighthouse(url, profile, out) {
   );
   if (r.status !== 0) throw new Error(`Lighthouse falló en ${url} (${profile})`);
   return JSON.parse(readFileSync(out, "utf8"));
+}
+
+/**
+ * `RUNS` pasadas de Lighthouse sobre `url`; devuelve la fila de la pasada mediana por rendimiento
+ * (Lighthouse varía de una pasada a otra). En Hoy anota si se midió la escena 3D o el SVG.
+ */
+function measure(url, profile, dir, slug) {
+  const reports = [];
+  for (let run = 1; run <= RUNS; run++) {
+    reports.push(lighthouse(url, profile, path.join(dir, `${slug}-${run}.json`)));
+  }
+  reports.sort((a, b) => a.categories.performance.score - b.categories.performance.score);
+  const report = reports[Math.floor(reports.length / 2)];
+  const m = (id) => report.audits[id]?.displayValue ?? "?";
+  const scene3d = slug.startsWith("hoy") ? sceneLoaded(report) : undefined;
+  return {
+    profile,
+    screen: slug,
+    performance: Math.round(report.categories.performance.score * 100),
+    accessibility: Math.round(report.categories.accessibility.score * 100),
+    // benchmarkIndex: cuánto corre la CPU al medir (más alto, más rápida). Si baja mucho, la
+    // máquina está ocupada y la puntuación no es comparable.
+    runs: reports.map((x) => ({
+      performance: Math.round(x.categories.performance.score * 100),
+      benchmarkIndex: Math.round(x.environment?.benchmarkIndex ?? 0),
+    })),
+    scene3d,
+    render: scene3d === undefined ? undefined : scene3d ? "escena 3D" : "SVG",
+    fcp: m("first-contentful-paint"),
+    lcp: m("largest-contentful-paint"),
+    tbt: m("total-blocking-time"),
+    cls: m("cumulative-layout-shift"),
+  };
+}
+
+function line(row) {
+  return (
+    `${row.profile.padEnd(7)} ${row.screen.padEnd(15)} rendimiento ${row.performance} (pasadas ` +
+    `${row.runs.map((r) => `${r.performance}@bi${r.benchmarkIndex}`).join(" ")}) · accesibilidad ${row.accessibility} · ` +
+    `FCP ${row.fcp} · LCP ${row.lcp} · TBT ${row.tbt} · CLS ${row.cls}` +
+    (row.render ? ` · con ${row.render}` : "")
+  );
 }
 
 async function main() {
@@ -124,6 +173,8 @@ async function main() {
     chromeFlags: CHROME_FLAGS,
     thresholds: THRESHOLDS,
     results: [],
+    // Hoy móvil con la escena forzada: solo dato, sin umbral (T8d).
+    forced: null,
   };
   let failed = false;
   try {
@@ -133,51 +184,20 @@ async function main() {
       const dir = path.join(OUT, profile);
       mkdirSync(dir, { recursive: true });
       for (const s of SCREENS) {
-        // Lighthouse varía de una pasada a otra: se toma la pasada mediana por rendimiento.
-        const reports = [];
-        for (let run = 1; run <= RUNS; run++) {
-          reports.push(lighthouse(`${BASE}${s.path}`, profile, path.join(dir, `${s.slug}-${run}.json`)));
-        }
-        reports.sort((a, b) => a.categories.performance.score - b.categories.performance.score);
-        const report = reports[Math.floor(reports.length / 2)];
-        const perf = Math.round(report.categories.performance.score * 100);
-        const a11y = Math.round(report.categories.accessibility.score * 100);
         const min = THRESHOLDS[profile][s.slug];
-        const scene3d = s.slug === "hoy" ? sceneLoaded(report) : undefined;
-        const pass = perf >= min && (scene3d !== false || ALLOW_NO_SCENE);
-        failed ||= !pass;
-        const m = (id) => report.audits[id]?.displayValue ?? "?";
-        const row = {
-          profile,
-          screen: s.slug,
-          performance: perf,
-          min,
-          pass,
-          accessibility: a11y,
-          // benchmarkIndex: cuánto corre la CPU al medir (más alto, más rápida). Si baja mucho, la
-          // máquina está ocupada y la puntuación no es comparable.
-          runs: reports.map((x) => ({
-            performance: Math.round(x.categories.performance.score * 100),
-            benchmarkIndex: Math.round(x.environment?.benchmarkIndex ?? 0),
-          })),
-          scene3d,
-          fcp: m("first-contentful-paint"),
-          lcp: m("largest-contentful-paint"),
-          tbt: m("total-blocking-time"),
-          cls: m("cumulative-layout-shift"),
-        };
+        const row = { ...measure(`${BASE}${s.path}`, profile, dir, s.slug), min };
+        row.pass = row.performance >= min;
+        failed ||= !row.pass;
         summary.results.push(row);
-        console.log(
-          `${pass ? "OK " : "MAL"} ${profile.padEnd(7)} ${s.slug.padEnd(15)} rendimiento ${perf} (mínimo ${min}; pasadas ` +
-            `${row.runs.map((r) => `${r.performance}@bi${r.benchmarkIndex}`).join(" ")}) · accesibilidad ${a11y} · ` +
-            `FCP ${row.fcp} · LCP ${row.lcp} · TBT ${row.tbt} · CLS ${row.cls}` +
-            (row.scene3d === undefined
-              ? ""
-              : row.scene3d
-                ? " · con escena 3D"
-                : " · SIN escena 3D (sin WebGL o no llegó a pedirse): la medida no representa Hoy"),
-        );
+        console.log(`${row.pass ? "OK " : "MAL"} ${line(row)} (mínimo ${min})`);
       }
+    }
+    if (FORCED && PROFILES.includes("mobile")) {
+      const dir = path.join(OUT, "mobile");
+      const row = measure(`${BASE}/${FORCE_QUERY}`, "mobile", dir, "hoy-forzada");
+      summary.forced = { ...row, query: FORCE_QUERY, threshold: null };
+      console.log(`DATO ${line(row)} (escena forzada con ${FORCE_QUERY}; sin umbral)`);
+      if (!row.scene3d) console.log("     ojo: la medida forzada no pidió la escena (¿sin WebGL?)");
     }
   } finally {
     browser.kill();

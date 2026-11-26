@@ -25,6 +25,15 @@ export interface FunnelData {
 }
 
 export const MAX_PARTICLES = 1500;
+/** Tope de la escena ligera (pantalla pequeña o ≤ 4 núcleos, T8d). Las cifras no cambian: son de la API. */
+export const MAX_PARTICLES_LITE = 200;
+
+/** Alertas primero y, detrás, CVE sin nivel hasta `max` (las alertas siempre se quedan). */
+export function limitParticles(particles: FunnelParticle[], max: number): FunnelParticle[] {
+  const alerts = particles.filter((p) => p.level !== "none");
+  const rest = particles.filter((p) => p.level === "none");
+  return [...alerts, ...rest.slice(0, Math.max(0, max - alerts.length))];
+}
 
 export function summarizeFunnel(
   generatedAt: string,
@@ -46,10 +55,7 @@ export function summarizeFunnel(
     .sort((a, b) => a.id.localeCompare(b.id));
   const counts: Record<Level, number> = { A: 0, B: 0, C: 0, none: 0 };
   for (const p of all) counts[p.level] += 1;
-  const alerts = all.filter((p) => p.level !== "none");
-  const rest = all.filter((p) => p.level === "none");
-  const particles = [...alerts, ...rest.slice(0, Math.max(0, max - alerts.length))];
-  return { day, total: all.length, counts, particles, complete };
+  return { day, total: all.length, counts, particles: limitParticles(all, max), complete };
 }
 
 export function alertCount(data: Pick<FunnelData, "counts">): number {

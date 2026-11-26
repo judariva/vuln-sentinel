@@ -73,9 +73,24 @@ Decisión de Juan (T8b): **Motion**, **Magic UI** (solo contadores, haces y bent
   falla si no se cumple: móvil ≥ 90 en Detalle, Fuentes y Administración y ≥ 85 en Hoy y Métricas;
   escritorio ≥ 90 en las 5. Deja `summary.json` y los informes como artefacto
   (`actions/upload-artifact` v7.0.2, fijada por SHA). En WSL solo orienta. En el runner no hay GPU:
-  se arranca Chromium con `--enable-unsafe-swiftshader` (WebGL por software) para que la escena 3D
-  cargue y se mida; el resumen dice por pantalla de Hoy si cargó (`scene3d`). Por defecto se mide el
-  montaje base del fixture (comparable con T8b); `VS_PERF_VOLUME` permite medir con volumen.
+  se arranca Chromium con `--enable-unsafe-swiftshader` (WebGL por software). **Revisado en T8d
+  (decisión de Juan):** con WebGL por software Hoy se queda en SVG (ver abajo), así que en CI se mide
+  el SVG con umbral; el resumen dice con qué se midió (`render`) y añade Hoy móvil con la escena
+  forzada (`?escena=forzar`, `forced`) solo como dato, sin umbral. Por defecto se mide el montaje base
+  del fixture (comparable con T8b); `VS_PERF_VOLUME` permite medir con volumen.
+- **WebGL por software → SVG (T8d, decisión de Juan).** CI dio Hoy móvil 73 (TBT 1 450 ms) con la
+  escena sobre SwiftShader. No se cambia el umbral: se corrige lo que también le pasaría a una
+  persona. `webglTier` (`web/src/lib/capabilities.ts`) clasifica el contexto: si no sale con
+  `failIfMajorPerformanceCaveat` o el renderizador (`WEBGL_debug_renderer_info`, o `RENDERER`)
+  es SwiftShader, llvmpipe, softpipe, «Software» o «Microsoft Basic Render», es **software** y la
+  escena no se pide. `?escena=forzar` (sin enlace en ningún sitio) la carga igualmente, solo para
+  medirla y probarla en CI.
+- **Coste de arranque de la escena (T8d)**, para móviles con GPU: se monta por fases (lienzo, embudo,
+  plataformas, partículas), dejando pintar un fotograma y cediendo el hilo (`scheduler.yield` o
+  `setTimeout`) entre fases, para que los shaders de cada una se compilen en tareas distintas; va a
+  30 fps (`frameloop="demand"` y un fotograma pedido cada 1/30 s); y con pantalla < 768 px o
+  `hardwareConcurrency` ≤ 4 es «ligera»: como mucho 200 partículas (las alertas, siempre), esferas con
+  menos segmentos y `dpr` 1.
 - El servidor de fixtures sirve con gzip HTML, JS, CSS y JSON, como el borde: sin eso Lighthouse mide
   el JS sin comprimir.
 
@@ -116,8 +131,10 @@ salvo `webgl-constants` 1.1.1 (vía `detect-gpu`, de drei), que no declara `lice
 
 ## Consecuencias
 
-- La escena aparece sola poco después de cargar (T8c). Hasta entonces, y con menos movimiento o sin
-  WebGL, el SVG estático con las mismas cifras.
+- La escena aparece sola poco después de cargar (T8c). Hasta entonces, y con menos movimiento, sin
+  WebGL o con WebGL por software (T8d), el SVG estático con las mismas cifras.
+- (T8d) El job de CI no mide la escena con umbral: sin GPU mide el SVG. El dato de la escena forzada
+  sobre SwiftShader es el caso pesimista y queda en el resumen, sin umbral.
 - Lighthouse: en T8b Métricas no llegaba a 90 en móvil (79–87 en WSL). Con los umbrales de T8c
   (Métricas ≥ 85 en móvil) el juez es el job de CI; las cifras de WSL de T8c, en su informe.
 - Compresión en Workers: queda como comprobación del primer despliegue, en el runbook
@@ -138,6 +155,8 @@ salvo `webgl-constants` 1.1.1 (vía `detect-gpu`, de drei), que no declara `lice
 - Decisión de stack: Juan, tarea T8b de la noche del 2026-11-25.
 - Decisiones de carga de la escena, umbrales de Lighthouse en CI y compresión: Juan (por la sesión
   directora), tarea T8c, 2026-11-26.
+- WebGL por software → SVG, arranque por fases, 30 fps y medida forzada sin umbral: Juan (por la
+  sesión directora), tarea T8d, a partir del job `lighthouse` del PR #4 (run 45847865191).
 - `actions/upload-artifact`: última release `v7.0.2` (publicada el 2026-10-07, no preliminar) y SHA
   `cf430e030ddbb5b0abf93d22962f4752f3646cd9`, leídos en `https://api.github.com/repos/actions/upload-artifact/releases/latest`
   y `…/git/ref/tags/v7.0.2` el 2026-11-26.
