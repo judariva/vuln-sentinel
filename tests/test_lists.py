@@ -2,8 +2,10 @@
 
 import datetime as dt
 import gzip
+import io
 import json
 import random
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -11,9 +13,10 @@ import yaml
 
 from vs.lists import build_exposed_products as bep
 from vs.lists import build_trusted_authors as bta
-from vs.lists import cvelist, deployment, deployment_cc
+from vs.lists import cvelist, deployment, deployment_cc, deployment_cna
 from vs.lists.common import months_before
 from vs.lists.schema import EMAIL_RE, validate_authors, validate_exposed
+from vs.rules.lists import ProductRef, parse_lists, producto_expuesto
 
 ROOT = Path(__file__).resolve().parents[1]
 FIX = ROOT / "tests" / "fixtures" / "lists"
@@ -297,6 +300,152 @@ def test_deployment_leg_pending_without_source():
     assert doc["deployment_leg"]["pending_parts"][0]["category"] == "identity"
 
 
+def _cve_record(cve, published, pairs=(), cpes=(), state="PUBLISHED", adp_cpes=()) -> bytes:
+    rec = {
+        "cveMetadata": {"cveId": cve, "state": state, "datePublished": published},
+        "containers": {
+            "cna": {
+                "affected": [
+                    {"vendor": v, "product": p, "cpes": list(cpes) if i == 0 else []}
+                    for i, (v, p) in enumerate(pairs or [("n/a", "n/a")])
+                ]
+            },
+            "adp": [{"affected": [{"cpes": list(adp_cpes)}]}] if adp_cpes else [],
+        },
+    }
+    return json.dumps(rec, sort_keys=True).encode()
+
+
+# Registros sintéticos (fabricantes de ejemplo salvo los nombres del caso de uso).
+DEP_RECORDS = {
+    "CVE-2026-91001": _cve_record(
+        "CVE-2026-91001",
+        "2026-05-01T10:00:00Z",
+        [("F5", "NGINX Open Source"), ("F5", "BIG-IP")],
+        ["cpe:2.3:a:f5:nginx_open_source:*:*:*:*:*:*:*:*"],
+    ),
+    # «nginxish» no es «nginx»: los términos tienen que casar completos.
+    "CVE-2026-91002": _cve_record("CVE-2026-91002", "2026-05-02T10:00:00Z", [("Acme", "nginxish")]),
+    # El fabricante del CPE no cuenta: solo el componente product.
+    "CVE-2026-91003": _cve_record(
+        "CVE-2026-91003",
+        "2026-05-03T10:00:00Z",
+        cpes=["cpe:2.3:a:nginx:unrelated_tool:*:*:*:*:*:*:*:*"],
+    ),
+    # Fuera de la ventana de 36 meses y rechazado: no cuentan.
+    "CVE-2020-91004": _cve_record("CVE-2020-91004", "2020-01-01T00:00:00Z", [("F5", "NGINX Plus")]),
+    "CVE-2026-91005": _cve_record(
+        "CVE-2026-91005", "2026-05-05T10:00:00Z", [("F5", "NGINX Plus")], state="REJECTED"
+    ),
+    # CPE solo en un ADP y par del CNA con mayúsculas distintas.
+    "CVE-2025-91006": _cve_record(
+        "CVE-2025-91006",
+        "2025-02-01T00:00:00Z",
+        [("F5", "nginx open source")],
+        adp_cpes=["cpe:2.3:a:f5:nginx:1.25.0:*:*:*:*:*:*:*"],
+    ),
+}
+DEP_SURVEY = json.dumps(
+    {
+        "source": "encuesta de prueba",
+        "url": "https://survey.example/2026",
+        "license": "CC0-1.0",
+        "survey_date": "2026-11-01",
+        "category": "web-proxy",
+        "ranking": [{"name": "nginx", "share": 0.5}, {"name": "microsoft-iis", "share": 0.2}],
+    }
+).encode()
+
+
+def test_deployment_pairs_follow_the_contains_rule():
+    pairs = deployment_cna.pairs_for(["nginx", "microsoft-iis"], DEP_RECORDS, CUTOFF)
+    nginx = pairs["nginx"]
+    assert nginx["cna"] == [
+        {"vendor": "F5", "product": "NGINX Open Source", "records": 1},
+        {"vendor": "F5", "product": "nginx open source", "records": 1},
+    ]
+    assert nginx["cpe"] == ["cpe:2.3:a:f5:nginx", "cpe:2.3:a:f5:nginx_open_source"]
+    assert nginx["records"] == 2 and "cna_missing_reason" not in nginx
+    iis = pairs["microsoft-iis"]
+    assert iis["cna"] == [] and iis["cpe"] == [] and iis["records"] == 0
+    assert iis["cna_missing_reason"] and iis["cpe_missing_reason"]
+    assert deployment_cna.contains(["ingress", "nginx"], ["nginx"])
+    assert not deployment_cna.contains(["nginxish"], ["nginx"])
+    assert deployment_cna.contains(["microsoft", "iis", "x"], ["microsoft", "iis"])
+
+
+def test_deployment_scan_bulk_reads_nested_zip():
+    inner = io.BytesIO()
+    with zipfile.ZipFile(inner, "w") as z:
+        for cve, raw in DEP_RECORDS.items():
+            z.writestr(f"cves/{cve[4:8]}/91xxx/{cve}.json", raw)
+        z.writestr("cves/deltaLog.json", b"[]")
+    outer = io.BytesIO()
+    with zipfile.ZipFile(outer, "w") as z:
+        z.writestr("cves.zip", inner.getvalue())
+    outer.seek(0)
+    found = deployment_cna.scan_bulk(outer, ["nginx", "microsoft-iis"], CUTOFF)
+    assert sorted(found) == ["CVE-2025-91006", "CVE-2026-91001"]
+    assert deployment_cna.pairs_for(["nginx"], found, CUTOFF) == deployment_cna.pairs_for(
+        ["nginx"], DEP_RECORDS, CUTOFF
+    )
+
+
+def test_deployment_entry_matches_by_cna_pair_and_cpe():
+    """v4: una entrada de despliegue casa por par del CNA y por CPE; una sin pares no casa."""
+    leg = deployment.build(DEP_SURVEY, DEP_RECORDS, CUTOFF)
+    assert [p["id"] for p in leg["products"]] == ["deployment--nginx", "deployment--microsoft-iis"]
+    lists = parse_lists({"categories": list(bep.CATEGORIES), "deployment_leg": leg}, None)
+    by_pair = producto_expuesto([ProductRef("F5", "NGINX Open Source")], lists)
+    assert by_pair is not None and by_pair.id == "deployment--nginx"
+    assert by_pair.category == "web-proxy"
+    by_cpe = producto_expuesto(
+        [ProductRef(cpe="cpe:2.3:a:f5:nginx_open_source:1.30.0:*:*:*:*:*:*:*")], lists
+    )
+    assert by_cpe is not None and by_cpe.id == "deployment--nginx"
+    # BIG-IP sale del mismo registro, pero su producto no contiene «nginx».
+    assert producto_expuesto([ProductRef("F5", "BIG-IP")], lists) is None
+    # La entrada sin pares ni CPE está cargada pero no casa nada.
+    iis = next(e for e in lists.exposed if e.id == "deployment--microsoft-iis")
+    assert not iis.names and not iis.cpe_prefixes
+    assert producto_expuesto([ProductRef("Microsoft", "microsoft-iis")], lists) is None
+    assert (
+        producto_expuesto([ProductRef("Microsoft", "Internet Information Services")], lists) is None
+    )
+
+
+def test_deployment_leg_not_loaded_unless_active():
+    leg = deployment.build(DEP_SURVEY, DEP_RECORDS, CUTOFF)
+    leg["status"] = "pending"
+    assert parse_lists({"deployment_leg": leg}, None).exposed == ()
+    leg = deployment.build(DEP_SURVEY, None, CUTOFF)  # sin registros: sin pares, con motivo
+    assert all(p["cna"] == [] and p["cna_missing_reason"] for p in leg["products"])
+    doc = yaml.safe_load(bep.render(_build(survey=DEP_SURVEY)))
+    assert validate_exposed(doc) == []
+    doc["deployment_leg"]["products"][0].pop("cna_missing_reason")
+    assert any("sin pares del CNA y sin motivo" in e for e in validate_exposed(doc))
+
+
+def test_generated_yaml_with_deployment_records_validates():
+    doc = yaml.safe_load(
+        bep.render(
+            bep.build(
+                KEV,
+                CUTOFF,
+                RECORDS,
+                DEP_SURVEY,
+                DEP_RECORDS,
+                {"url": "https://x.example/b", "sha256": "sha256:" + "0" * 64},
+            )
+        )
+    )
+    assert validate_exposed(doc) == []
+    dep = doc["inputs"][-1]
+    assert dep["name"] == "cvelistV5-deployment" and dep["records"] == len(DEP_RECORDS)
+    assert dep["sha256"] == cvelist.records_hash(DEP_RECORDS)
+    assert doc["deployment_leg"]["pairs_method"] == deployment_cna.PAIRS_METHOD
+
+
 def _wat_member(uri: str, server: str | None) -> bytes:
     headers = {"Content-Type": "text/html"} | ({"Server": server} if server else {})
     env = {
@@ -502,7 +651,7 @@ def test_committed_lists_validate_and_carry_hash():
     assert validate_exposed(exposed) == []
     assert validate_authors(authors) == []
     assert exposed["generator_version"] == bep.GENERATOR_VERSION
-    assert exposed["criterion_version"] == bep.CRITERION_VERSION == 3
+    assert exposed["criterion_version"] == bep.CRITERION_VERSION == 4
     assert exposed["rules_version"] == bep.RULES_VERSION == 3
     assert exposed["rules"] == {
         c: {
@@ -513,7 +662,14 @@ def test_committed_lists_validate_and_carry_hash():
         for c in bep.CATEGORIES
     }
     assert exposed["threshold"] == bep.THRESHOLDS
-    assert [i["name"] for i in exposed["inputs"]] == ["cisa-kev", "cvelistV5"]
+    assert [i["name"] for i in exposed["inputs"]] == [
+        "cisa-kev",
+        "cvelistV5",
+        "cvelistV5-deployment",
+    ]
+    bulk = exposed["inputs"][2]
+    assert bulk["url"].startswith("https://github.com/CVEProject/cvelistV5/releases/download/")
+    assert bulk["bulk_sha256"].startswith("sha256:") and bulk["records"] > 0
     assert authors["generator_version"] == bta.GENERATOR_VERSION
 
 
@@ -525,7 +681,14 @@ def test_committed_products_have_cpe_or_reason():
 
 def test_committed_deployment_leg_comes_from_survey():
     leg = _committed("exposed-products.yaml")["deployment_leg"]
-    assert leg == yaml.safe_load(yaml.safe_dump(deployment.build(CC_SURVEY)))
+    plain = yaml.safe_load(yaml.safe_dump(deployment.build(CC_SURVEY)))
+    keys = ("id", "name", "rank", "category")
+    assert [{k: p[k] for k in keys} for p in leg["products"]] == [
+        {k: p[k] for k in keys} for p in plain["products"]
+    ]
+    assert {k: v for k, v in leg.items() if k != "products"} == {
+        k: v for k, v in plain.items() if k != "products"
+    }
     assert leg["status"] == "active" and len(leg["products"]) == deployment.N
     survey = json.loads(CC_SURVEY)
     assert survey["method"]["version"] == deployment_cc.METHOD_VERSION
@@ -562,10 +725,13 @@ def test_committed_lists_match_cached_inputs():
         data = kev_path.read_bytes()
         cutoff = dt.date.fromisoformat(doc["cutoff_date"])
         records = cvelist.load_cached(bep.included_cves(data, cutoff))
-        if bep.sha256_bytes(data) == doc["inputs"][0]["sha256"] and (
-            cvelist.records_hash(records) == doc["inputs"][1]["sha256"]
+        dep = deployment_cna.load_cache() or ({}, {})
+        if (
+            bep.sha256_bytes(data) == doc["inputs"][0]["sha256"]
+            and cvelist.records_hash(records) == doc["inputs"][1]["sha256"]
+            and cvelist.records_hash(dep[0]) == doc["inputs"][2]["sha256"]
         ):
-            rendered = bep.render(bep.build(data, cutoff, records, CC_SURVEY))
+            rendered = bep.render(bep.build(data, cutoff, records, CC_SURVEY, *dep))
             assert rendered == (ROOT / "config" / "exposed-products.yaml").read_text("utf-8")
             _check_products_follow_rule(doc, json.loads(data))
             checked += 1

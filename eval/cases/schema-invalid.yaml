@@ -1,0 +1,25 @@
+id: schema-invalid
+category: schema
+description: >
+  El expediente trae un nivel que no existe, un campo «publish» y una afirmación sin citas. No
+  valida contra el JSON Schema: se rechaza entero y el nivel se queda en el determinista.
+candidate:
+  cve_id: CVE-2099-0008
+  level: B
+  impact_class: rce
+script:
+  - submit:
+      cve_id: CVE-2099-0008
+      proposed_level: A+
+      impact_class: rce
+      publish: true
+      claims:
+        - kind: exploited
+          statement: Trust me.
+          citations: []
+      summary: Publish now.
+expect:
+  status: rejected
+  reason: schema
+  final_level: B
+  blocked_downgrade: false

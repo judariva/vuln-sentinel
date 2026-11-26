@@ -1,0 +1,160 @@
+name: deploy
+
+# Despliegue del núcleo en Azure (infra/main.bicep). Solo manual, solo desde `main` y solo en el
+# entorno `prod`, que exige la aprobación de Juan (regla de protección del entorno en GitHub).
+# Login con OIDC (credencial federada de la identidad del pipeline, G-2): sin secretos de
+# cliente. La identidad solo tiene Contributor y RBAC Administrator con condición sobre el RG
+# (ADR-0014).
+#
+# Configuración: secrets del entorno `prod` (regla 8). Van como secrets, aunque no todos sean
+# secretos, para que GitHub los enmascare en los logs: cuando el repo sea público, los logs de
+# Actions también lo serán. Por lo mismo, ningún paso imprime la salida de az: los comandos que
+# pueden fallar van por infra/scripts/az-quiet.sh, que solo enseña el código de error (T9b).
+#
+# Antes de tocar Azure se verifica la atestación de procedencia de la imagen (images.yml, T9b): si
+# no la firmó images.yml de este repo, se para.
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, VS_RESOURCE_GROUP, VS_NAME_PREFIX,
+#   VS_VNET_CIDR, VS_SUBNET_ACA_CIDR, VS_SUBNET_PG_CIDR, VS_SUBNET_PE_CIDR, VS_CLOUDFLARED_IMAGE,
+#   VS_KV_SECRET_TUNNEL, VS_KV_SECRET_GITHUB, VS_KV_SECRET_R2, VS_HEARTBEAT_ENDPOINT,
+#   VS_HEARTBEAT_DCR_ID, VS_FOUNDRY_ACCOUNT.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Digest de la imagen publicada por images.yml (sha256:...)"
+        required: true
+        type: string
+      what_if_only:
+        description: "Solo validar y what-if, sin aplicar cambios"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: prod
+    # packages: read para leer la imagen y sus atestaciones en GHCR; attestations: read para que
+    # `gh attestation verify` las consulte en la API de GitHub.
+    permissions:
+      contents: read
+      id-token: write
+      packages: read
+      attestations: read
+    env:
+      VS_RESOURCE_GROUP: ${{ secrets.VS_RESOURCE_GROUP }}
+      VS_NAME_PREFIX: ${{ secrets.VS_NAME_PREFIX }}
+      VS_VNET_CIDR: ${{ secrets.VS_VNET_CIDR }}
+      VS_SUBNET_ACA_CIDR: ${{ secrets.VS_SUBNET_ACA_CIDR }}
+      VS_SUBNET_PG_CIDR: ${{ secrets.VS_SUBNET_PG_CIDR }}
+      VS_SUBNET_PE_CIDR: ${{ secrets.VS_SUBNET_PE_CIDR }}
+      VS_CLOUDFLARED_IMAGE: ${{ secrets.VS_CLOUDFLARED_IMAGE }}
+      VS_KV_SECRET_TUNNEL: ${{ secrets.VS_KV_SECRET_TUNNEL }}
+      VS_KV_SECRET_GITHUB: ${{ secrets.VS_KV_SECRET_GITHUB }}
+      VS_KV_SECRET_R2: ${{ secrets.VS_KV_SECRET_R2 }}
+      VS_HEARTBEAT_ENDPOINT: ${{ secrets.VS_HEARTBEAT_ENDPOINT }}
+      VS_HEARTBEAT_DCR_ID: ${{ secrets.VS_HEARTBEAT_DCR_ID }}
+      VS_FOUNDRY_ACCOUNT: ${{ secrets.VS_FOUNDRY_ACCOUNT }}
+      EXPECTED_TENANT: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # La entrada llega por variable de entorno, nunca interpolada en el script.
+      - name: Validar el digest y fijar la imagen
+        env:
+          DIGEST: ${{ inputs.image_digest }}
+        run: |
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::image_digest debe ser sha256:<64 hex>"
+            exit 1
+          fi
+          if [[ "$VS_CLOUDFLARED_IMAGE" != *@sha256:* ]]; then
+            echo "::error::VS_CLOUDFLARED_IMAGE debe ir fijada por digest"
+            exit 1
+          fi
+          echo "VS_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}" >> "$GITHUB_ENV"
+
+      # La imagen tiene que llevar la procedencia SLSA firmada por images.yml de este repo
+      # (https://cli.github.com/manual/gh_attestation_verify). Si no, se para antes de Azure.
+      - name: Verificar la procedencia de la imagen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin > /dev/null
+          rc=0
+          gh attestation verify "oci://${VS_IMAGE}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "${GITHUB_SERVER_URL#https://}/${GITHUB_REPOSITORY}/.github/workflows/images.yml" \
+            > /dev/null || rc=$?
+          docker logout ghcr.io > /dev/null
+          if [[ $rc -ne 0 ]]; then
+            echo "::error::La imagen no tiene una atestación de procedencia válida de images.yml; se para."
+            exit 1
+          fi
+          echo "Procedencia verificada." >> "$GITHUB_STEP_SUMMARY"
+
+      # SHA de la etiqueta v3.1.0 comprobado con `git ls-remote` (revisión de 2026-11-26).
+      - name: Login en Azure con OIDC
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Regla 6 de CLAUDE.md: antes de escribir, el tenant y la suscripción son los esperados.
+      - name: Comprobar tenant y suscripción
+        run: |
+          tenant="$(az account show --query tenantId -o tsv)"
+          sub="$(az account show --query id -o tsv)"
+          if [[ "$tenant" != "$EXPECTED_TENANT" || "$sub" != "$EXPECTED_SUBSCRIPTION" ]]; then
+            echo "::error::El contexto de az no es el de la plataforma; se para."
+            exit 1
+          fi
+
+      # Los errores de ARM llevan IDs y nombres: az-quiet.sh solo enseña el código (THR-019).
+      - name: Validar la plantilla
+        run: |
+          bash infra/scripts/az-quiet.sh /dev/null \
+            az deployment group validate \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --parameters infra/main.bicepparam \
+            --output none
+
+      # Solo el recuento por tipo de cambio: el detalle llevaría nombres e IDs al log.
+      - name: What-if (recuento de cambios)
+        run: |
+          bash infra/scripts/az-quiet.sh "$RUNNER_TEMP/what-if.json" \
+            az deployment group what-if \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --parameters infra/main.bicepparam \
+            --no-pretty-print --output json
+          jq -r '[.changes[].changeType] | group_by(.) | map("\(.[0]): \(length)") | .[]' \
+            "$RUNNER_TEMP/what-if.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          rm -f "$RUNNER_TEMP/what-if.json"
+
+      - name: Desplegar
+        if: ${{ !inputs.what_if_only }}
+        run: |
+          bash infra/scripts/az-quiet.sh /dev/null \
+            az deployment group create \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --name "vs-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --parameters infra/main.bicepparam \
+            --output none
+
+      - name: Cerrar sesión en Azure
+        if: always()
+        run: az logout || true

@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "kind": "changes",
+  "feed": "all",
+  "sealed": false,
+  "generated_at": "2099-03-01T12:00:30Z",
+  "entries": [
+    {
+      "id": "VS-CVE-2099-1001",
+      "modified": "2099-03-01T11:40:00Z",
+      "level": "B",
+      "type": "poc_added",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "id": "VS-CVE-2099-1002",
+      "modified": "2099-03-01T11:41:00Z",
+      "level": "none",
+      "type": "new",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+    }
+  ],
+  "next": "2099-03-01T11:41:00Z,VS-CVE-2099-1002",
+  "has_more": false,
+  "modified": "2099-03-01T11:50:00Z",
+  "sources": [
+    { "name": "cisa-kev", "status": "ok", "since": "2099-02-28T08:00:00Z" },
+    { "name": "cvelistv5", "status": "ok", "since": "2099-02-28T08:00:00Z" },
+    { "name": "epss", "status": "unknown", "since": "2099-03-01T11:00:00Z" }
+  ]
+}

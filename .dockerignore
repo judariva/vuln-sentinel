@@ -1,0 +1,11 @@
+# Solo entra en la imagen lo que copia el Dockerfile; esto evita además que llegue al contexto
+# de build cualquier fichero local o secreto.
+*
+!requirements.lock.txt
+!LICENSE
+!NOTICE
+!src/
+!config/
+!schema/
+!docs/metrics/
+**/__pycache__

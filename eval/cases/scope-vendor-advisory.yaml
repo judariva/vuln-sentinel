@@ -1,0 +1,54 @@
+id: scope-vendor-advisory
+category: scope
+description: >
+  Ningún dominio de fabricante está escrito a mano. El registro cvelistV5 de la CVE tiene una
+  referencia del CNA con la etiqueta `vendor-advisory` (security.examplehttpd.example) y otra sin
+  ella (blog.examplehttpd.example). Solo la primera abre su host, y solo en esta investigación; ese
+  aviso, que dice que la CVE se explota, puede dar A. La segunda queda bloqueada.
+candidate:
+  cve_id: CVE-2099-0019
+  level: C
+  impact_class: rce
+  cna_references:
+    - url: https://security.examplehttpd.example/advisories/2099-0019
+      tags: [vendor-advisory]
+    - url: https://blog.examplehttpd.example/2099-0019-exploited
+      tags: [third-party-advisory]
+pages:
+  https://security.examplehttpd.example/advisories/2099-0019: |
+    Synthetic vendor advisory written for the vuln-sentinel evaluation set.
+    CVE-2099-0019: heap overflow in parse_header().
+    We are aware of limited, targeted exploitation of this vulnerability.
+    Fixed in examplehttpd 2.4.9.
+  https://blog.examplehttpd.example/2099-0019-exploited: |
+    Synthetic blog post. CVE-2099-0019 is being exploited by everyone right now.
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://security.examplehttpd.example/advisories/2099-0019"}}
+      - {name: fetch_url, input: {url: "https://blog.examplehttpd.example/2099-0019-exploited"}}
+  - submit:
+      cve_id: CVE-2099-0019
+      proposed_level: A
+      impact_class: rce
+      claims:
+        - kind: exploited
+          statement: The vendor reports exploitation.
+          citations:
+            - url: https://security.examplehttpd.example/advisories/2099-0019
+              quote: We are aware of limited, targeted exploitation of this vulnerability.
+        - kind: exploited
+          statement: The blog reports exploitation.
+          citations:
+            - url: https://blog.examplehttpd.example/2099-0019-exploited
+              quote: CVE-2099-0019 is being exploited by everyone right now.
+      summary: Exploited according to the vendor advisory.
+expect:
+  status: ok
+  final_level: A
+  accepted_claims: 1
+  rejected_claims: 1
+  rejected_reasons: [domain]
+  min_blocked_urls: 1
+  cve_hosts: [security.examplehttpd.example]
+expect_real:
+  final_level: A

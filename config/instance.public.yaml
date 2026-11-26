@@ -1,0 +1,35 @@
+# Instancia pública (ADR-0022). Feed abierto para cualquiera.
+# Solo fuentes redistribuibles: la clase 'restricted' no se admite y no hay licencias.
+# Cargar aquí un conector 'restricted' falla al arrancar, y una fila 'restricted' en el
+# almacenamiento hace fallar la auditoría (tests/test_license_rights.py).
+# Sin secretos: si un conector necesita una clave, su config nombra la variable de entorno.
+instance:
+  name: public
+  kind: public
+  allowed_license_classes: [open]
+  licenses: []
+  # Conectores abiertos (T3). Las URL de cada fuente tienen valor por defecto en su módulo
+  # (src/vs/sources/); aquí solo va lo que cambie la instancia. GHSA lee el token de la variable
+  # de entorno nombrada, nunca de este fichero. La EUVD no está: su licencia sigue SIN VERIFICAR.
+  connectors:
+    - name: cvelistv5
+    - name: cisa_kev
+    - name: epss
+    - name: ghsa
+      config:
+        token_env: VS_GITHUB_TOKEN
+    - name: osv
+      config:
+        # Carga inicial de 6 h, no 24: en 24 h OSV pasa de 12.000 registros modificados (medido el
+        # 2026-11-26) y supera `max_records` (5.000), así que la carga inicial nunca terminaba.
+        baseline_lookback_hours: 6
+    # Exploits (T7). Solo metadatos; el código de un PoC nunca se clona ni se ejecuta.
+    - name: metasploit
+    - name: exploitdb
+    - name: nomisec
+      config:
+        token_env: VS_GITHUB_TOKEN
+    # Solo para candidatos B/C, que fija el job de investigación; 30 búsquedas/min con token.
+    - name: github_search
+      config:
+        token_env: VS_GITHUB_TOKEN

@@ -8,6 +8,8 @@
 .wrangler/
 node_modules/
 dist/
+test-results/
+playwright-report/
 # python
 __pycache__/
 .venv/
@@ -15,9 +17,20 @@ __pycache__/
 .claude/settings.local.json
 # material local de la plataforma (postura, accesos): nunca al repo público (regla 8)
 local/
+# descargas de datos públicos (fuentes, fixtures en bruto); nunca en src/ ni tests/
+.cache/
 # herramientas
 .pytest_cache/
 .ruff_cache/
 # descargas de los generadores y cachés del código
 .cache/
 *.egg-info/
+# terraform: proveedores descargados y estado (nunca estado en el repo). El lock del ejemplo sí
+# se versiona; el del módulo no (lo decide la raíz que lo instancia).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/terraform/modules/**/.terraform.lock.hcl
+# generado desde uv.lock en el build de la imagen (images.yml)
+requirements.lock.txt

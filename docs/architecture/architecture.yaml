@@ -16,11 +16,11 @@ id_prefixes:
 components:
   - id: CMP-001
     name: front
-    service: Cloudflare Workers static assets
+    service: Cloudflare Workers static assets. SPA en web/ (Vite + React + shadcn/ui, ADR-0023; movimiento con Motion y Magic UI, escena 3D en un bloque aparte, ADR-0024); consume la API pública como cualquier cliente
     status: planned
   - id: CMP-002
     name: api
-    service: Azure Container Apps (app)
+    service: Azure Container Apps (app). FastAPI de solo lectura (src/vs/api/); /admin/* solo con el JWT de Access (esqueleto)
     status: planned
   - id: CMP-003
     name: job-ingest
@@ -40,7 +40,7 @@ components:
     status: planned
   - id: CMP-007
     name: database
-    service: Azure Database for PostgreSQL Flexible Server (B1ms)
+    service: Azure Database for PostgreSQL Flexible Server (B1ms). Esquema en src/vs/model/ (SQLAlchemy) y migraciones de Alembic en src/vs/model/migrations/
     status: planned
   - id: CMP-008
     name: key-vault
@@ -60,11 +60,11 @@ components:
     status: planned
   - id: CMP-012
     name: heartbeat-sink
-    service: Microsoft Sentinel (Log Analytics, Logs Ingestion API)
+    service: Microsoft Sentinel (Log Analytics, Logs Ingestion API; tabla VsHeartbeat_CL y DCR de G-7)
     status: planned
   - id: CMP-013
     name: external-watchdog
-    service: GitHub Actions (workflow programado)
+    service: "GitHub Actions (.github/workflows/watchdog.yml, cada 30 min y manual): python -m vs.watchdog lee el índice «head» por el borde, verifica la firma JWS (clave fijada en VS_FEED_JWKS o la publicada) y comprueba modified < 30 min y ninguna fuente en UNKNOWN > 2 h; sin VS_FEED_BASE_URL el job sale «saltado»"
     status: planned
   - id: CMP-014
     name: traces
@@ -72,7 +72,7 @@ components:
     status: planned
   - id: CMP-015
     name: social-publisher
-    service: Herramienta externa de publicación en redes (Buffer recomendada; ADR-0017)
+    service: Herramienta externa de publicación en redes (Zernio; ADR-0017 aceptado)
     status: planned
   - id: CMP-016
     name: feed-archive
@@ -82,11 +82,94 @@ components:
     name: donations
     service: Entrega de direcciones on-chain y lectura de cobros, solo lectura (ADR-0021)
     status: proposed
-  # CMP-018 a CMP-034 están reservados por la rama night/2026-11-25, aún sin fusionar.
+  - id: CMP-018
+    name: connector-registry
+    service: Registro de conectores (plugins) y configuración de instancia con guarda de licencia (src/vs/sources/base.py, src/vs/instance.py; ADR-0022)
+    status: proposed
+  - id: CMP-019
+    name: feed-rights
+    service: Filtro de señales por audiencia y nivel calculado por feed (src/vs/feed/rights.py; ADR-0022)
+    status: proposed
+  - id: CMP-020
+    name: source-connectors
+    service: Conectores abiertos (cvelistV5, CISA KEV, EPSS, GHSA, OSV) y ejecutor con source_run y fail-closed (src/vs/sources/; dentro de CMP-003)
+    status: proposed
+  - id: CMP-021
+    name: rules-engine
+    service: Motor de reglas A/B/C determinista y por feed, con impacto mínimo, E1–E4, carga inicial y monotonía (src/vs/rules/; dentro de CMP-003; PLAN §5, ADR-0012, ADR-0013, ADR-0022)
+    status: proposed
+  - id: CMP-022
+    name: feed-builder
+    service: Registro OSV 1.9 extendido por CVE, feed completo y de alertas, índice de cambios con cursor, páginas selladas por hora y 410 por retención (src/vs/feed/osv.py, changes.py, publish.py; schema/feed-1.0.0.json; dentro de CMP-005; ADR-0007, ADR-0019)
+    status: proposed
+  - id: CMP-023
+    name: feed-signer
+    service: Firma JWS detached ES256 (RFC 7797) tras la interfaz Signer; LocalDevSigner para tests y KeyVaultSigner como interfaz (src/vs/feed/sign.py; examples/verify/; ADR-0008)
+    status: proposed
+  - id: CMP-024
+    name: exploit-connectors
+    service: Conectores de exploits (Metasploit, Exploit-DB, PoC-in-GitHub, búsqueda de GitHub solo para candidatos) y heurísticas poc_suspicious leyendo metadatos y la API de contenidos, sin clonar ni ejecutar (src/vs/sources/metasploit.py, exploitdb.py, nomisec.py, github_search.py, poc.py; dentro de CMP-003; PLAN §5.3, ADR-0013, ADR-0020)
+    status: proposed
+  - id: CMP-025
+    name: network
+    service: "Red de la plataforma (landing zone): subred de ACA (delegada, con NSG), subred de endpoints privados compartida y zona privatelink de PostgreSQL. El módulo Terraform las recibe como entradas y no crea ninguna; solo pone en ellas el endpoint privado de PostgreSQL y su registro A (ADR-0025, T16b; diseño anterior en infra/bicep-legacy/modules/network.bicep; G-4)"
+    status: planned
+  - id: CMP-026
+    name: managed-identities
+    service: "Dos identidades gestionadas asignadas por el usuario: runtime (api, cloudflared, ingest, investigate, daily, migrate) y publish (solo el job publish, el único que firma). Las crea el vending de la plataforma y concede sus roles; el módulo Terraform las recibe (variable identities) y publica la lista de roles por identidad y alcance en la salida required_platform_grants (ADR-0025, T16b)"
+    status: planned
+  - id: CMP-027
+    name: job-migrate
+    service: Azure Container Apps Jobs (manual). Migraciones de Alembic; su identidad es el único administrador Entra de PostgreSQL (infra/terraform/modules/vuln-sentinel/postgres.tf y jobs.tf)
+    status: planned
+  - id: CMP-028
+    name: deploy-pipeline
+    service: "GitHub Actions: images.yml (build y publicación por digest en GHCR con SBOM y procedencia firmados). deploy.yml se retiró (ADR-0025, queda en infra/bicep-legacy/workflows/): despliega CMP-039"
+    status: planned
+  - id: CMP-029
+    name: image-registry
+    service: GitHub Container Registry (imagen única del producto, por digest, con sus atestaciones de SBOM y procedencia; Dockerfile sin root y con la base por digest)
+    status: planned
+  - id: CMP-030
+    name: product-logs
+    service: Log Analytics propio con tope diario (logs del entorno ACA y base de App Insights; infra/bicep-legacy/modules/monitoring.bicep). Retirado por ADR-0025 — los diagnósticos allLogs van al workspace de la plataforma (entrada del módulo)
+    status: retired
+  - id: CMP-031
+    name: agent-harness
+    service: "Agente investigador: bucle propio con tool use (fetch_url solo GET y submit_dossier), cliente de modelo tras una interfaz (Anthropic o Foundry por configuración; FakeModel en tests), topes, JSON Schema, verificador de citas, alcance de dominios por CVE desde las referencias vendor-advisory del CNA (scope.py), E5 determinista contra señuelos (e5.py), nivel_final en código, ai_call con license_class y trazas GenAI con exportador nulo (src/vs/agent/; config/agent.yaml; dentro de CMP-004; ADR-0009, ADR-0010, ADR-0013, ADR-0022)"
+    status: proposed
+  - id: CMP-032
+    name: agent-eval
+    service: "Conjunto de evaluación del agente con respuestas simuladas, sin red (eval/cases/, python -m vs.agent.eval --model fake en CI); el modo real espera a G-6 y no corre sin configuración explícita"
+    status: proposed
+  - id: CMP-033
+    name: heartbeat-client
+    service: "Latido de cada job (job, resultado, fuentes en UNKNOWN desde cuándo, coste de IA del día) tras la interfaz HeartbeatClient; LogsIngestionClient con la identidad gestionada del job (solo interfaz hasta la F1a) y FakeHeartbeatClient en tests; salud de fuentes en src/vs/sources/health.py (src/vs/heartbeat/; dentro de CMP-003 a CMP-006)"
+    status: proposed
+  - id: CMP-034
+    name: ntfy
+    service: "ntfy (servicio público o instancia propia): tema de nombre aleatorio con control de acceso (G-16); recibe los avisos de los dos vigilantes (P-9)"
+    status: planned
   - id: CMP-035
     name: list-generators
     service: Scripts reproducibles src/vs/lists (exposed-products y trusted-exploit-authors; F1a-0)
     status: implemented
+  - id: CMP-036
+    name: store
+    service: "Persistencia de los jobs en PostgreSQL (src/vs/store.py, T13): ingesta idempotente por huella (fact_seen), carga inicial sin alertas también para CVE que llegan tarde, reglas con estado guardado y feed publicado (feed_record, feed_change) que comparten el job de publicación y la API; dentro de CMP-002 a CMP-006"
+    status: implemented
+  - id: CMP-037
+    name: local-stack
+    service: "Prueba en local con datos reales: compose.yaml (PostgreSQL, migrate, bucle ingest → publish cada 5 min y daily cada hora con vs.jobs.loop, API con el portal en el mismo origen) e infra/compose/Dockerfile; solo desarrollo, no se despliega"
+    status: implemented
+  - id: CMP-038
+    name: product-iac-module
+    service: "Módulo Terraform reutilizable del producto (infra/terraform/modules/vuln-sentinel/; azurerm >= 4.81.0, < 5.0.0): entorno de ACA interno en VNet, API, jobs, cloudflared opcional, PostgreSQL Flexible solo con Entra y con endpoint privado, y diagnósticos allLogs; no crea identidades, roles, RG, Key Vault, la clave de firma ni zonas DNS. Ejemplo en infra/terraform/examples/golden-lab/, con versión exacta y lock (ADR-0025, ADR-0022)"
+    status: implemented
+  - id: CMP-039
+    name: platform-factory
+    service: "Factoría de la plataforma (Golden Tenant), externa a este repo: vending del landing zone (RG, UAMI, Key Vault privado, presupuesto, guardarraíles y roles de required_platform_grants) e instancia de CMP-038 fijado por versión, con sus identidades de CI y plan/apply revisado (ADR-0025)"
+    status: planned
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -102,6 +185,7 @@ sources:
   - {id: SRC-011, name: PoC-in-GitHub}
   - {id: SRC-012, name: GitHub search}
   - {id: SRC-013, name: avisos de fabricante y CERT}
+  - {id: SRC-014, name: EUVD (ENISA), status: excluded, note: "licencia de reutilización SIN VERIFICAR (reintentado en T3, 2026-11-26); fuera hasta poder leerla; ADR-0022"}
   - {id: SRC-015, name: Common Crawl (WAT), note: "solo para la pata de despliegue de exposed-products (cabecera Server de una muestra fija); términos en deployment_leg"}
 
 trust_boundaries:
@@ -121,11 +205,41 @@ flows:
   - {id: FLW-008, from: CMP-005, to: CMP-016, note: páginas selladas y snapshot (token limitado al bucket)}
   - {id: FLW-009, from: CMP-005, to: CMP-015, crosses: [TB-001], note: post aprobado (adaptador SocialPublisher)}
   - {id: FLW-010, from: CMP-011, to: CMP-016, note: servir feed archivado desde caché}
-  # FLW-011 a FLW-039 están reservados por la rama night/2026-11-25, aún sin fusionar.
+  - {id: FLW-011, from: CMP-003, to: CMP-018, note: "el ingest solo carga los conectores que la instancia admite (ADR-0022)"}
+  - {id: FLW-012, from: CMP-005, to: CMP-019, note: "cada feed se genera con las señales que su audiencia puede recibir (ADR-0022)"}
+  - {id: FLW-013, from: SRC-002, to: CMP-020, crosses: [TB-003], note: "catálogo KEV (JSON)"}
+  - {id: FLW-014, from: SRC-004, to: CMP-020, crosses: [TB-003], note: "CSV diario de EPSS"}
+  - {id: FLW-015, from: SRC-005, to: CMP-020, crosses: [TB-003], note: "API de avisos de GitHub, paginada"}
+  - {id: FLW-016, from: SRC-006, to: CMP-020, crosses: [TB-003], note: "modified_id.csv y registros OSV, con política por fuente"}
+  - {id: FLW-017, from: CMP-020, to: CMP-007, note: "source_run y registros normalizados al modelo"}
+  - {id: FLW-018, from: CMP-020, to: CMP-021, note: "registros sellados (observed_at, baseline) que evalúan las reglas"}
+  - {id: FLW-019, from: CMP-021, to: CMP-007, note: "rule_evaluation y alert_level_history"}
+  - {id: FLW-020, from: CMP-021, to: CMP-022, note: "nivel publicado, historial y registros del feed (solo lo que su audiencia puede recibir)"}
+  - {id: FLW-021, from: CMP-022, to: CMP-023, note: "bytes exactos de cada documento → JWS detached (.jws)"}
+  - {id: FLW-022, from: CMP-023, to: CMP-008, note: "operación sign de Key Vault sobre el resumen SHA-256 (F1a; hoy solo interfaz)"}
+  - {id: FLW-023, from: CMP-002, to: CMP-022, note: "la API sirve el índice «head», latest.json, los registros, el resumen diario y el JWKS de la audiencia public (solo lectura)"}
+  - {id: FLW-024, from: CMP-002, to: CMP-007, note: "SELECT sobre metric_daily (métricas y coste frente a donaciones); nunca escribe"}
+  - {id: FLW-025, from: SRC-008, to: CMP-024, crosses: [TB-003], note: "modules_metadata_base.json (solo metadatos; nunca el código del módulo)"}
+  - {id: FLW-026, from: SRC-009, to: CMP-024, crosses: [TB-003], note: "files_exploits.csv (solo identificador, tipo, plataforma y fecha)"}
+  - {id: FLW-027, from: SRC-011, to: CMP-024, crosses: [TB-003], note: "commits de la API y JSON por CVE en su versión del commit"}
+  - {id: FLW-028, from: SRC-012, to: CMP-024, crosses: [TB-003], note: "búsqueda de repositorios solo para candidatos B/C, 30/min con token; metadatos, árbol, releases y contenidos de texto pequeños"}
+  - {id: FLW-029, from: CMP-024, to: CMP-021, note: "señales exploit (E1, E2, poc_unverified, poc_suspicious) por el ejecutor de fuentes"}
+  - {id: FLW-030, from: CMP-001, to: CMP-002, note: "el portal lee la API pública con GET y sin credenciales (feed de alertas, registros y metric_daily); URL base de VITE_API_BASE_URL (ADR-0016, ADR-0023)"}
+  - {id: FLW-031, from: CMP-028, to: CMP-029, note: "push de la imagen con el GITHUB_TOKEN del workflow (packages: write solo en images.yml)"}
+  - {id: FLW-032, from: CMP-028, to: CMP-026, crosses: [TB-004], status: retired, note: "deploy.yml: OIDC → identidad del pipeline; Contributor y RBAC Administrator con condición sobre el RG (ADR-0014). Retirado por ADR-0025: lo sustituyen FLW-044 y FLW-045"}
+  - {id: FLW-033, from: CMP-029, to: CMP-002, note: "ACA descarga la imagen por digest (también para los jobs y migrate)"}
+  - {id: FLW-034, from: CMP-010, to: CMP-008, note: "cloudflared lee el token del Tunnel por referencia de Key Vault; Secrets User solo sobre ese secreto"}
+  - {id: FLW-035, from: CMP-027, to: CMP-007, note: "migraciones con token de Entra ID como administrador; el resto de componentes no administra la BD"}
+  - {id: FLW-036, from: CMP-002, to: CMP-014, note: "trazas OTel con Entra ID (App Insights sin clave local)"}
+  - {id: FLW-037, from: CMP-033, to: CMP-012, note: "POST de la fila del latido a la Logs Ingestion API con token de la identidad gestionada (Metrics Publisher solo sobre la DCR)"}
+  - {id: FLW-038, from: CMP-005, to: CMP-022, note: "al terminar cada ejecución, el job fija el estado del índice «head» (modified y salud de las fuentes) que lee el vigilante externo"}
+  - {id: FLW-039, from: CMP-013, to: CMP-034, crosses: [TB-001], note: "si el vigilante falla, paso if: failure() publica en el tema con su token (secrets); el correo lo manda GitHub"}
   - {id: FLW-040, from: SRC-002, to: CMP-035, note: catálogo KEV para exposed-products (local, sin IA)}
   - {id: FLW-041, from: SRC-008, to: CMP-035, note: metadata de módulos para trusted-exploit-authors (local, sin IA)}
   - {id: FLW-042, from: SRC-001, to: CMP-035, note: "registros CVE de los productos incluidos: pares vendor/product del CNA y prefijos CPE (local, sin IA)"}
   - {id: FLW-043, from: SRC-015, to: CMP-035, note: "prefijos de 32 ficheros WAT por rango HTTPS anónimo; solo nombres y cuentas agregadas de la cabecera Server (local, sin IA)"}
+  - {id: FLW-044, from: CMP-039, to: CMP-038, note: "la factoría instancia el módulo fijado por versión (ref de git) con las salidas del landing zone"}
+  - {id: FLW-045, from: CMP-039, to: CMP-026, crosses: [TB-004], note: "vending: crea las UAMI y concede los roles de required_platform_grants; plan/apply con las identidades de CI de la plataforma (ADR-0025)"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -138,15 +252,49 @@ threats:
   - {id: THR-008, name: acceso directo al origen saltando WAF y Access, refs: []}
   - {id: THR-009, name: el monitor deja de funcionar sin que nadie se entere, refs: []}
   - {id: THR-010, name: escalada de privilegios del pipeline, refs: ["ATT&CK v20.1 T1098"]}
+  - {id: THR-011, name: un dato con licencia restringida llega a un feed o a una instancia sin esa licencia, refs: []}
+  - {id: THR-012, name: un documento del feed se altera en el borde, en R2 o en tránsito y el consumidor no lo detecta, refs: []}
+  - {id: THR-013, name: "acceso a /admin/* sin pasar por Access o con un JWT falsificado, caducado o de otra aplicación", refs: ["OWASP API2:2023"]}
+  - {id: THR-014, name: "la API pública modifica datos o expone datos de donaciones con las donaciones desactivadas", refs: []}
+  - {id: THR-015, name: "un PoC falso o con malware cuenta como exploit funcional, o un módulo DoS sube a B", refs: []}
+  - {id: THR-016, name: "un enlace o texto de una fuente de terceros, servido por el feed, ejecuta script en el portal (javascript:, data:) o filtra la navegación", refs: ["CWE-79"]}
+  - {id: THR-017, name: "un componente comprometido usa permisos de otro (identidad compartida, rol sobre el vault entero o administración de la BD)", refs: ["ATT&CK v20.1 T1078.004"]}
+  - {id: THR-018, name: "un despliegue no revisado o con una imagen o acción alterada llega a producción", refs: ["ATT&CK v20.1 T1195.002"]}
+  - {id: THR-019, name: "los logs públicos de Actions exponen IDs, nombres o rangos de la plataforma", refs: []}
+  - {id: THR-020, name: "el vigilante externo da verde con un feed parado, manipulado, con la clave cambiada o sin configurar", refs: []}
+  - {id: THR-021, name: "el portal enseña una cifra que no sale de la API (contador a medio animar, embudo recortado sin decirlo) o la escena 3D impide ver los datos", refs: []}
+  - {id: THR-022, name: "quien controla el origen sustituye el JWKS por otra clave con el mismo kid y firma documentos falsos, o vuelve a servir un documento viejo bien firmado (congelación o retroceso)", refs: []}
 
 controls:
-  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: test de monotonía}
-  - {id: CTL-002, name: verificador determinista de citas, mitigates: [THR-003], proof: eval citas falsas}
-  - {id: CTL-003, name: contenido externo delimitado y herramientas de solo lectura, mitigates: [THR-001], proof: eval injection-advisory}
-  - {id: CTL-004, name: lista de dominios permitidos y solo GET, mitigates: [THR-004], proof: test de herramienta}
+  - {id: CTL-001, name: "nivel_final = max(determinista, IA) en código", mitigates: [THR-002], proof: "tests/test_rules.py (monotonía con hypothesis; la IA no baja; solo baja un acto manual registrado); tests/test_agent.py (el agente nunca deja el nivel por debajo del determinista ni del publicado, con hypothesis; el intento queda en ai_call.blocked_downgrade)"}
+  - {id: CTL-002, name: "verificador determinista de citas: cita literal normalizada, con longitud mínima y, en código, dentro de las líneas citadas; una afirmación con una cita no verificada se descarta", mitigates: [THR-003], proof: "eval/cases/citation-fabricated.yaml; tests/test_agent.py (verificador y sabotaje: el arnés falla si se acepta una cita inventada)"}
+  - {id: CTL-003, name: "contenido externo delimitado como datos (<external_content>, cierre neutralizado) y herramientas de solo lectura; el agente no tiene herramienta de publicar", mitigates: [THR-001], proof: "eval/cases/injection-advisory.yaml e injection-readme-escalate.yaml; tests/test_agent.py (herramientas desconocidas denegadas y sin ejecutar)"}
+  - {id: CTL-004, name: "lista de dominios permitidos aplicada en código (host exacto, https, puerto 443, sin usuario ni IP) y solo GET sin redirecciones", mitigates: [THR-004], proof: "tests/test_agent.py (tabla de URL permitidas y bloqueadas; una URL bloqueada no llega al transporte); eval/cases/domain-off-list.yaml"}
   - {id: CTL-005, name: código de PoC leído como texto, nunca ejecutado, mitigates: [THR-005], proof: revisión de contenedor en CI}
-  - {id: CTL-006, name: topes de pasos, tokens y coste diario, mitigates: [THR-006], proof: test de bucle simulado}
-  - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: test carga inicial 0 alertas}
+  - {id: CTL-006, name: "topes de 12 pasos, 60.000 tokens por candidato y 1,5 USD/día (compartido entre candidatos); al superarlos, needs_human", mitigates: [THR-006], proof: "eval/cases/budget-*.yaml; tests/test_agent.py (bucle simulado, tokens y USD/día)"}
+  - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: "tests/test_rules.py (carga inicial y fuente nueva: 0 alertas; señal nueva sobre CVE antigua: alerta)"}
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
-  - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
-  - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
+  - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: "prueba de caos F3; tests/test_heartbeat.py y tests/test_watchdog.py (sin credenciales)"}
+  - {id: CTL-010, name: "RBAC Administrator con condición sobre el RG: solo 4 roles, solo a los principalId de las identidades del producto (creadas por la plataforma) y solo a ServicePrincipal", mitigates: [THR-010], proof: "tests/test_infra.py (forma de la condición); intento de autoasignación y de asignar a una identidad ajena denegados (primer despliegue)"}
+  - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed; la API pública no arranca con un publicador que admita restricted", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador); tests/test_api.py (ninguna respuesta lleva datos restricted)"}
+  - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
+  - {id: CTL-013, name: "los conectores solo siguen enlaces bajo la URL base configurada; OSV no lee fuentes sin licencia comprobada", mitigates: [THR-004, THR-011], proof: tests/test_sources.py}
+  - {id: CTL-014, name: "cada documento del feed lleva su JWS detached ES256 sobre los bytes exactos, verificable con openssl y Python; ETag y sha256 del índice iguales al hash del registro", mitigates: [THR-012], proof: "tests/test_feed_sign.py; tests/test_feed.py; tests/test_api.py (cada documento servido verifica con su .jws)"}
+  - {id: CTL-015, name: "el origen valida el JWT de Access en /admin/* (RS256 con las claves del equipo, iss, aud, exp y nbf); sin configuración, /admin cerrado", mitigates: [THR-013], proof: "tests/test_api.py (sin JWT 401; firma, kid, alg, aud, iss o vigencia malos 403; sin configuración 403)"}
+  - {id: CTL-016, name: "API pública solo GET y sin escritura; los datos donations.* no salen con donations.enabled=false", mitigates: [THR-014], proof: "tests/test_api.py (405 en métodos de escritura; el publicador no cambia; ninguna respuesta lleva donaciones)"}
+  - {id: CTL-017, name: "heurísticas poc_suspicious (binarios, blobs u ofuscación, curl|sh y descargas ajenas, cuenta de menos de 30 días, README sin código, fork) sobre metadatos y la API de contenidos, sin clonar ni ejecutar; un PoC sin inspección completa nunca es limpio; el tipo de módulo o de entrada (auxiliary/dos, dos) se conserva para que no cuente como exploit", mitigates: [THR-005, THR-015], proof: "tests/test_exploit_sources.py (una prueba por heurística con fixtures sintéticos; el inspector solo pide URLs de la API; integración: un módulo DoS no da B)"}
+  - {id: CTL-018, name: "el portal solo pone en un href enlaces https (safeUrl), con rel=noopener noreferrer; React escapa el texto y no se usa HTML del feed; referrer no-referrer; un id de alerta mal formado no llega a la API", mitigates: [THR-016], proof: "web/src/test/units.test.tsx (safeUrl); web/src/test/pages.test.tsx (javascript: nunca en href; id mal formado sin petición)"}
+  - {id: CTL-019, name: "dos identidades (T16b): solo publish tiene Crypto User, y solo sobre la clave de firma; Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; el administrador Entra de PostgreSQL es la identidad de migrate (runtime, o postgres_entra_admin), sin contraseña; KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "salida required_platform_grants del módulo (por identidad, rol y alcance; tests/test_terraform.py); revisión de las asignaciones del vending tras el primer despliegue (F1a)"}
+  - {id: CTL-020, status: retired, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto (retirado por ADR-0025: lo sustituye CTL-031)", mitigates: [THR-010, THR-018], proof: "infra/bicep-legacy/workflows/deploy.yml (referencia)"}
+  - {id: CTL-021, status: retired, name: "configuración del despliegue como secrets enmascarados; si validate, what-if o create fallan, solo se ve el código de error (az-quiet.sh). Retirado por ADR-0025: este repo ya no ejecuta az", mitigates: [THR-019], proof: "tests/test_infra.py (az-quiet.sh en infra/bicep-legacy/scripts/, como referencia)"}
+  - {id: CTL-026, name: "cadena de suministro de la imagen: base y BuildKit por digest con Dependabot semanal; SBOM SPDX y procedencia SLSA firmados con Sigstore en un job aparte (id-token y attestations solo ahí). Verificar la procedencia antes de aplicar es un requisito del workflow de la factoría de la plataforma (ADR-0025, T16b)", mitigates: [THR-018], proof: "tests/test_infra.py (acciones por SHA, permisos por job, FROM por digest, Dependabot); actionlint en CI"}
+  - {id: CTL-031, name: "ningún workflow de este repo entra en Azure (sin azure/login, az deployment ni terraform plan/apply; id-token solo en el job de atestación de images.yml): despliega la factoría de la plataforma con el módulo fijado por versión, imagen por digest y plan revisado", mitigates: [THR-010, THR-018, THR-019], proof: "tests/test_infra.py (test_no_workflow_of_this_repo_deploys_to_azure); job terraform de la CI sin credenciales"}
+  - {id: CTL-032, name: "controles CORE del módulo: entorno de ACA interno sin ingress externo ni HTTP inseguro, probes, revisión Single y réplicas explícitas, UAMI en cada app y job, secretos solo como referencias de Key Vault, imagen por digest (del ACR por defecto, con la identidad), PostgreSQL sin acceso público, con endpoint privado y solo Entra ID con TLS, diagnósticos allLogs sin clave compartida del workspace; el módulo no crea identidades, roles, RG, Key Vault, la clave de firma ni zonas DNS", mitigates: [THR-008, THR-017], proof: "tests/test_terraform.py; terraform validate, tflint (un ignore acotado y con motivo) y Checkov (una supresión acotada y con motivo) en el job terraform de la CI"}
+  - {id: CTL-023, name: "vigilante externo fail-closed: sin firma válida no mira el contenido; sin modified o sin sources, modified de 30 min o más (o en el futuro), fuente en UNKNOWN más de 2 h, HTTP no 200 o JWKS vacío dan fallo; la clave fijada detecta una clave publicada cambiada; sin VS_FEED_BASE_URL el job sale «saltado»; nunca imprime la URL del feed; secrets solo por env", mitigates: [THR-009, THR-012, THR-019, THR-020], proof: "tests/test_watchdog.py (firma válida, rota y de otra clave, feed viejo, fuente en UNKNOWN, carrera .json/.jws, forma del workflow); actionlint en CI"}
+  - {id: CTL-024, name: "el latido no tumba el job si falla (lo cubre la regla «sin latido en 20 min»); sus columnas son las de la DCR; los errores no llevan el token ni el detalle de la identidad", mitigates: [THR-009], proof: "tests/test_heartbeat.py"}
+  - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (fijos de autoridad o hosts vendor-advisory del CNA de esa CVE, nunca un repositorio de PoC) y sobre esa CVE (su identificador en la cita o a ±cve_window_lines líneas); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE (ver CTL-028); el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, exploited-other-cve.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py (cita sobre otra CVE, ventana e identificador con prefijo; sabotaje: el arnés falla si se acepta una cita sobre otra CVE)"}
+  - {id: CTL-027, name: "alcance por CVE: ningún dominio de fabricante escrito a mano; la lista permitida de cada investigación es la fija más los hosts de las referencias vendor-advisory del CNA en el registro cvelistV5 de esa CVE (ni ADP ni otras etiquetas; http, IP, puerto o credenciales no abren nada), calculada antes de llamar al modelo y registrada en la traza y en ai_call.dossier; un host abierto para una CVE no vale para otra; el alojamiento de código nunca cuenta como aviso oficial", mitigates: [THR-001, THR-004], proof: "eval/cases/scope-vendor-advisory.yaml; tests/test_agent.py (vendor-advisory abre su host y una referencia sin la etiqueta no; host de una CVE bloqueado en otra; referencias mal formadas; sabotaje: el arnés falla si se abren todas las referencias)"}
+  - {id: CTL-028, name: "E5 contra repositorios señuelo: solo vale una cita de un repositorio de GitHub con veredicto poc_suspicious de T7 igual a false, y cuyas líneas citadas incluyen código (fuera de comentarios y cadenas) con una llamada de red o el payload; repositorio sospechoso o cita solo de comentarios: no sube; sin veredicto, URL sin repositorio o código sin esas marcas: needs_human y no sube", mitigates: [THR-015, THR-002], proof: "eval/cases/e5-decoy-suspicious-repo.yaml, e5-comments-only.yaml, e5-repo-not-inspected.yaml y positive-e5-poc-lines.yaml; tests/test_agent.py (Python con tokenize, C, shell, docstrings y comentarios; sabotaje: el arnés falla si E5 no comprueba repositorio ni código)"}
+  - {id: CTL-029, name: "precios del modelo con fuente: config/agent.yaml cita la URL de precios de Anthropic, la fecha y las filas literales; sin URL y fecha cuenta como SIN VERIFICAR y el tope diario usa el precio más alto conocido; tramo de contexto largo y recargo de geografía (1,1, peor caso hasta G-6) incluidos en el coste", mitigates: [THR-006], proof: "tests/test_agent.py (fuente del precio, precio sin verificar = el más alto, tramo y multiplicador)"}
+  - {id: CTL-025, name: "las cifras animadas salen de la API: el contador lleva el valor real en el DOM (sr-only y data-value) y la animación es decorativa; el embudo dice «al menos» si el feed no se leyó entero y cuántas partículas dibuja; la escena 3D va en un bloque aparte que se pide sola después de load, de los datos y con el navegador libre, y con prefers-reduced-motion, sin WebGL, con WebGL por software (sin GPU) o si falla se ve el SVG con las mismas cifras; la escena ligera recorta partículas sin nivel, nunca alertas; las etiquetas de los destinos van en HTML con las cifras de la API", mitigates: [THR-021], proof: "web/src/test/motion.test.tsx, reduced-motion.test.tsx y webgl-tier.test.tsx; web/e2e/smoke.spec.ts (cifras del embudo y de los KPI contra la API, movimiento reducido, bloque 3D bloqueado, WebGL por software sin bloque 3D, bloque 3D pedido tras load y los datos); web/scripts/check-budgets.mjs y web/scripts/lighthouse.mjs (umbrales por perfil y pantalla) en CI"}
+  - {id: CTL-030, name: "huella RFC 7638 de cada clave publicada fuera del origen (docs/feed/keys.md por PR y notas de release); verify.py y verify.sh fijan la clave con --expected-thumbprint; verify.py exige frescura (--max-age sobre modified o generated_at firmados) y no admite retroceso (--state); el kid tiene que ser una cadena no vacía", mitigates: [THR-022], proof: "tests/test_feed_trust.py (JWKS sustituido con el mismo kid falla con huella y pasa sin ella, con la librería, verify.py y verify.sh; documento viejo, sin fecha o en el futuro; estado que retrocede o ilegible; kid ausente, vacío o de otro tipo)"}

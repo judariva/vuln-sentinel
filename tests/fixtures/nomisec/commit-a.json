@@ -1,0 +1,7 @@
+{
+  "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "files": [
+    {"filename": "2099/CVE-2099-0301.json", "status": "added"},
+    {"filename": "README.md", "status": "modified"}
+  ]
+}

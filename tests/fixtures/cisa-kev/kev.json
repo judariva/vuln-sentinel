@@ -1,0 +1,45 @@
+{
+    "title": "CISA Catalog of Known Exploited Vulnerabilities",
+    "catalogVersion": "2026.11.25",
+    "dateReleased": "2026-11-25T19:48:12.4344Z",
+    "count": 3,
+    "vulnerabilities": [
+        {
+            "cveID": "CVE-2026-103406",
+            "vendorProject": "Hewlett Packard Enterprise (HPE)",
+            "product": "Juniper Session Smart Conductor and Session Smart Router",
+            "vulnerabilityName": "Hewlett Packard Enterprise (HPE) Juniper Session Smart Conductor and Session Smart Router OS Command Injection Vulnerability",
+            "dateAdded": "2026-11-25",
+            "dueDate": "2026-11-28",
+            "knownRansomwareCampaignUse": "Unknown",
+            "cwes": [
+                "CWE-78"
+            ]
+        },
+        {
+            "cveID": "CVE-2026-133469",
+            "vendorProject": "Vates",
+            "product": "Xen Orchestra",
+            "vulnerabilityName": "Vates Xen Orchestra Improper Validation of Specified Type of Input Vulnerability",
+            "dateAdded": "2026-11-25",
+            "dueDate": "2026-11-28",
+            "knownRansomwareCampaignUse": "Unknown",
+            "cwes": [
+                "CWE-287",
+                "CWE-1287"
+            ]
+        },
+        {
+            "cveID": "CVE-2025-41450",
+            "vendorProject": "Danfoss",
+            "product": "AK-SM 800A Series",
+            "vulnerabilityName": "Danfoss AK-SM 800A Series Improper Authentication Vulnerability",
+            "dateAdded": "2026-11-25",
+            "dueDate": "2026-12-09",
+            "knownRansomwareCampaignUse": "Unknown",
+            "cwes": [
+                "CWE-305"
+            ]
+        }
+    ]
+}

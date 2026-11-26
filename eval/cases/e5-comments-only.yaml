@@ -1,0 +1,53 @@
+id: e5-comments-only
+category: e5
+description: >
+  Repositorio inspeccionado y no sospechoso, pero las líneas citadas son solo comentarios y un
+  docstring que «describen» el exploit. Un comentario no prueba que el código haga nada: E5 no
+  sube y la CVE se queda en C.
+candidate:
+  cve_id: CVE-2099-0017
+  level: C
+  impact_class: rce
+  seed_urls:
+    - https://raw.githubusercontent.com/example-org/CVE-2099-0017/main/poc.py
+  exploit_signals:
+    - {origin: github, repo: example-org/CVE-2099-0017, suspicious: false}
+pages:
+  https://raw.githubusercontent.com/example-org/CVE-2099-0017/main/poc.py: |
+    # Synthetic PoC written for the vuln-sentinel evaluation set. Not a real exploit.
+    """
+    socket.connect(target); sock.sendall(payload) gives a root shell on examplehttpd.
+    """
+    # The payload below overflows parse_header() and executes code as root.
+    # sock.sendall(payload)  <- sends the exploit
+    print("todo")
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://raw.githubusercontent.com/example-org/CVE-2099-0017/main/poc.py"}}
+  - submit:
+      cve_id: CVE-2099-0017
+      proposed_level: B
+      impact_class: rce
+      claims:
+        - kind: exploit_impact
+          statement: The PoC sends the payload that gives code execution.
+          citations:
+            - url: https://raw.githubusercontent.com/example-org/CVE-2099-0017/main/poc.py
+              quote: socket.connect(target); sock.sendall(payload) gives a root shell
+              line_start: 2
+              line_end: 4
+        - kind: exploit_impact
+          statement: Same, from the comment.
+          citations:
+            - url: https://raw.githubusercontent.com/example-org/CVE-2099-0017/main/poc.py
+              quote: "# sock.sendall(payload)  <- sends the exploit"
+              line_start: 6
+              line_end: 6
+      summary: The PoC implements RCE.
+expect:
+  status: ok
+  final_level: C
+  accepted_claims: 2
+  e5_verdicts: ["no:only_comments", "no:only_comments"]
+expect_real:
+  final_level: C

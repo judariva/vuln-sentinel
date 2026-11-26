@@ -1,7 +1,9 @@
-"""El esquema y las consultas de métricas son SQL válido de PostgreSQL (R5).
+"""El modelo y las consultas de métricas (R5), sin base de datos.
 
-En F0 solo se parsean con el parser de PostgreSQL (pglast). Desde F1a se ejecutan contra una base
-de datos real en CI.
+Desde la F1a el esquema es el modelo de SQLAlchemy (`vs.model.schema`); el borrador
+`schema-draft.sql` se retiró. Estas pruebas son estáticas: parsean las consultas con el parser de
+PostgreSQL (pglast) y miran el modelo. Las que ejecutan las consultas contra PostgreSQL de verdad
+están en `tests/test_db.py`.
 """
 
 import re
@@ -9,6 +11,9 @@ from pathlib import Path
 
 import pglast
 from pglast.visitors import Visitor
+from sqlalchemy import CheckConstraint
+
+from vs.model import metadata
 
 METRICS = Path(__file__).resolve().parents[1] / "docs" / "metrics"
 EXPECTED_QUERIES = {
@@ -21,20 +26,54 @@ EXPECTED_QUERIES = {
 }
 
 
+def queries() -> dict[str, str]:
+    text = (METRICS / "queries.sql").read_text(encoding="utf-8")
+    parts = re.split(r"^-- name: (\w+)\s*$", text, flags=re.MULTILINE)
+    return {parts[i]: parts[i + 1] for i in range(1, len(parts), 2)}
+
+
 def test_donations_table_has_no_donor_data():
     """ADR-0021: la tabla de donaciones no guarda nada que identifique al donante."""
-    schema = (METRICS / "schema-draft.sql").read_text(encoding="utf-8")
-    block = schema.split("CREATE TABLE donation_received", 1)[1].split(");", 1)[0].lower()
     forbidden = ("name", "email", "ip", "address", "message", "memo", "donor", "payer", "from_")
-    columns = [line.strip().split()[0] for line in block.splitlines() if line.strip()[:1].isalpha()]
+    columns = [c.name for c in metadata.tables["donation_received"].columns]
     leaked = [c for c in columns if any(f in c for f in forbidden)]
     assert not leaked, f"Columnas que podrían identificar al donante: {leaked}"
 
 
-def _queries() -> dict[str, str]:
-    text = (METRICS / "queries.sql").read_text(encoding="utf-8")
-    parts = re.split(r"^-- name: (\w+)\s*$", text, flags=re.MULTILINE)
-    return {parts[i]: parts[i + 1] for i in range(1, len(parts), 2)}
+LICENSED_TABLES = {"source", "vulnerability", "affected_product", "signal", "ai_call"}
+# Tienen columna `source` pero no guardan datos de la fuente, solo su estado operativo
+# (`fact_seen` guarda la huella de un hecho, nunca su contenido).
+OPERATIONAL_TABLES = {"source_run", "fact_seen"}
+
+
+def test_source_data_tables_carry_license():
+    """ADR-0022: toda tabla con datos de fuentes lleva license_class, licensee y su CHECK."""
+    with_source = {t.name for t in metadata.sorted_tables if "source" in t.columns}
+    with_source -= OPERATIONAL_TABLES
+    assert with_source <= LICENSED_TABLES, f"Tablas con 'source' sin licencia: {with_source}"
+    for name in LICENSED_TABLES:
+        table = metadata.tables[name]
+        assert not table.c.license_class.nullable, name
+        assert table.c.license_class.type.name == "license_class", name
+        assert table.c.licensee.nullable, name
+        checks = {
+            c.name: str(c.sqltext) for c in table.constraints if isinstance(c, CheckConstraint)
+        }
+        check = checks.get(f"{name}_license_ck", "")
+        assert "license_class = 'restricted' AND licensee IS NOT NULL" in check, name
+        assert "license_class = 'open' AND licensee IS NULL" in check, name
+
+
+def test_facts_carry_both_timestamps():
+    """Todo hecho lleva source_published_at y observed_at."""
+    for name in ("vulnerability", "affected_product", "signal", "cost_daily"):
+        columns = metadata.tables[name].columns
+        assert "source_published_at" in columns and "observed_at" in columns, name
+        assert not columns["observed_at"].nullable, name
+
+
+def test_all_main_metrics_have_a_query():
+    assert set(queries()) == EXPECTED_QUERIES
 
 
 def _bind(sql: str) -> str:
@@ -42,16 +81,8 @@ def _bind(sql: str) -> str:
     return sql.replace(":day", "'2026-11-18'")
 
 
-def test_schema_parses():
-    pglast.parse_sql((METRICS / "schema-draft.sql").read_text(encoding="utf-8"))
-
-
-def test_all_main_metrics_have_a_query():
-    assert set(_queries()) == EXPECTED_QUERIES
-
-
 def test_queries_parse():
-    for name, sql in _queries().items():
+    for name, sql in queries().items():
         try:
             pglast.parse_sql(_bind(sql))
         except pglast.parser.ParseError as exc:  # pragma: no cover - el mensaje es la ayuda
@@ -72,11 +103,10 @@ class _Relations(Visitor):
 
 
 def test_queries_only_use_declared_tables():
-    schema = (METRICS / "schema-draft.sql").read_text(encoding="utf-8")
-    tables = set(re.findall(r"CREATE TABLE (\w+)", schema))
-    for name, sql in _queries().items():
+    tables = set(metadata.tables)
+    for name, sql in queries().items():
         rel = _Relations()
         for stmt in pglast.parse_sql(_bind(sql)):
             rel(stmt)
         unknown = rel.tables - tables - rel.ctes
-        assert not unknown, f"{name} usa tablas que no están en el esquema: {unknown}"
+        assert not unknown, f"{name} usa tablas que no están en el modelo: {unknown}"

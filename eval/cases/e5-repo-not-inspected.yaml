@@ -1,0 +1,45 @@
+id: e5-repo-not-inspected
+category: e5
+description: >
+  Código con red y payload, citado con líneas exactas, pero el repositorio no tiene veredicto de
+  las heurísticas de T7 (no se inspeccionó). No se puede decidir en código si es un señuelo: el
+  expediente queda en `needs_human` y la CVE no sube.
+candidate:
+  cve_id: CVE-2099-0018
+  level: C
+  impact_class: rce
+  seed_urls:
+    - https://raw.githubusercontent.com/example-org/CVE-2099-0018/main/poc.py
+  exploit_signals:
+    - {origin: github, repo: example-org/CVE-2099-0018, suspicious: null}
+pages:
+  https://raw.githubusercontent.com/example-org/CVE-2099-0018/main/poc.py: |
+    # Synthetic PoC written for the vuln-sentinel evaluation set. Not a real exploit.
+    import socket
+
+    def run(target):
+        s = socket.create_connection((target, 443))
+        s.sendall(b"GET /" + b"A" * 8192 + b" HTTP/1.1\r\n\r\n")
+script:
+  - tool_calls:
+      - {name: fetch_url, input: {url: "https://raw.githubusercontent.com/example-org/CVE-2099-0018/main/poc.py"}}
+  - submit:
+      cve_id: CVE-2099-0018
+      proposed_level: B
+      impact_class: rce
+      claims:
+        - kind: exploit_impact
+          statement: The PoC connects and sends the overlong request.
+          citations:
+            - url: https://raw.githubusercontent.com/example-org/CVE-2099-0018/main/poc.py
+              quote: s = socket.create_connection((target, 443))
+              line_start: 5
+              line_end: 6
+      summary: The PoC implements the overflow.
+expect:
+  status: needs_human
+  reason: e5_undecided
+  final_level: C
+  e5_verdicts: ["undecided:repo_not_inspected"]
+expect_real:
+  final_level: C

@@ -83,11 +83,12 @@ tenant) está en `local/ACCESS.md`.
 | ADR-014 | Pipeline con **RBAC Administrator con condición** (R9) | Que el pipeline no pueda darse a sí mismo cualquier rol |
 | ADR-015 | **Continuidad de la suscripción**: al cambiar su modelo de facturación pasa a pago por uso, a cargo de Juan (P-13) | El producto es 24/7; el coste ya está dimensionado para pago por uso (§14) |
 | ADR-016 | **Hosts, nombre y marca en configuración** (P-3) | Objetivo de negocio: migrar a marca y dominio propios cambiando DNS y variables, sin tocar código |
-| ADR-017 | **Redes: feed Atom + herramienta existente** de pago con API permitida (**Zernio** recomendada; Upload-Post segunda; Postiz autoalojado como alternativa futura; Buffer descartado) (P-6, J-2) | Sin integrar las API de las redes una a una; lock-in bajo |
+| ADR-017 | **Redes: feed Atom + herramienta existente** de pago con API permitida (**Zernio**, **aceptado** por Juan el 2026-11-25; Upload-Post segunda; Postiz autoalojado como alternativa futura; Buffer descartado) (P-6, J-2) | Sin integrar las API de las redes una a una; lock-in bajo |
 | ADR-018 | ~~Open core con FSL-1.1-ALv2~~ → **rechazado** | Sostenibilidad por donaciones, no por venta |
 | ADR-019 | **Feed completo + feed de alertas**; índice de cambios paginado y páginas selladas en R2 | El consumidor recibe todas las CVE; las listas solo deciden la urgencia |
 | ADR-020 | **Uso comercial de las fuentes**; VulnCheck fuera de la v1; INCIBE y nginx.org solo hechos y enlace (P-5) | Términos comprobados con URL |
 | ADR-021 | **Donaciones solo en Bitcoin** (Lightning y on-chain), sin custodia, con una dirección nueva por donación; las recibe Juan como persona física (**aceptado**: lista pregenerada offline + Phoenix con totales manuales) | Sostenibilidad sin vender datos ni acceso; el feed es igual para todos |
+| ADR-022 | **Licencia de los datos e instancias** (propuesto): `license_class` (`open`/`restricted`) y `licensee` en cada dato; conectores como plugins; nivel calculado por feed con las señales permitidas; la instancia pública nunca guarda `restricted` | El mismo código sirve a una instancia pública, a una de clientes y a la de terceros |
 
 ---
 
@@ -191,6 +192,20 @@ legal, que queda fuera de este repo. Las fuentes que no lo admiten se marcan y s
 | INCIBE-CERT | Avisos | RSS | — | **No** sin autorización: «No se pretenda un uso comercial»; sin transformación ([aviso legal](https://www.incibe.es/aviso-legal)) | **Solo enlace** (`link_only`) |
 | nginx.org y avisos de fabricante sin licencia | Rangos, fix, «explotado» | RSS/CSAF (nginx.org, Fortinet, Palo Alto, Cisco, MSRC, Red Hat, Siemens, CISA) | — | nginx.org: «© F5, Inc. All rights reserved». El resto, por fabricante (SIN VERIFICAR) | **Solo hechos y enlace** (`facts_only`) |
 | OpenCVE | — | **Descartado** | Free 100/h | BSL | — |
+| EUVD (ENISA) | Explotación (señal abierta de A, ADR-022) | API, frecuencia por decidir | SIN VERIFICAR | **SIN VERIFICAR**: las páginas de la EUVD no cargaban el 2026-11-25; el aviso general de ENISA autoriza reproducir «provided the source is acknowledged, unless it is stated otherwise» ([legal notice](https://www.enisa.europa.eu/about-enisa/legal-notice)) pero no dice que cubra la EUVD | **Fuera** (decisión de Juan, NEXT-5): reintentado el 2026-11-26 en T3; la EUVD seguía «Application Unavailable» y la política IPR de ENISA (PDF, dic. 2021) solo cubre publicaciones (CC BY 4.0), cursos y software, no bases de datos. Vuelve a entrar si se leen sus condiciones |
+
+**`license_class` por fuente (ADR-022).** Es la clase del dato que se **guarda**, ortogonal al
+aislamiento (`link_only` guarda solo el identificador y el enlace, que son `open`).
+
+| Fuente | Instancia pública | Instancia de clientes |
+|---|---|---|
+| cvelistV5, CISA KEV, Vulnrichment, EPSS, GHSA, NVD, Metasploit, nuclei-templates, PoC-in-GitHub, búsqueda de GitHub, CERT-EU | `open` | `open` |
+| OSV.dev | `open`, **sin** Chainguard/Wolfi (`excluded`, CC-BY-NC-ND) | igual |
+| Exploit-DB | `open`, solo metadatos | igual |
+| INCIBE-CERT | `open`, `link_only` (sin cambio tras releer sus términos con el modelo de donaciones: ADR-022) | igual |
+| nginx.org y avisos de fabricante | `open`, `facts_only` | igual |
+| EUVD (ENISA) | **Fuera** (licencia SIN VERIFICAR; sin conector) | Fuera |
+| VulnCheck KEV | **Excluida** (ADR-020); el conector no se carga | `restricted`, `licensee` = la licencia comercial, solo si existe |
 
 **Fail-closed.** Cada ejecución queda en `source_run`. Si la fuente falla o su dato tiene más
 antigüedad que el umbral, pasa a **UNKNOWN**. Nunca se publica «sin novedades».
@@ -291,18 +306,27 @@ El código nunca se clona ni se ejecuta.
 | 18/11 15:23:27 | Último push del repo (`pushed_at`) y publicación de CVE-2026-123633 | Hecho | API de GitHub, cveawg |
 | 18/11 15:23:29 | Publicación de CVE-2026-123007 | Hecho | cveawg |
 | ? | El repo pasa a público y la búsqueda de GitHub lo indexa | **UNKNOWN**: la API no lo dice | — |
-| 18/11 16:18 | Llega a NVD, con la etiqueta «Exploit» en la referencia de Rapid7 | Hecho | NVD |
+| 18/11 15:25:28 | Primera versión de los dos registros en cvelistV5 (commit `590851bd`) | Hecho | cvelistV5 |
+| 18/11 16:18:04 | Llega a NVD **solo con la referencia de F5**, sin la de Rapid7 | Hecho | NVD, historial de cambios (`cvehistory/2.0`) |
 | 18/11 17:30 | Aviso CERT-EU 2026-022 | Hecho | CERT-EU |
+| 18/11 20:08:35 | PoC-in-GitHub (nomi-sec) lista `sfewer-r7/CVE-2026-123007` por primera vez (commit `f1868572`); `sfewer-r7` está en la lista de autores de confianza | Hecho | nomi-sec, historial de commits |
+| 18/11 20:18:54 | NVD añade la referencia del blog de Rapid7, **sin etiquetas** | Hecho | NVD, historial de cambios |
+| 19/11 21:14:10 | Análisis inicial de NVD: la referencia de Rapid7 recibe la etiqueta «Exploit» | Hecho | NVD, historial de cambios |
 | 25/11 | No está en KEV; sin explotación confirmada | Hecho | CISA, Sophos, Cloudflare |
 
-Comportamiento esperado:
-1. **C hacia las 15:30Z.** Es una INFERENCIA a partir del ciclo de 5 min y del retraso de
-   cvelistV5. Se justifica porque la coincidencia es con nginx (web-proxy) y por `AV:N/PR:N` con
-   CWE-787 y CWE-416, que dan `impact_class = rce`.
-2. **B entre las 15:35 y las 15:50Z: INFERENCIA.** Depende de cuándo pasó el repo a público y de
-   cuándo lo indexó la búsqueda, y ninguno de los dos datos es observable.
-3. **Lo defendible: B como tarde a las 16:18Z**, por la etiqueta «Exploit» de NVD (E4 por la
-   referencia), sin depender de la lista de autores. Es B el mismo día.
+La versión anterior de esta tabla juntaba en las 16:18Z la llegada a NVD (18/11) y la etiqueta
+«Exploit» (19/11, 29 horas después). Corregido el 2026-11-26 con el historial de cambios de NVD
+(reconstrucción de T12; fixture `tests/fixtures/nginx2root/nvd/`).
+
+Comportamiento esperado (criterio de aceptación corregido por Juan el 2026-11-26):
+1. **C tras la publicación (≈ 15:30Z).** Primer ciclo de 5 min tras el commit de cvelistV5. Se
+   justifica porque la coincidencia es con nginx (web-proxy, pata de despliegue de la lista) y por
+   `AV:N/PR:N` con CWE-787 y CWE-416, que dan `impact_class = rce`.
+2. **B el mismo día 18/11 UTC por las señales abiertas (≈ 20:10Z):** nomi-sec lista el PoC de
+   `sfewer-r7`, autor de la lista de confianza (E4 por cuenta).
+3. Lo de NVD queda como hecho del 19/11, **sin papel en la aceptación**. La B por la búsqueda de
+   GitHub antes de las 20:08Z es INFERENCIA: depende de cuándo pasó el repo a público y de cuándo
+   lo indexó la búsqueda, y ninguno de los dos datos es observable.
 
 La prueba de F1a es una **reconstrucción**: snapshots creados a partir de los datos publicados, no
 grabaciones de lo que devolvían las API el 18/11. Se llama así en el código, en la prueba y en la
@@ -362,12 +386,16 @@ Umbrales: 0 bajadas de nivel, 0 citas inventadas aceptadas y 100 % en inyección
 
 ## 8. Modelo de datos (PostgreSQL)
 
-Todo hecho lleva `source_published_at` y `observed_at`. El borrador de DDL y las consultas de las
-métricas están en `docs/metrics/` (R5).
+Todo hecho lleva `source_published_at` y `observed_at`. El esquema es el modelo de SQLAlchemy de
+`src/vs/model/schema.py`, con migraciones de Alembic en `src/vs/model/migrations/`
+(`uv run python -m vs.model.migrate upgrade head`, URL en `VS_DATABASE_URL`). El borrador
+`schema-draft.sql` de la F0 se retiró. Las consultas de las métricas están en
+`docs/metrics/queries.sql` (R5) y `tests/test_db.py` las ejecuta contra PostgreSQL. `verdict` lleva
+un `id` de clave primaria que el borrador no tenía.
 
 | Tabla | Campos clave |
 |---|---|
-| `source` | `name` (PK), `baseline_completed_at`, `freshness_threshold` |
+| `source` | `name` (PK), `baseline_completed_at`, `freshness_threshold`, `license_class`, `licensee` |
 | `source_run` | id, source, `started_at`, `finished_at`, status (ok, partial, unknown), `items_seen`, `items_new`, error, `last_item_published_at` |
 | `vulnerability` | `cve_id` (PK), cna, cvss (vector y fuente), cwe[], `impact_class`, `source_published_at`, `observed_at`, `withdrawn_at`, `baseline` |
 | `affected_product` | id, `cve_id`, vendor, product, cpe, purl, ecosystem, `ranges` (jsonb), `range_source`, `category`, timestamps |
@@ -379,6 +407,12 @@ métricas están en `docs/metrics/` (R5).
 | `publication` | id, `alert_id`, channel, status, `approved_by`, `approved_at`, `sent_at`, `external_ref` |
 | `verdict` | `alert_id`, verdict (útil o ruido), nota, `at` |
 | `metric_daily` | fecha, métrica, dimensión, valor |
+
+**Licencia de los datos (ADR-0022).** `source`, `vulnerability`, `affected_product`, `signal` y
+`ai_call` llevan `license_class` (`open` o `restricted`) y `licensee`, con un `CHECK`: `restricted`
+exige `licensee` y `open` lo prohíbe. `vulnerability` y `affected_product` llevan además `source`.
+La instancia pública nunca guarda filas `restricted` (`src/vs/instance.py`,
+`tests/test_license_rights.py`).
 
 ---
 
@@ -476,7 +510,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
   2. Juan lo aprueba en Administración.
   3. El post aprobado se publica en **`/v1/social.atom`**, que es la fuente canónica y va firmada.
   4. En el momento de la aprobación, un adaptador de una sola llamada (`SocialPublisher`) invoca
-     la API de la herramienta. **Recomendada: Zernio** (ADR-017, propuesto). Sus términos permiten
+     la API de la herramienta: **Zernio** (ADR-017, aceptado por Juan el 2026-11-25). Sus términos permiten
      publicar por API y no tienen ninguna cláusula contra la automatización. Cuesta ~6 USD/mes con
      3 canales, y X se paga al precio de X desde un saldo prepago, sin credenciales propias.
      Segunda opción: Upload-Post. Alternativa futura: Postiz autoalojado. **Buffer, descartado**
@@ -495,7 +529,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 |---|---|
 | **Carga inicial → 0 alertas** (R2) | La primera ejecución contra snapshots completos de KEV, Exploit-DB, Metasploit y nomi-sec no genera ninguna alerta. Una señal nueva sobre una CVE antigua tras la carga inicial sí alerta |
 | **Fuente nueva → 0 alertas** | Añadir una fuente con su histórico no dispara alertas |
-| **Reconstrucción de nginx2root** (R6) | Con snapshots reconstruidos y reloj simulado: C tras la publicación y B **como tarde con la señal de NVD de las 16:18Z**. La B anterior por búsqueda de GitHub solo se afirma si la lista de autores (commiteada antes, R7) lo permite. Rangos 1.30.7/1.31.9 en el feed |
+| **Reconstrucción de nginx2root** (R6) | Con snapshots reconstruidos y reloj simulado de 15:00Z del 18/11 a 00:00Z del 19/11: **C tras la publicación (≈ 15:30Z)** y **B el mismo día 18/11 UTC** por nomi-sec y el autor de la lista de confianza (≈ 20:10Z; conector de nomi-sec reconstruido desde su historial de commits). NVD no interviene (su etiqueta «Exploit» es del 19/11). La B anterior por búsqueda de GitHub solo se afirma si la lista de autores (commiteada antes, R7) lo permite. Rangos 1.30.7/1.31.9 en el feed |
 | **DoS con exploit → no B** (R3) | Un CVE solo de DoS en nginx con módulo `auxiliary/dos` y entrada de Exploit-DB de tipo `dos` → `impact_class = other` → solo resumen |
 | Casos de KEV | A al entrar en KEV; ventaja sobre KEV calculada con `observed_at` |
 | **Ruido** | Una USN de kernel con cientos de CVE → 0 alertas A, B o C salvo que alguna esté en KEV |
@@ -546,7 +580,7 @@ Alerta de presupuesto a 80 € (G-9).
 | **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…020; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5) | `uv run pytest` y `ruff` en verde en local. **Hecho** (commit inicial local) |
 | **Repo privado** | `gh repo create` privado; `CONTRIBUTING` con DCO. Todo Apache-2.0 (ADR-011). Protección de `main` (PR obligatorio y CI en verde) **bloqueada en privado con el plan gratuito de GitHub**. Sin GitHub Pro (J-8): regla 9 de `CLAUDE.md` + hook `pre-push` local; la protección de rama se aplica al hacerlo público, al cerrar la F1a (J-7) | Hecho tras la búsqueda de fugas sobre el árbol y el historial. **Hacerlo público** es otra decisión de Juan, con otra búsqueda de fugas sobre el historial |
 | **F1a-0 · listas** | Scripts que generan `exposed-products` y `trusted-exploit-authors` con sus criterios escritos; **PR de revisión de Juan** (P-10). Desde entonces, cada cambio de las listas va por PR | PR aprobado y fusionado **antes** de cualquier fixture de nginx2root (R7). Necesita el repo (G-13) |
-| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema. **Al cerrar: búsqueda de fugas sobre todo el historial y, si Juan lo confirma, el repo pasa a público y se aplica la protección de `main`** (J-7) |
+| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (C tras la publicación y B el mismo día 18/11 UTC, §6) en verde; consultas de métricas en verde contra el esquema. **Al cerrar: búsqueda de fugas sobre todo el historial y, si Juan lo confirma, el repo pasa a público y se aplica la protección de `main`** (J-7) |
 | **F1b · resto del núcleo y en vivo** | El resto de fuentes (EPSS, GHSA, OSV, NVD, Metasploit, Exploit-DB, nuclei, fabricantes y CERT), cada una con su carga inicial; front (5 pantallas, con métricas); despliegue por OIDC (requiere el gate); 72 h en vivo | 72 h sin UNKNOWN no explicados; el portal muestra nginx2root (reconstrucción) con su línea de tiempo |
 | **F2 · IA** | Agente, redacción, verificador de citas, topes, conjunto de evaluación en CI, expediente en el portal | Conjunto de evaluación en verde, incluidos la inyección y el DoS |
 | **F3 · vigilancia** | Latido, reglas de Sentinel, `SentinelHealth`, **vigilante externo en GitHub Actions**, alerta de presupuesto | Se para `ingest` → llega el incidente; se corta el Tunnel → falla el vigilante externo |
@@ -602,7 +636,7 @@ Alerta de presupuesto a 80 € (G-9).
 | P-3 | `vuln.` y `api.vuln.` en la zona actual. Si funciona, puede migrar a marca y dominio propios. Hosts, nombre y marca en configuración | ADR-016, `config/brand.example.yaml`, test de hosts |
 | P-4 | Cloudflare Tunnel | ADR-004 (aceptado) |
 | P-5 | Token de GitHub: sí. **VulnCheck: sus términos prohíben ofrecer los datos gratis o con licencia abierta → fuera de la v1**, documentado. Vuelve con un permiso por escrito o una licencia | ADR-020, §4 |
-| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta de pago con API permitida (Zernio recomendada tras descartar Buffer, J-2; alternativa futura Postiz) | ADR-017 (propuesto), §12 |
+| P-6 | Sin integrar las API de las redes: borrador → aprobación → `/v1/social.atom` → herramienta de pago con API permitida (Zernio, aceptada tras descartar Buffer, J-2; alternativa futura Postiz) | ADR-017 (aceptado), §12 |
 | P-7 | LinkedIn con el perfil personal | §12 |
 | P-8 | El ejemplo de Teams se prueba contra un receptor de webhook local; no se guarda aquí ninguna URL de terceros | §12 |
 | P-9 | Correo y ntfy desde los dos vigilantes | §11, G-8, G-16 |
@@ -625,7 +659,7 @@ Alerta de presupuesto a 80 € (G-9).
 
 | # | Qué | Para qué |
 |---|---|---|
-| J-2 | Aceptar o no ADR-017 con **Zernio** (Buffer descartado por la 4.2(n)). Matiz: sus términos permiten publicar por API, pero no dicen literalmente «automatizado» | F4 |
+| J-2 | **Cerrada**: ADR-017 aceptado con **Zernio** el 2026-11-25 (Buffer descartado por la 4.2(n)) | F4 |
 | J-3 | **Cerrada**: VulnCheck sigue fuera (cláusula comprobada también por la sesión directora) | ADR-020 |
 | J-6 | **Cerrada**: ADR-021 aceptado | F4b |
 | J-7 | **Repo público al cerrar la F1a**, tras una búsqueda de fugas sobre todo el historial; Juan lo confirma en ese momento | Fin de F1a |

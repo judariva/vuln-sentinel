@@ -1,6 +1,8 @@
 # Dominios a los que pueden llamar las herramientas del agente (D14, CTL-004). Solo GET.
 # Cualquier dominio fuera de esta lista se rechaza en código, no en el prompt.
 # Se completa en F2; cada alta lleva motivo en el commit.
+# Los avisos de fabricante NO se escriben aquí: durante la investigación de cada CVE se añaden los
+# hosts de las referencias `vendor-advisory` del CNA en su registro cvelistV5 (`vs.agent.scope`).
 domains:
   - cveawg.mitre.org
   - www.cve.org
@@ -11,4 +13,3 @@ domains:
   - raw.githubusercontent.com
   - osv.dev
   - api.osv.dev
-  - nginx.org

@@ -1,0 +1,16 @@
+id: budget-daily-usd
+category: budget
+description: >
+  El gasto del día ya está en el tope de 1,5 USD: no se llama al modelo y queda en needs_human.
+candidate:
+  cve_id: CVE-2099-0007
+  level: C
+  impact_class: rce
+spent_today_usd: 1.5
+script:
+  - text: "should never be called"
+expect:
+  status: needs_human
+  reason: max_usd_per_day
+  steps: 0
+  final_level: C

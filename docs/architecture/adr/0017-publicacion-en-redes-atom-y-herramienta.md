@@ -1,11 +1,13 @@
 ---
 adr: "0017"
 titulo: Publicación en redes con feed Atom y una herramienta de pago con API permitida
-estado: propuesto
+estado: aceptado
 fecha: 2026-11-25
 afecta: [CMP-002, CMP-005, CMP-015]
 sustituye: null
 ---
+
+Aceptado por Juan el 2026-11-25 (J-2): Zernio.
 
 ## Contexto
 
@@ -25,11 +27,11 @@ Requisitos de Juan (J-2):
 - hasta ~20 €/mes;
 - el total del producto, por debajo de los 100 € de D6.
 
-## Decisión (propuesta)
+## Decisión
 
 1. **Fuente canónica: `/v1/social.atom`**, firmado como el resto del feed. Solo contiene posts
    aprobados.
-2. **Herramienta recomendada: Zernio** (antes Late; getlate.dev redirige a zernio.com). Adaptador
+2. **Herramienta: Zernio** (antes Late; getlate.dev redirige a zernio.com). Adaptador
    de una llamada detrás de la interfaz `SocialPublisher`, invocado al aprobar cada post.
 3. **El post de X va sin URL** por defecto (0,015 USD frente a 0,20 USD con enlace). El enlace va
    en el perfil o en una respuesta.
@@ -47,7 +49,7 @@ Las citas en negrita las comprobé yo con `curl` sobre la página original.
 | Precio | «Every feature included, no plans, no seats … **1–2 Free 3–10 $6/account/mo**»: 3 canales ≈ **6 USD/mes** más el saldo de X (90 posts sin URL ≈ 1,35 USD/mes; con URL, 18 USD) | [pricing](https://zernio.com/pricing) |
 | Proyecto sin ánimo de lucro | No hay ninguna restricción. El titular es ZERNIO SOFTWARE SL (España) | [ToS](https://zernio.com/tos) |
 
-**Matiz que decide Juan.** Los términos de Zernio permiten publicar por API («provides APIs … for
+**Matiz que decidió Juan (aceptado).** Los términos de Zernio permiten publicar por API («provides APIs … for
 publishing and scheduling») pero **no usan literalmente la palabra «automatizado»**. La única
 candidata que la usa es Upload-Post, aunque añade una cláusula restrictiva acotada (ver abajo).
 

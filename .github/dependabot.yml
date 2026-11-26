@@ -1,0 +1,32 @@
+# Actualizaciones semanales de dependencias (T9b). Dependabot abre PR; la CI los valida y fusiona
+# Juan (regla 9 de CLAUDE.md). Las imágenes de BuildKit fijadas en images.yml van como opción de
+# driver y Dependabot no las ve: se revisan a mano.
+version: 2
+updates:
+  # Imagen base del Dockerfile (fijada por digest).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Acciones de los workflows (fijadas por SHA con la etiqueta en un comentario).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Portal (web/package-lock.json).
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Python (uv.lock).
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

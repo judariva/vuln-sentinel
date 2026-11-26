@@ -1,0 +1,36 @@
+[
+  {
+    "ghsa_id": "GHSA-vw2v-g4x7-xcqg",
+    "cve_id": "CVE-2026-68539",
+    "url": "https://api.github.com/advisories/GHSA-vw2v-g4x7-xcqg",
+    "html_url": "https://github.com/advisories/GHSA-vw2v-g4x7-xcqg",
+    "summary": "fulgur allows Unbounded string-set value accumulation causes memory/CPU exhaustion (denial of service)",
+    "type": "reviewed",
+    "severity": "high",
+    "published_at": "2026-11-25T19:46:45Z",
+    "updated_at": "2026-11-25T19:46:46Z",
+    "github_reviewed_at": "2026-11-25T19:46:45Z",
+    "withdrawn_at": null,
+    "cwes": [
+      {
+        "cwe_id": "CWE-400",
+        "name": "Uncontrolled Resource Consumption"
+      },
+      {
+        "cwe_id": "CWE-770",
+        "name": "Allocation of Resources Without Limits or Throttling"
+      }
+    ],
+    "vulnerabilities": [
+      {
+        "package": {
+          "ecosystem": "rust",
+          "name": "fulgur"
+        },
+        "vulnerable_version_range": ">= 0.4.4, < 0.28.0",
+        "first_patched_version": "0.28.0",
+        "vulnerable_functions": []
+      }
+    ]
+  }
+]

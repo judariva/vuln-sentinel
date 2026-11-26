@@ -157,8 +157,27 @@ def _check_deployment(leg: object, categories: list, errors: list[str]) -> None:
         for i, p in enumerate(products):
             if p.get("rank") != i + 1 or p.get("category") not in categories:
                 errors.append(f"deployment_leg: producto {i} mal formado")
+            _check_deployment_pairs(p, errors)
     else:
         errors.append("deployment_leg: `status` no válido")
+
+
+def _check_deployment_pairs(p: dict, errors: list[str]) -> None:
+    """Criterio v4: pares del CNA y CPE de una entrada de despliegue, o su motivo."""
+    pid = p.get("id")
+    cna, cpe = p.get("cna"), p.get("cpe")
+    if not isinstance(cna, list) or not isinstance(cpe, list):
+        errors.append(f"deployment_leg: {pid} sin listas `cna` y `cpe`")
+        return
+    for c in cna:
+        if not (isinstance(c, dict) and c.get("vendor") and c.get("product")):
+            errors.append(f"deployment_leg: {pid} con un par del CNA incompleto")
+    if not all(CPE_RE.match(str(c)) for c in cpe):
+        errors.append(f"deployment_leg: {pid} con un CPE mal formado")
+    if not cna and not p.get("cna_missing_reason"):
+        errors.append(f"deployment_leg: {pid} sin pares del CNA y sin motivo")
+    if not cpe and not p.get("cpe_missing_reason"):
+        errors.append(f"deployment_leg: {pid} sin CPE y sin motivo")
 
 
 def validate_authors(doc: dict) -> list[str]:
