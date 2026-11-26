@@ -7,9 +7,9 @@ rango ni ID real (regla 8). Código: `infra/` (Bicep) y `.github/workflows/`.
 
 | Paso | Quién | Qué |
 |---|---|---|
-| Plataforma (gate) | Programa de la plataforma, con aprobación de Juan | `infra/platform/platform.bicep`: RG (G-1), identidad del pipeline con OIDC y RBAC Administrator con condición (G-2, CTL-010), DCR y tabla del latido en el workspace de Sentinel (G-7, CMP-012), presupuesto (G-9) |
-| Imagen | CMP-028 (`images.yml`, al fusionar en `main`) | Imagen única en CMP-029, por digest (FLW-031) |
-| Producto | CMP-028 (`deploy.yml`, manual, entorno `prod` con aprobación) | `infra/main.bicep` en el RG del producto (FLW-032, CTL-020, CTL-021) |
+| Plataforma (gate) | Programa de la plataforma, con aprobación de Juan | `infra/platform/platform.bicep`: RG (G-1), identidades de los componentes (CMP-026), identidad del pipeline con OIDC y RBAC Administrator con condición (G-2, CTL-010), DCR y tabla del latido en el workspace de Sentinel (G-7, CMP-012), presupuesto (G-9) |
+| Imagen | CMP-028 (`images.yml`, al fusionar en `main`) | Imagen única en CMP-029, por digest (FLW-031), con SBOM y procedencia firmados (CTL-026) |
+| Producto | CMP-028 (`deploy.yml`, manual, entorno `prod` con aprobación) | Verifica la procedencia de la imagen (CTL-026) y despliega `infra/main.bicep` en el RG del producto (FLW-032, CTL-020, CTL-021) |
 | Sesión local | Nadie | Solo `az bicep build` y `az bicep lint` |
 
 ## Qué hay en el RG del producto
@@ -25,7 +25,7 @@ CMP-025 VNet propia ─┬─ subred aca (delegada)  ── entorno ACA, solo Co
                      │                              └─ CMP-027 migrate     manual
                      ├─ subred postgres (delegada) ── CMP-007 PostgreSQL B1ms, sin acceso público
                      └─ subred pe ── endpoint privado ── CMP-008 Key Vault (RBAC, sin acceso público)
-CMP-026 identidades (una por componente)
+CMP-026 identidades (una por componente; las crea la plataforma, main.bicep las referencia)
 CMP-030 Log Analytics propio ── CMP-014 App Insights (ingesta solo con Entra ID)
 ```
 
@@ -46,8 +46,10 @@ latido), CMP-009 (Foundry, pendiente de G-6), CMP-011 y CMP-016 (Cloudflare, G-1
 | migrate | administrador Entra de PostgreSQL | el servidor (FLW-035) |
 | daily | Cost Management Reader | el RG (G-17; lo asigna la plataforma: no está en la lista de G-2) |
 
-El pipeline solo puede asignar los cuatro primeros roles de la tabla y solo a identidades de
-tipo `ServicePrincipal` (ADR-0014, THR-010).
+El pipeline solo puede asignar Key Vault Crypto User, Key Vault Secrets User, Monitoring Metrics
+Publisher y Cognitive Services User, solo a los `principalId` de api, cloudflared, ingest,
+investigate, publish y daily, y solo a principales de tipo `ServicePrincipal` (ADR-0014,
+THR-010). No puede dárselos a sí mismo ni a otra identidad del tenant.
 
 ## Origen sin IP pública (ADR-0004, CTL-008)
 

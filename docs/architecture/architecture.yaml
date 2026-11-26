@@ -116,7 +116,7 @@ components:
     status: planned
   - id: CMP-026
     name: managed-identities
-    service: Una identidad gestionada asignada por el usuario por componente (api, cloudflared, ingest, investigate, publish, daily, migrate), con roles sobre el recurso concreto (infra/modules/identities.bicep; G-2)
+    service: Una identidad gestionada asignada por el usuario por componente (api, cloudflared, ingest, investigate, publish, daily, migrate), con roles sobre el recurso concreto. Las crea la plataforma (infra/platform/platform.bicep con infra/modules/identities.bicep) y main.bicep las referencia (identities-existing.bicep), para que sus principalId entren en la condición del pipeline (G-2, ADR-0014, T9b)
     status: planned
   - id: CMP-027
     name: job-migrate
@@ -124,11 +124,11 @@ components:
     status: planned
   - id: CMP-028
     name: deploy-pipeline
-    service: "GitHub Actions: images.yml (build y publicación por digest en GHCR) y deploy.yml (workflow_dispatch, entorno prod con aprobación, OIDC sin secretos de cliente, solo what-if por defecto)"
+    service: "GitHub Actions: images.yml (build y publicación por digest en GHCR con SBOM y procedencia firmados) y deploy.yml (workflow_dispatch, entorno prod con aprobación, verificación de la procedencia, OIDC sin secretos de cliente, solo what-if por defecto)"
     status: planned
   - id: CMP-029
     name: image-registry
-    service: GitHub Container Registry (imagen única del producto, por digest; Dockerfile sin root)
+    service: GitHub Container Registry (imagen única del producto, por digest, con sus atestaciones de SBOM y procedencia; Dockerfile sin root y con la base por digest)
     status: planned
   - id: CMP-030
     name: product-logs
@@ -256,7 +256,7 @@ controls:
   - {id: CTL-007, name: carga inicial de referencia por fuente, mitigates: [THR-007], proof: "tests/test_rules.py (carga inicial y fuente nueva: 0 alertas; señal nueva sobre CVE antigua: alerta)"}
   - {id: CTL-008, name: origen sin IP pública (Tunnel), mitigates: [THR-008], proof: curl directo al origen falla}
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: "prueba de caos F3; tests/test_heartbeat.py y tests/test_watchdog.py (sin credenciales)"}
-  - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
+  - {id: CTL-010, name: "RBAC Administrator con condición sobre el RG: solo 4 roles, solo a los principalId de las identidades del producto (creadas por la plataforma) y solo a ServicePrincipal", mitigates: [THR-010], proof: "tests/test_infra.py (forma de la condición); intento de autoasignación y de asignar a una identidad ajena denegados (primer despliegue)"}
   - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed; la API pública no arranca con un publicador que admita restricted", mitigates: [THR-011], proof: "tests/test_license_rights.py; tests/test_feed.py (el feed público no lleva datos restricted aunque se los pasen al publicador); tests/test_api.py (ninguna respuesta lleva datos restricted)"}
   - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
   - {id: CTL-013, name: "los conectores solo siguen enlaces bajo la URL base configurada; OSV no lee fuentes sin licencia comprobada", mitigates: [THR-004, THR-011], proof: tests/test_sources.py}
@@ -267,7 +267,8 @@ controls:
   - {id: CTL-018, name: "el portal solo pone en un href enlaces https (safeUrl), con rel=noopener noreferrer; React escapa el texto y no se usa HTML del feed; referrer no-referrer; un id de alerta mal formado no llega a la API", mitigates: [THR-016], proof: "web/src/test/units.test.tsx (safeUrl); web/src/test/pages.test.tsx (javascript: nunca en href; id mal formado sin petición)"}
   - {id: CTL-019, name: "una identidad por componente; Crypto User solo sobre la clave de firma, Secrets User solo sobre cada secreto, Metrics Publisher solo sobre App Insights y la DCR; solo migrate administra PostgreSQL (Entra ID, sin contraseña); KV y PostgreSQL sin acceso público", mitigates: [THR-017], proof: "infra/ (az bicep build y lint en CI); revisión de las asignaciones tras el primer despliegue (F1a)"}
   - {id: CTL-020, name: "despliegue solo manual desde main, entorno prod con aprobación, OIDC sin secretos de cliente, imagen por digest, acciones fijadas por SHA, what-if por defecto", mitigates: [THR-010, THR-018], proof: ".github/workflows/deploy.yml validado con actionlint en CI"}
-  - {id: CTL-021, name: "configuración del despliegue como secrets enmascarados; ningún paso imprime la salida de az (el what-if solo da el recuento)", mitigates: [THR-019], proof: ".github/workflows/deploy.yml"}
+  - {id: CTL-021, name: "configuración del despliegue como secrets enmascarados; ningún paso imprime la salida de az (el what-if solo da el recuento); si validate, what-if o create fallan, solo se ve el código de error (infra/scripts/az-quiet.sh)", mitigates: [THR-019], proof: "tests/test_infra.py (un error de ARM con IDs, nombres y rangos solo deja ver los códigos); .github/workflows/deploy.yml"}
+  - {id: CTL-026, name: "cadena de suministro de la imagen: base y BuildKit por digest con Dependabot semanal; SBOM SPDX y procedencia SLSA firmados con Sigstore en un job aparte (id-token y attestations solo ahí); deploy.yml para si gh attestation verify no confirma que la firmó images.yml de este repo", mitigates: [THR-018], proof: "tests/test_infra.py (acciones por SHA, permisos por job, orden verificar → login → validar, FROM por digest, Dependabot); actionlint en CI"}
   - {id: CTL-023, name: "vigilante externo fail-closed: sin firma válida no mira el contenido; sin modified o sin sources, modified de 30 min o más (o en el futuro), fuente en UNKNOWN más de 2 h, HTTP no 200 o JWKS vacío dan fallo; la clave fijada detecta una clave publicada cambiada; sin VS_FEED_BASE_URL el job sale «saltado»; nunca imprime la URL del feed; secrets solo por env", mitigates: [THR-009, THR-012, THR-019, THR-020], proof: "tests/test_watchdog.py (firma válida, rota y de otra clave, feed viejo, fuente en UNKNOWN, carrera .json/.jws, forma del workflow); actionlint en CI"}
   - {id: CTL-024, name: "el latido no tumba el job si falla (lo cubre la regla «sin latido en 20 min»); sus columnas son las de la DCR; los errores no llevan el token ni el detalle de la identidad", mitigates: [THR-009], proof: "tests/test_heartbeat.py"}
   - {id: CTL-022, name: "lo que la IA puede subir está acotado en código: el nivel propuesto se recorta a lo que prueban las citas verificadas; A solo con una cita de un aviso oficial (official_advisory_domains, nunca un repositorio de PoC); E5 solo de C a B, con líneas de código citadas y el impact_class del CVE; el agente no puede declarar más impact_class que el del CVE (el intento se registra); la salida que no valida el JSON Schema se rechaza", mitigates: [THR-001, THR-002, THR-003], proof: "eval/cases/impact-inflation.yaml, injection-readme-escalate.yaml, schema-*.yaml y positive-*.yaml; tests/test_agent.py"}

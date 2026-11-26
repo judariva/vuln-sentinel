@@ -1,6 +1,10 @@
 // Una identidad gestionada asignada por el usuario por componente (G-2). Asignadas por el
 // usuario, y no por el sistema, para que existan y tengan sus roles ANTES de crear la app o el
 // job: así las referencias a Key Vault resuelven en el primer arranque.
+//
+// La despliega la plataforma (infra/platform/platform.bicep, T9b), no el pipeline: sus principalId
+// entran en la condición ABAC del pipeline (ADR-0014). main.bicep las referencia con
+// identities-existing.bicep.
 
 param location string
 param namePrefix string

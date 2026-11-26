@@ -4,8 +4,9 @@
 //   entorno en GitHub;
 // - Contributor sobre el RG del producto;
 // - Role Based Access Control Administrator sobre el RG CON CONDICIÓN: solo puede asignar o quitar
-//   los roles de la lista y solo a principales de tipo ServicePrincipal. No puede darse Owner,
-//   User Access Administrator ni ningún otro rol.
+//   los roles de la lista, solo a las identidades del producto (por principalId, T9b) y solo a
+//   principales de tipo ServicePrincipal. No puede darse Owner, User Access Administrator ni
+//   ningún otro rol, ni dar los de la lista a sí mismo ni a otra identidad del tenant.
 
 param location string
 param namePrefix string
@@ -23,6 +24,10 @@ param assignableRoleIds array = [
   'a97b65f3-24c7-4388-baec-2e87135dc908' // Cognitive Services User
   '3913510d-42f4-4e42-8a64-420c390055eb' // Monitoring Metrics Publisher
 ]
+
+@description('principalId de las identidades del producto que pueden recibir esos roles (las crea platform.bicep). Nunca el del propio pipeline.')
+@minLength(1)
+param assignablePrincipalIds array
 
 param tags object = {}
 
@@ -57,10 +62,14 @@ resource contributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 var roleList = join(assignableRoleIds, ', ')
+var principalList = join(assignablePrincipalIds, ', ')
 
-// Condición ABAC (v2.0): escribir y borrar asignaciones solo con un rol de la lista y a un
-// ServicePrincipal. Cualquier otra acción del rol (leer) no se restringe.
-var condition = '((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/write\'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${roleList}} AND @Request[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {\'ServicePrincipal\'})) AND ((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/delete\'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${roleList}} AND @Resource[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {\'ServicePrincipal\'}))'
+// Condición ABAC (v2.0): escribir y borrar asignaciones solo con un rol de la lista, a un
+// principalId de la lista y a un ServicePrincipal. Cualquier otra acción del rol (leer) no se
+// restringe. Forma: la del ejemplo «Constrain roles and specific groups» de
+// https://learn.microsoft.com/en-us/azure/role-based-access-control/delegate-role-assignments-examples
+// (PrincipalId con @Request para write y @Resource para delete, ForAnyOfAnyValues:GuidEquals).
+var condition = '((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/write\'})) OR (@Request[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${roleList}} AND @Request[Microsoft.Authorization/roleAssignments:PrincipalId] ForAnyOfAnyValues:GuidEquals {${principalList}} AND @Request[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {\'ServicePrincipal\'})) AND ((!(ActionMatches{\'Microsoft.Authorization/roleAssignments/delete\'})) OR (@Resource[Microsoft.Authorization/roleAssignments:RoleDefinitionId] ForAnyOfAnyValues:GuidEquals {${roleList}} AND @Resource[Microsoft.Authorization/roleAssignments:PrincipalId] ForAnyOfAnyValues:GuidEquals {${principalList}} AND @Resource[Microsoft.Authorization/roleAssignments:PrincipalType] ForAnyOfAnyValues:StringEqualsIgnoreCase {\'ServicePrincipal\'}))'
 
 resource rbacAdmin 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(resourceGroup().id, pipeline.id, roleRbacAdmin)

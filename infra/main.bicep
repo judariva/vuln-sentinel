@@ -2,7 +2,8 @@
 // workflow manual `deploy.yml` (OIDC, entorno `prod` con aprobación). Esta sesión no despliega.
 //
 // Lo que NO está aquí, porque cambia el tenant fuera del RG o lo ejecuta la plataforma (gate):
-// identidad OIDC del pipeline y su RBAC con condición (G-2, ADR-0014), DCR y tabla del latido en
+// identidad OIDC del pipeline y su RBAC con condición (G-2, ADR-0014), identidades de los
+// componentes (para que sus principalId entren en esa condición), DCR y tabla del latido en
 // el workspace de Sentinel (G-7), alerta de presupuesto (G-9). Están en `infra/platform/`.
 //
 // Regla 8: ningún nombre, rango, ID ni correo real en el repo. Todo llega por parámetro desde las
@@ -20,6 +21,19 @@ param namePrefix string
 
 @description('Etiquetas comunes.')
 param tags object = {}
+
+// --- Identidades (G-2): las crea la plataforma en este RG (infra/platform/, T9b). El pipeline no
+// puede crear otras y asignarles roles: la condición ABAC solo admite estos principalId. ---
+@description('Mapa componente → nombre de la identidad asignada por el usuario (api, cloudflared, ingest, investigate, publish, daily, migrate).')
+param identityNames object = {
+  api: '${namePrefix}-id-api'
+  cloudflared: '${namePrefix}-id-cloudflared'
+  ingest: '${namePrefix}-id-ingest'
+  investigate: '${namePrefix}-id-investigate'
+  publish: '${namePrefix}-id-publish'
+  daily: '${namePrefix}-id-daily'
+  migrate: '${namePrefix}-id-migrate'
+}
 
 // --- Red (G-4) ---
 param vnetAddressPrefix string
@@ -111,12 +125,11 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
-module ids 'modules/identities.bicep' = {
+// Identidades: las crea la plataforma (T9b, ADR-0014); aquí solo se referencian.
+module ids 'modules/identities-existing.bicep' = {
   name: 'identities'
   params: {
-    location: location
-    namePrefix: namePrefix
-    tags: tags
+    identityNames: identityNames
   }
 }
 
@@ -375,8 +388,8 @@ module jobMigrate 'modules/aca-job.bicep' = {
   }
 }
 
-// Salidas sin secretos. La plataforma usa los principalId para G-7 (rol de publicación en la DCR)
-// y G-17 (Cost Management Reader para el job diario).
+// Salidas sin secretos. Desde T9b la plataforma ya conoce los principalId (crea las identidades);
+// se dejan para comprobar que el despliegue usó las mismas (G-7, G-17).
 output principalIds object = {
   ingest: id.ingest.principalId
   investigate: id.investigate.principalId

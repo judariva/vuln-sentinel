@@ -2,11 +2,11 @@
 // ejecuta el programa de la plataforma con aprobación de Juan (CLAUDE.md, «Gate de plataforma»).
 // Está en el repo para que el requisito sea revisable y reproducible.
 //
-// Dos pasos:
-//   1. Sin publisherPrincipalIds: RG (G-1), identidad OIDC del pipeline con RBAC con condición
-//      (G-2), DCR y tabla del latido (G-7) y presupuesto (G-9).
-//   2. Tras el primer despliegue del producto: se repite con los principalId que da main.bicep,
-//      para el rol de publicación en la DCR.
+// Un solo paso (T9b): RG (G-1), identidades de los componentes del producto, identidad OIDC del
+// pipeline con RBAC con condición limitada a esas identidades (G-2, ADR-0014), DCR y tabla del
+// latido con el rol de publicación para los jobs (G-7) y presupuesto (G-9). Como las identidades
+// las crea la plataforma, sus principalId se conocen aquí: ya no hace falta un segundo paso tras
+// el primer despliegue del producto.
 //
 // Fuera de esta plantilla: reglas de Sentinel (G-7), SentinelHealth y grupo de acciones (G-8),
 // Cost Management Reader para el job diario (G-17), Foundry (G-6), Cloudflare (G-10, G-11, G-15).
@@ -28,7 +28,14 @@ param sentinelWorkspaceName string
 param githubRepository string
 param githubEnvironment string = 'prod'
 
-param publisherPrincipalIds array = []
+// Componentes que reciben roles del pipeline (main.bicep): App Insights (api y jobs), clave de
+// firma (publish), secretos (cloudflared, ingest, investigate, publish) y Foundry (investigate,
+// publish). `migrate` no recibe ningún rol de Azure (administra PostgreSQL por Entra ID): queda
+// fuera de la condición.
+var roleHolders = ['api', 'cloudflared', 'ingest', 'investigate', 'publish', 'daily']
+
+// Jobs que escriben el latido en la DCR.
+var heartbeatPublishers = ['ingest', 'investigate', 'publish', 'daily']
 
 param budgetAmount int = 80
 param budgetStartDate string
@@ -43,6 +50,18 @@ resource productRg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
+// Identidades de los componentes: el mismo módulo que usaba main.bicep, ahora en la plataforma.
+// main.bicep las referencia por nombre (`identityNames`, por defecto `<prefijo>-id-<componente>`).
+module productIds '../modules/identities.bicep' = {
+  name: 'vs-product-identities'
+  scope: productRg
+  params: {
+    location: location
+    namePrefix: namePrefix
+    tags: tags
+  }
+}
+
 module pipeline 'modules/pipeline-identity.bicep' = {
   name: 'vs-pipeline-identity'
   scope: productRg
@@ -51,6 +70,10 @@ module pipeline 'modules/pipeline-identity.bicep' = {
     namePrefix: namePrefix
     githubRepository: githubRepository
     githubEnvironment: githubEnvironment
+    assignablePrincipalIds: map(
+      filter(productIds.outputs.identities, x => contains(roleHolders, x.component)),
+      x => x.principalId
+    )
     tags: tags
   }
 }
@@ -62,7 +85,10 @@ module heartbeat 'modules/heartbeat.bicep' = {
     location: location
     namePrefix: namePrefix
     workspaceName: sentinelWorkspaceName
-    publisherPrincipalIds: publisherPrincipalIds
+    publisherPrincipalIds: map(
+      filter(productIds.outputs.identities, x => contains(heartbeatPublishers, x.component)),
+      x => x.principalId
+    )
     tags: tags
   }
 }

@@ -20,7 +20,7 @@ param workspaceName string
 
 param namePrefix string
 
-@description('principalId de las identidades de los jobs (salida principalIds de main.bicep). Vacío en el primer paso.')
+@description('principalId de las identidades de los jobs (las crea platform.bicep, T9b).')
 param publisherPrincipalIds array = []
 
 param tags object = {}
