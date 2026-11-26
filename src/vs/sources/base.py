@@ -10,11 +10,17 @@ instancia activa solo aquellos para los que tiene licencia (`vs.instance`).
 
 from __future__ import annotations
 
+import json
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from vs.sources.http import Transport
 
 
 class LicenseClass(StrEnum):
@@ -36,11 +42,96 @@ def check_license(license_class: LicenseClass, licensee: str | None) -> None:
         raise LicenseError("un dato 'open' no lleva 'licensee'")
 
 
+CVE_RE = re.compile(r"CVE-\d{4}-\d{4,}")
+
+
+def is_cve_id(value: Any) -> bool:
+    return isinstance(value, str) and CVE_RE.fullmatch(value) is not None
+
+
+class Entity(StrEnum):
+    """Tabla del modelo (T2) a la que va un registro."""
+
+    VULNERABILITY = "vulnerability"
+    AFFECTED_PRODUCT = "affected_product"
+    SIGNAL = "signal"
+
+
+# Columnas que un registro rellena en cada tabla. `id` y las columnas que calculan las reglas
+# (p. ej. `impact_class`, `category`) no salen de un conector. Un test las contrasta con el modelo.
+ENTITY_COLUMNS: dict[Entity, frozenset[str]] = {
+    Entity.VULNERABILITY: frozenset(
+        {
+            "cve_id",
+            "cna",
+            "cvss_vector",
+            "cvss_source",
+            "cwe",
+            "vendor",
+            "product",
+            "source_published_at",
+            "observed_at",
+            "withdrawn_at",
+            "baseline",
+            "source",
+            "license_class",
+            "licensee",
+        }
+    ),
+    Entity.AFFECTED_PRODUCT: frozenset(
+        {
+            "cve_id",
+            "vendor",
+            "product",
+            "cpe",
+            "purl",
+            "ecosystem",
+            "ranges",
+            "range_source",
+            "source_published_at",
+            "observed_at",
+            "source",
+            "license_class",
+            "licensee",
+        }
+    ),
+    Entity.SIGNAL: frozenset(
+        {
+            "cve_id",
+            "kind",
+            "value",
+            "source",
+            "url",
+            "baseline",
+            "source_published_at",
+            "observed_at",
+            "license_class",
+            "licensee",
+        }
+    ),
+}
+
+# Lo que va en `value` y se reparte en columnas (vulnerability, affected_product).
+_FLAT_ENTITIES = (Entity.VULNERABILITY, Entity.AFFECTED_PRODUCT)
+_STAMPED = {
+    "cve_id",
+    "source",
+    "license_class",
+    "licensee",
+    "observed_at",
+    "baseline",
+    "source_published_at",
+}
+
+
 @dataclass(frozen=True)
 class Record:
     """Un hecho normalizado de una fuente, con la licencia que lo acompaña hasta el feed.
 
-    Corresponde a una fila de `signal` (y, en F1a, de las demás tablas con datos de fuentes).
+    `entity` dice a qué tabla del modelo va. En `signal`, `kind` es el tipo de señal y `value` su
+    contenido (JSONB). En `vulnerability` y `affected_product`, `value` lleva las columnas propias
+    de la tabla. `observed_at` y `baseline` los sella el ejecutor (`vs.sources.run`), no el
+    conector: la fuente no sabe cuándo la vimos ni si es la carga inicial (ADR-0012).
     """
 
     source: str
@@ -49,10 +140,47 @@ class Record:
     license_class: LicenseClass
     licensee: str | None = None
     value: Mapping[str, Any] = field(default_factory=dict)
+    entity: Entity = Entity.SIGNAL
+    source_published_at: datetime | None = None
+    observed_at: datetime | None = None
+    baseline: bool = False
+    url: str | None = None
+    # Licencia CC-BY-SA en origen (OSV de Ubuntu y Alpine): pendiente de revisión legal (ADR-0020).
+    share_alike: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "license_class", LicenseClass(self.license_class))
+        object.__setattr__(self, "entity", Entity(self.entity))
         check_license(self.license_class, self.licensee)
+        if self.entity in _FLAT_ENTITIES:
+            extra = set(self.value) - ENTITY_COLUMNS[self.entity] | (set(self.value) & _STAMPED)
+            if extra:
+                raise ValueError(f"columnas no válidas para {self.entity}: {sorted(extra)}")
+
+    def key(self) -> tuple[str, str, str, str, str]:
+        """Identidad del hecho, para saber si ya se había visto (`items_new`)."""
+        body = json.dumps(self.value, sort_keys=True, default=str)
+        return (self.source, self.entity.value, self.cve_id, self.kind, body)
+
+    def to_row(self) -> dict[str, Any]:
+        """Fila de la tabla `entity` del modelo. Exige `observed_at` (lo sella el ejecutor)."""
+        if self.observed_at is None:
+            raise ValueError("registro sin 'observed_at': no ha pasado por el ejecutor")
+        row: dict[str, Any] = {
+            "cve_id": self.cve_id,
+            "source": self.source,
+            "license_class": self.license_class,
+            "licensee": self.licensee,
+            "observed_at": self.observed_at,
+            "source_published_at": self.source_published_at,
+        }
+        if self.entity is Entity.SIGNAL:
+            row.update(kind=self.kind, value=dict(self.value), url=self.url, baseline=self.baseline)
+        else:
+            row.update(self.value)
+            if self.entity is Entity.VULNERABILITY:
+                row["baseline"] = self.baseline
+        return row
 
 
 class Connector(ABC):
@@ -67,6 +195,9 @@ class Connector(ABC):
     license_class: ClassVar[LicenseClass]
     licensee: ClassVar[str | None] = None
     required_config: ClassVar[tuple[str, ...]] = ()
+    # Antigüedad máxima del dato antes de dar la fuente por UNKNOWN (fail-closed). Se puede
+    # cambiar por instancia con `freshness_hours` en la configuración del conector.
+    freshness_threshold: ClassVar[timedelta | None] = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -78,11 +209,40 @@ class Connector(ABC):
         cls.license_class = LicenseClass(cls.license_class)
         check_license(cls.license_class, cls.licensee)
 
-    def __init__(self, config: Mapping[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        config: Mapping[str, Any] | None = None,
+        *,
+        transport: Transport | None = None,
+    ) -> None:
         self.config: Mapping[str, Any] = dict(config or {})
         missing = [k for k in self.required_config if k not in self.config]
         if missing:
             raise ValueError(f"al conector '{self.name}' le falta configuración: {missing}")
+        self._transport = transport
+        # Cursor: lo fija el ejecutor antes de `fetch()`. None = carga inicial.
+        self.since: datetime | None = None
+        # Fecha del dato según la fuente; la fija `fetch()`. El ejecutor la compara con el umbral.
+        self.data_as_of: datetime | None = None
+        # Contadores informativos del conector (excluidos por licencia, sin CVE, …).
+        self.stats: dict[str, int] = {}
+
+    @property
+    def transport(self) -> Transport:
+        if self._transport is None:
+            from vs.sources.http import UrllibTransport
+
+            self._transport = UrllibTransport()
+        return self._transport
+
+    def threshold(self) -> timedelta | None:
+        hours = self.config.get("freshness_hours")
+        if hours is not None:
+            return timedelta(hours=float(hours))
+        return self.freshness_threshold
+
+    def count(self, stat: str, n: int = 1) -> None:
+        self.stats[stat] = self.stats.get(stat, 0) + n
 
     @abstractmethod
     def fetch(self) -> Iterable[Any]:

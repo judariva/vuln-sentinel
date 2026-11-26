@@ -192,7 +192,7 @@ legal, que queda fuera de este repo. Las fuentes que no lo admiten se marcan y s
 | INCIBE-CERT | Avisos | RSS | — | **No** sin autorización: «No se pretenda un uso comercial»; sin transformación ([aviso legal](https://www.incibe.es/aviso-legal)) | **Solo enlace** (`link_only`) |
 | nginx.org y avisos de fabricante sin licencia | Rangos, fix, «explotado» | RSS/CSAF (nginx.org, Fortinet, Palo Alto, Cisco, MSRC, Red Hat, Siemens, CISA) | — | nginx.org: «© F5, Inc. All rights reserved». El resto, por fabricante (SIN VERIFICAR) | **Solo hechos y enlace** (`facts_only`) |
 | OpenCVE | — | **Descartado** | Free 100/h | BSL | — |
-| EUVD (ENISA) | Explotación (señal abierta de A, ADR-022) | API, frecuencia por decidir | SIN VERIFICAR | **SIN VERIFICAR**: las páginas de la EUVD no cargaban el 2026-11-25; el aviso general de ENISA autoriza reproducir «provided the source is acknowledged, unless it is stated otherwise» ([legal notice](https://www.enisa.europa.eu/about-enisa/legal-notice)) pero no dice que cubra la EUVD | **Pendiente**: no se activa hasta leer sus condiciones |
+| EUVD (ENISA) | Explotación (señal abierta de A, ADR-022) | API, frecuencia por decidir | SIN VERIFICAR | **SIN VERIFICAR**: las páginas de la EUVD no cargaban el 2026-11-25; el aviso general de ENISA autoriza reproducir «provided the source is acknowledged, unless it is stated otherwise» ([legal notice](https://www.enisa.europa.eu/about-enisa/legal-notice)) pero no dice que cubra la EUVD | **Fuera** (decisión de Juan, NEXT-5): reintentado el 2026-11-26 en T3; la EUVD seguía «Application Unavailable» y la política IPR de ENISA (PDF, dic. 2021) solo cubre publicaciones (CC BY 4.0), cursos y software, no bases de datos. Vuelve a entrar si se leen sus condiciones |
 
 **`license_class` por fuente (ADR-022).** Es la clase del dato que se **guarda**, ortogonal al
 aislamiento (`link_only` guarda solo el identificador y el enlace, que son `open`).
@@ -204,7 +204,7 @@ aislamiento (`link_only` guarda solo el identificador y el enlace, que son `open
 | Exploit-DB | `open`, solo metadatos | igual |
 | INCIBE-CERT | `open`, `link_only` (sin cambio tras releer sus términos con el modelo de donaciones: ADR-022) | igual |
 | nginx.org y avisos de fabricante | `open`, `facts_only` | igual |
-| EUVD (ENISA) | Pendiente (licencia SIN VERIFICAR) | Pendiente |
+| EUVD (ENISA) | **Fuera** (licencia SIN VERIFICAR; sin conector) | Fuera |
 | VulnCheck KEV | **Excluida** (ADR-020); el conector no se carga | `restricted`, `licensee` = la licencia comercial, solo si existe |
 
 **Fail-closed.** Cada ejecución queda en `source_run`. Si la fuente falla o su dato tiene más

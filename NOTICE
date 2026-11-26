@@ -9,7 +9,9 @@ Datos de terceros que el feed redistribuye o de los que deriva, con sus condicio
 - CISA Known Exploited Vulnerabilities Catalog y CISA Vulnrichment: CC0 1.0.
 - FIRST EPSS: se atribuye a FIRST (https://www.first.org/epss/).
 - GitHub Advisory Database: CC-BY 4.0.
-- OSV.dev: licencia de cada fuente de origen; se excluyen las fuentes con licencia NC/ND.
+- OSV.dev: licencia de cada fuente de origen; se excluyen las fuentes con licencia NC/ND. Los
+  registros de Ubuntu y Alpine (CC-BY-SA 4.0) se marcan `share_alike`; los de fuentes sin
+  licencia comprobada no se leen.
 - NVD (NIST): «This product uses the NVD API but is not endorsed or certified by the NVD.»
 - Metasploit Framework metadata (Rapid7): BSD-3-Clause. Copyright 2006-2026, Rapid7, Inc.
 - Exploit-DB (OffSec): GPL-2.0; solo se usan metadatos (identificador, tipo, enlace); no se

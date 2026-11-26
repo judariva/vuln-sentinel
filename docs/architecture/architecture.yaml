@@ -90,6 +90,10 @@ components:
     name: feed-rights
     service: Filtro de señales por audiencia y nivel calculado por feed (src/vs/feed/rights.py; ADR-0022)
     status: proposed
+  - id: CMP-020
+    name: source-connectors
+    service: Conectores abiertos (cvelistV5, CISA KEV, EPSS, GHSA, OSV) y ejecutor con source_run y fail-closed (src/vs/sources/; dentro de CMP-003)
+    status: proposed
 
 sources:
   - {id: SRC-001, name: cvelistV5}
@@ -105,7 +109,7 @@ sources:
   - {id: SRC-011, name: PoC-in-GitHub}
   - {id: SRC-012, name: GitHub search}
   - {id: SRC-013, name: avisos de fabricante y CERT}
-  - {id: SRC-014, name: EUVD (ENISA), status: proposed, note: "licencia de reutilización SIN VERIFICAR; ADR-0022"}
+  - {id: SRC-014, name: EUVD (ENISA), status: excluded, note: "licencia de reutilización SIN VERIFICAR (reintentado en T3, 2026-11-26); fuera hasta poder leerla; ADR-0022"}
 
 trust_boundaries:
   - {id: TB-001, name: Internet ↔ borde Cloudflare}
@@ -126,6 +130,11 @@ flows:
   - {id: FLW-010, from: CMP-011, to: CMP-016, note: servir feed archivado desde caché}
   - {id: FLW-011, from: CMP-003, to: CMP-018, note: "el ingest solo carga los conectores que la instancia admite (ADR-0022)"}
   - {id: FLW-012, from: CMP-005, to: CMP-019, note: "cada feed se genera con las señales que su audiencia puede recibir (ADR-0022)"}
+  - {id: FLW-013, from: SRC-002, to: CMP-020, crosses: [TB-003], note: "catálogo KEV (JSON)"}
+  - {id: FLW-014, from: SRC-004, to: CMP-020, crosses: [TB-003], note: "CSV diario de EPSS"}
+  - {id: FLW-015, from: SRC-005, to: CMP-020, crosses: [TB-003], note: "API de avisos de GitHub, paginada"}
+  - {id: FLW-016, from: SRC-006, to: CMP-020, crosses: [TB-003], note: "modified_id.csv y registros OSV, con política por fuente"}
+  - {id: FLW-017, from: CMP-020, to: CMP-007, note: "source_run y registros normalizados al modelo"}
 
 threats:
   - {id: THR-001, name: inyección indirecta de prompt desde avisos, README o issues, refs: ["OWASP LLM01", "ATLAS 5.6.0 AML.T0051.001"]}
@@ -152,3 +161,5 @@ controls:
   - {id: CTL-009, name: latido en Sentinel y vigilante externo, mitigates: [THR-009], proof: prueba de caos F3}
   - {id: CTL-010, name: RBAC Administrator con condición sobre el RG, mitigates: [THR-010], proof: intento de autoasignación denegado}
   - {id: CTL-011, name: "license_class en cada dato; la instancia pública no carga conectores restricted ni guarda filas restricted; nivel por feed", mitigates: [THR-011], proof: tests/test_license_rights.py}
+  - {id: CTL-012, name: "fail-closed por fuente: timeout, HTTP no 2xx, dato roto, lectura incompleta o dato más viejo que el umbral dan source_run UNKNOWN y ningún registro", mitigates: [THR-009], proof: tests/test_sources.py}
+  - {id: CTL-013, name: "los conectores solo siguen enlaces bajo la URL base configurada; OSV no lee fuentes sin licencia comprobada", mitigates: [THR-004, THR-011], proof: tests/test_sources.py}

@@ -8,5 +8,14 @@ instance:
   kind: public
   allowed_license_classes: [open]
   licenses: []
-  # Los conectores reales se añaden en la F1a, cuando existan (cvelistV5, CISA KEV, …).
-  connectors: []
+  # Conectores abiertos (T3). Las URL de cada fuente tienen valor por defecto en su módulo
+  # (src/vs/sources/); aquí solo va lo que cambie la instancia. GHSA lee el token de la variable
+  # de entorno nombrada, nunca de este fichero. La EUVD no está: su licencia sigue SIN VERIFICAR.
+  connectors:
+    - name: cvelistv5
+    - name: cisa_kev
+    - name: epss
+    - name: ghsa
+      config:
+        token_env: VS_GITHUB_TOKEN
+    - name: osv
