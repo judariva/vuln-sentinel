@@ -19,6 +19,7 @@ hacen llamadas de red: un transporte simulado (`tests/fakes.py`) sirve estos fic
 | `nomisec/commits.json`, `nomisec/commit-a.json`, `nomisec/commit-b.json` (T7) | **Sintéticos**, con la forma de la API de commits de GitHub | — | SHA inventados; solo los campos que lee el conector |
 | `nomisec/CVE-2099-0301.json` (T7) | **Sintético**, con la forma de un fichero de PoC-in-GitHub | — | Repositorios y cuentas ficticios; la descripción lleva un intento de inyección que no se debe guardar |
 | `nomisec/CVE-2018-3260.json` (T7) | `https://raw.githubusercontent.com/nomi-sec/PoC-in-GitHub/master/2018/CVE-2018-3260.json` | CC0 1.0 | 1 entrada real, sin `description` ni campos de avatar |
+| `nginx2root/` (T12) | cvelistV5, NVD (registro e historial), API de GitHub (metadatos), nomi-sec y CISA KEV | Ver `nginx2root/README.md` | Snapshots reconstruidos de la prueba de aceptación R6; origen, hashes y recortes en su README |
 
 Las heurísticas `poc_suspicious` se prueban con repositorios, ficheros, binarios y blobs
 **sintéticos** que se fabrican en `tests/test_exploit_sources.py`: no hay código de PoC ni malware

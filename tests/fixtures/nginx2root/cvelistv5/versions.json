@@ -1,0 +1,26 @@
+{
+  "CVE-2026-123007": [
+    {
+      "commit": "590851bd0bba15c0fba1c1ed471758ff2341f3dd",
+      "committed_at": "2026-11-18T15:25:28Z",
+      "file": "CVE-2026-123007.590851bd.json"
+    },
+    {
+      "commit": "07059e5cb353a3860ad31fbea95956c728885075",
+      "committed_at": "2026-11-18T16:15:24Z",
+      "file": "CVE-2026-123007.07059e5c.json"
+    }
+  ],
+  "CVE-2026-123633": [
+    {
+      "commit": "590851bd0bba15c0fba1c1ed471758ff2341f3dd",
+      "committed_at": "2026-11-18T15:25:28Z",
+      "file": "CVE-2026-123633.590851bd.json"
+    },
+    {
+      "commit": "35e04952aea5448a0d3d26601adbeaa6ffed21ec",
+      "committed_at": "2026-11-18T16:57:10Z",
+      "file": "CVE-2026-123633.35e04952.json"
+    }
+  ]
+}
