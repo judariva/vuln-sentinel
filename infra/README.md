@@ -37,6 +37,20 @@ La CI hace lo mismo en el job `infra`.
 5. Job `migrate` (manual).
 6. Plataforma otra vez, con los `principalIds` que da `main.bicep`, para el rol en la DCR.
 
+## Comprobaciones tras el primer despliegue
+
+- **Compresión del portal en Workers static assets** (ADR-0024, decisión de Juan en T8c). Que el
+  borde comprima los assets está SIN VERIFICAR en la documentación de static assets. Se comprueba
+  con el host real del portal (no se escribe aquí):
+
+  ```bash
+  curl -sI -H 'Accept-Encoding: br, gzip' https://<host-del-portal>/assets/<bloque>.js
+  ```
+
+  Tiene que volver `content-encoding: br` o `gzip` en el HTML, el JS, el CSS y el JSON de la API.
+  Si no vuelve, los presupuestos en gzip de `npm run budget` y la medida de Lighthouse de la CI no
+  reflejan lo que descarga quien visita el portal: se abre una pregunta para Juan antes de seguir.
+
 ## Pendiente (F1a)
 
 - Puntos de entrada de la API y de los jobs (`entrypoints` en `main.bicep`).

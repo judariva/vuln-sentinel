@@ -7,6 +7,10 @@ prueba no depende de CORS ni de ningún host. Datos: el montaje de `tests/test_f
 una CVE `none` y una cuyo único A es `restricted`) más una CVE en C y otra en B, todas ficticias
 (`CVE-2099-*`), y métricas sintéticas de `metric_daily`. Reloj fijo.
 
+Con `--volume N` (T8c) se suman N CVE sintéticas al día (`CVE-2099-2000…`), casi todas `none` y unas
+pocas A, B y C, repartidas cada 10 minutos: el embudo y las capturas con un día realista. Los tests
+de humo siguen con el montaje base (`--volume 0`, por defecto).
+
 Sin dependencias nuevas: servidor HTTP de la biblioteca estándar que reenvía `/v1/`, `/.well-known/`
 y `/admin` al `TestClient` de la aplicación, en proceso. Solo para pruebas locales y CI.
 """
@@ -70,8 +74,58 @@ def is_api(path: str) -> bool:
     return bare.startswith(PROXIED) or bare in PROXIED_EXACT
 
 
-def publisher():
-    """Feed del día: el de `run_day` (tests/test_feed.py) más CVE_C (C) y CVE_B (C → B)."""
+# Volumen (T8c): CVE sintéticas que se suman al montaje base para que el embudo y las capturas se
+# parezcan a un día real (cientos de CVE con cambios y pocas alertas). Deterministas: el mismo
+# `volume` da siempre el mismo feed. Los IDs son ficticios (CVE-2099-2000…; en el feed, VS-CVE-…).
+VOLUME_SHOTS = 240  # el de las capturas del embudo
+VOLUME_FIRST = 2000
+VOLUME_LEVELS = {  # índice → nivel; el resto, `none`
+    **dict.fromkeys((17, 133), "A"),
+    **dict.fromkeys((5, 61, 150, 201), "B"),
+    **dict.fromkeys((29, 88, 112, 177, 230), "C"),
+}
+VOLUME_STEP = timedelta(minutes=10)
+
+
+def volume_cve(i: int) -> str:
+    return f"CVE-2099-{VOLUME_FIRST + i}"
+
+
+def volume_records(i: int, at: datetime) -> list:
+    """Registros de la CVE `i` del volumen, observados a `at`, según su nivel en VOLUME_LEVELS.
+
+    `none`: producto fuera de las listas. C: producto expuesto con RCE sin auth (como CVE_C).
+    B: además, exploit de Metasploit. A: además, entra en CISA KEV.
+    """
+    cve = volume_cve(i)
+    level = VOLUME_LEVELS.get(i, "none")
+    if level == "none":
+        return [vuln(cve, published=at, observed=at, product="Unlisted")]
+    recs = [vuln(cve, published=at, observed=at), cve5_affected(cve, at), ssvc(cve, at)]
+    if level in ("A", "B"):
+        recs.append(msf(cve, at))
+    if level == "A":
+        recs.append(kev(cve, at))
+    return recs
+
+
+def volume_batches(volume: int) -> dict[datetime, list]:
+    """Las CVE del volumen, en tandas cada 10 minutos entre T1 y NOW (sin llegar a NOW)."""
+    slots = int((NOW - T1) / VOLUME_STEP) - 1  # 28
+    stride = 11  # coprimo con `slots`: recorre todas las tandas
+    batches: dict[datetime, list] = {}
+    for i in range(volume):
+        at = T1 + VOLUME_STEP * (1 + (i * stride) % slots)
+        batches.setdefault(at, []).extend(volume_records(i, at))
+    return batches
+
+
+def publisher(volume: int = 0):
+    """Feed del día: el de `run_day` (tests/test_feed.py) más CVE_C (C) y CVE_B (C → B).
+
+    Con `volume`, además esas CVE sintéticas (ver `volume_batches`), publicadas en orden de tiempo
+    junto con las del montaje base.
+    """
     engine, pub = make()
     batch1 = [
         vuln(CVE_EXPOSED),
@@ -90,12 +144,16 @@ def publisher():
         cve5_affected(CVE_B),
         ssvc(CVE_B),
     ]
-    engine.ingest(batch1, T1)
-    pub.publish_from_engine(engine, T1)
-    engine.ingest([msf(CVE_EXPOSED, T2), msf(CVE_B, T2)], T2)
-    pub.publish_from_engine(engine, T2)
-    engine.ingest([kev(CVE_EXPOSED, T3)], T3)
-    pub.publish_from_engine(engine, T3)
+    batches = volume_batches(volume)
+    for at, recs in (
+        (T1, batch1),
+        (T2, [msf(CVE_EXPOSED, T2), msf(CVE_B, T2)]),
+        (T3, [kev(CVE_EXPOSED, T3)]),
+    ):
+        batches.setdefault(at, []).extend(recs)
+    for at in sorted(batches):
+        engine.ingest(batches[at], at)
+        pub.publish_from_engine(engine, at)
     return pub
 
 
@@ -134,10 +192,10 @@ def metric_rows() -> list[MetricRow]:
     return rows
 
 
-def make_app():
+def make_app(volume: int = 0):
     cfg = ApiConfig(
         instance=INSTANCE,
-        publisher=publisher(),
+        publisher=publisher(volume),
         metrics=MemoryMetricsReader(metric_rows()),
         access=AccessVerifier(AccessConfig()),  # sin Access configurado: /admin cierra (403)
         donations_enabled=False,
@@ -226,8 +284,14 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8787)
     ap.add_argument("--static", type=Path, default=None, help="build del portal (web/dist)")
+    ap.add_argument(
+        "--volume",
+        type=int,
+        default=0,
+        help=f"CVE sintéticas extra en el día (capturas: {VOLUME_SHOTS}); 0 = montaje base",
+    )
     args = ap.parse_args()
-    client = TestClient(make_app())
+    client = TestClient(make_app(args.volume))
     server = ThreadingHTTPServer((args.host, args.port), handler(client, args.static))
     print(f"portal fixture en http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
@@ -237,4 +301,14 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["NOW", "is_api", "make_app", "metric_rows", "publisher"]
+__all__ = [
+    "NOW",
+    "VOLUME_LEVELS",
+    "VOLUME_SHOTS",
+    "is_api",
+    "make_app",
+    "metric_rows",
+    "publisher",
+    "volume_batches",
+    "volume_cve",
+]
