@@ -1,0 +1,16 @@
+{
+  "source": "Encuesta sintética de servidores web (fixture, nombres ficticios)",
+  "url": "https://survey.example.org/web-servers",
+  "license": "CC0-1.0",
+  "survey_date": "2026-11-01",
+  "category": "web-proxy",
+  "ranking": [
+    {"name": "Delta Server", "share": 4.0},
+    {"name": "Alpha Server", "share": 31.5},
+    {"name": "Epsilon Proxy", "share": 4.0},
+    {"name": "Bravo HTTPd", "share": 22.0},
+    {"name": "Charlie Web", "share": 9.25},
+    {"name": "Foxtrot Edge", "share": 1.0},
+    {"name": "Golf Daemon", "share": 0.5}
+  ]
+}

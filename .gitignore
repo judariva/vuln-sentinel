@@ -18,4 +18,6 @@ local/
 # herramientas
 .pytest_cache/
 .ruff_cache/
+# descargas de los generadores y cachés del código
+.cache/
 *.egg-info/
