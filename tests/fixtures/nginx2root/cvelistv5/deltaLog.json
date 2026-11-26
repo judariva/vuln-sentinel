@@ -1,5 +1,402 @@
 [
   {
+    "fetchTime": "2026-11-19T00:01:21.473Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:55:25.277Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:37:51.899Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:30:24.521Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:24:32.625Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:18:41.246Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:12:31.057Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T23:01:50.262Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:55:55.068Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:49:50.692Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:43:55.449Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:38:19.189Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:31:05.658Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:25:15.972Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:19:12.723Z",
+    "numberOfChanges": 1,
+    "new": [],
+    "updated": [
+      {
+        "cveId": "CVE-2026-123633",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123633",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123633.json",
+        "dateUpdated": "2026-11-18T22:17:30.974Z"
+      }
+    ],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:13:05.062Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T22:01:45.095Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:49:55.023Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:43:44.704Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:38:01.093Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:30:38.153Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:24:38.953Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:18:32.313Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:12:39.618Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T21:00:21.249Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:54:39.163Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:48:52.094Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:42:53.380Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:36:59.260Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:29:54.107Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:24:22.237Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:17:33.472Z",
+    "numberOfChanges": 2,
+    "new": [],
+    "updated": [
+      {
+        "cveId": "CVE-2026-123007",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123007",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123007.json",
+        "dateUpdated": "2026-11-18T20:13:04.458Z"
+      },
+      {
+        "cveId": "CVE-2026-123633",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123633",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123633.json",
+        "dateUpdated": "2026-11-18T20:14:06.781Z"
+      }
+    ],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T20:08:44.572Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:58:28.347Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:52:45.786Z",
+    "numberOfChanges": 2,
+    "new": [],
+    "updated": [
+      {
+        "cveId": "CVE-2026-123007",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123007",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123007.json",
+        "dateUpdated": "2026-11-18T19:47:31.629Z"
+      },
+      {
+        "cveId": "CVE-2026-123633",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123633",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123633.json",
+        "dateUpdated": "2026-11-18T19:48:37.703Z"
+      }
+    ],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:46:37.297Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:40:51.657Z",
+    "numberOfChanges": 1,
+    "new": [],
+    "updated": [
+      {
+        "cveId": "CVE-2026-123007",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123007",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123007.json",
+        "dateUpdated": "2026-11-18T19:38:10.004Z"
+      }
+    ],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:34:48.350Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:28:18.643Z",
+    "numberOfChanges": 1,
+    "new": [],
+    "updated": [
+      {
+        "cveId": "CVE-2026-123633",
+        "cveOrgLink": "https://www.cve.org/CVERecord?id=CVE-2026-123633",
+        "githubLink": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/123xxx/CVE-2026-123633.json",
+        "dateUpdated": "2026-11-18T19:27:40.700Z"
+      }
+    ],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:22:38.132Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:16:33.142Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:10:40.498Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T19:00:17.357Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:54:39.707Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:48:32.483Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:42:44.335Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:36:56.923Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:29:28.497Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:23:38.923Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
+    "fetchTime": "2026-11-18T18:15:55.645Z",
+    "numberOfChanges": 0,
+    "new": [],
+    "updated": [],
+    "error": []
+  },
+  {
     "fetchTime": "2026-11-18T18:02:21.321Z",
     "numberOfChanges": 0,
     "new": [],

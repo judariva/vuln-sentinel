@@ -1,16 +1,23 @@
-"""Reconstrucción de nginx2root: prueba de aceptación R6 (PLAN.md §6 y §13, T12).
+"""Reconstrucción de nginx2root: prueba de aceptación R6 (PLAN.md §6 y §13, T12 y T14).
 
 Es una **reconstrucción**: los snapshots de `tests/fixtures/nginx2root/` son datos publicados
-(versiones de cvelistV5 por commit, el historial de cambios de NVD, el catálogo KEV de la fecha y
-metadatos de GitHub), no grabaciones de lo que devolvían las API el 18/11. La prueba real es el
-siguiente caso en vivo.
+(versiones de cvelistV5 por commit, el historial de cambios de NVD, los catálogos KEV de la fecha,
+el historial de commits de PoC-in-GitHub y metadatos de GitHub), no grabaciones de lo que
+devolvían las API el 18/11. La prueba real es el siguiente caso en vivo.
 
-Reloj simulado: pasos de 5 min de las 15:00Z a las 18:00Z del 18/11. En cada paso, cada fuente ve
-solo lo que estaba publicado a esa hora. El pipeline es el real: conectores (`vs.sources`) con un
-transporte simulado → ejecutor (`run_source`, fail-closed, carga inicial) → motor de reglas con las
-listas de `config/` → publicador del feed firmado.
+Reloj simulado (T14): pasos de 5 min de las 15:00Z del 18/11 a las 00:00Z del 19/11. En cada paso,
+cada fuente ve solo lo que estaba publicado a esa hora. El pipeline es el real: conectores
+(`vs.sources`) con un transporte simulado → ejecutor (`run_source`, fail-closed, carga inicial) →
+motor de reglas con las listas de `config/` → publicador del feed firmado.
 
-Dos piezas no existen en el código y se emulan aquí, sin tocar reglas ni listas:
+Criterio de aceptación (corregido por Juan el 2026-11-26, PLAN §6): C tras la publicación (≈ 15:30Z)
+y B el mismo día 18/11 UTC por las señales abiertas (nomi-sec + autor de la lista de confianza,
+≈ 20:10Z). NVD no tiene papel: su etiqueta «Exploit» es del 19/11.
+
+- **nomi-sec**: el conector es el real (`NomiSecConnector`); el transporte sirve su historial de
+  commits a cada hora. Las heurísticas `poc_suspicious` no se reconstruyen (exigirían el código del
+  PoC, que no se aloja): el conector va con `inspect: false` y los repositorios quedan sin
+  inspeccionar (`suspicious = None`), como en producción cuando se agota el presupuesto.
 - **NVD**: no hay conector. `NvdReconstructionConnector` reconstruye la vista de NVD en cada paso a
   partir de su historial de cambios y emite la señal `exploit` con `origin = reference` y
   `by = nvd` del contrato de `vs.rules.exploit`.
@@ -34,16 +41,15 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-import pytest
-
 from vs.feed.config import load_feed_config
 from vs.feed.publish import FeedPublisher
 from vs.feed.rights import PUBLIC, engine_for_feed
 from vs.feed.sign import LocalDevSigner, verify_detached
 from vs.rules.engine import RulesConfig, assess
+from vs.rules.engine import _product_refs as product_refs
 from vs.rules.impact import rce_sin_auth
 from vs.rules.levels import Level
-from vs.rules.lists import RuleLists, load_lists, parse_lists
+from vs.rules.lists import RuleLists, load_lists, producto_expuesto
 from vs.sources.base import Connector, Entity, LicenseClass, Record
 from vs.sources.cisa_kev import DEFAULT_URL as KEV_URL
 from vs.sources.cisa_kev import CisaKevConnector
@@ -51,6 +57,9 @@ from vs.sources.cvelistv5 import DEFAULT_DELTA_LOG_URL, CveListV5Connector
 from vs.sources.github import RateLimiter
 from vs.sources.github_search import GithubSearchConnector
 from vs.sources.http import Response, get_json, parse_ts
+from vs.sources.nomisec import DEFAULT_API_URL as NOMISEC_API
+from vs.sources.nomisec import DEFAULT_RAW_BASE_URL as NOMISEC_RAW
+from vs.sources.nomisec import NomiSecConnector
 from vs.sources.run import RunStatus, run_source
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,7 +71,8 @@ CVE_A = "CVE-2026-123007"
 CVE_B = "CVE-2026-123633"
 CVES = (CVE_A, CVE_B)
 START = datetime(2026, 11, 18, 15, 0, tzinfo=UTC)
-STOP = datetime(2026, 11, 18, 18, 0, tzinfo=UTC)
+STOP = datetime(2026, 11, 19, 0, 0, tzinfo=UTC)
+SAME_DAY_END = datetime(2026, 11, 19, 0, 0, tzinfo=UTC)  # «el mismo día 18/11 UTC»
 STEP = timedelta(minutes=5)
 NVD_API = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 SEARCH_API = "https://api.github.com/search/repositories"
@@ -90,29 +100,6 @@ CONFIG_LISTS = load_lists(
 )
 
 
-def counterfactual_lists() -> RuleLists:
-    """Diagnóstico, NO el resultado: las listas de `config/` más un producto con los pares del CNA.
-
-    Responde a «¿bastaría con que la lista casara?». No cambia ninguna lista del repo.
-    """
-    exposed = {
-        "products": [
-            {
-                "id": "contrafactual--f5-nginx",
-                "category": "web-proxy",
-                "vendor": "F5",
-                "product": "NGINX Open Source",
-                "aliases": [{"vendor": "F5", "product": "NGINX Plus"}],
-            }
-        ]
-    }
-    extra = parse_lists(exposed, None)
-    return RuleLists(
-        exposed=tuple(sorted((*CONFIG_LISTS.exposed, *extra.exposed), key=lambda e: e.id)),
-        authors=CONFIG_LISTS.authors,
-    )
-
-
 # -- lo que cada fuente tenía publicado a cada hora ---------------------------------------------
 
 
@@ -125,12 +112,40 @@ class Snapshots:
             cve: [(ts(v["committed_at"]), load("cvelistv5", v["file"])) for v in items]
             for cve, items in load("cvelistv5", "versions.json").items()
         }
-        self.kev = load("cisa-kev", "kev-2026.11.17.json")
+        # Catálogos KEV del 18/11: el 2026.11.17 (kev-data@2b7b1355, 00:38Z) y el 2026.11.18
+        # (kev-data@a705bb0f, 23:57:33Z).
+        self.kevs = [
+            (ts("2026-11-18T00:38:18Z"), load("cisa-kev", "kev-2026.11.17.json")),
+            (ts("2026-11-18T23:57:33Z"), load("cisa-kev", "kev-2026.11.18.json")),
+        ]
         self.nvd_history = load("nvd", "CVE-2026-123007.history.json")["cveChanges"]
         self.repo = load("github", "sfewer-r7.CVE-2026-123007.json")
+        self.nomisec = [
+            {**c, "at": ts(c["committed_at"])} for c in load("nomisec", "commits.json")["commits"]
+        ]
 
     def delta_log_at(self, now: datetime) -> list[dict[str, Any]]:
         return [e for e in self.delta_log if ts(e["fetchTime"]) <= now]
+
+    def kev_at(self, now: datetime) -> dict[str, Any]:
+        return [kev for when, kev in self.kevs if when <= now][-1]
+
+    def nomisec_commits_at(self, now: datetime) -> list[dict[str, Any]]:
+        """La página de commits de PoC-in-GitHub a esa hora, de más reciente a más antiguo."""
+        seen = sorted((c for c in self.nomisec if c["at"] <= now), key=lambda c: c["at"])
+        return [
+            {"sha": c["sha"], "commit": {"committer": {"date": c["committed_at"]}}}
+            for c in reversed(seen)
+        ]
+
+    def nomisec_files(self, sha: str) -> dict[str, Any] | None:
+        commit = next((c for c in self.nomisec if c["sha"] == sha), None)
+        return None if commit is None else {"sha": sha, "files": commit["files"]}
+
+    def nomisec_raw(self, sha: str, path: str) -> list[dict[str, Any]] | None:
+        cve = path.rpartition("/")[2].removesuffix(".json")
+        name = f"{cve}.{sha[:8]}.json"
+        return load("nomisec", name) if FIX.joinpath("nomisec", name).exists() else None
 
     def record_at(self, cve: str, now: datetime) -> dict[str, Any] | None:
         seen = [rec for when, rec in self.versions.get(cve, []) if when <= now]
@@ -183,7 +198,16 @@ class SimTransport:
         if url == DEFAULT_DELTA_LOG_URL:
             return self._json(self.snaps.delta_log_at(now))
         if url == KEV_URL:
-            return self._json(self.snaps.kev)
+            return self._json(self.snaps.kev_at(now))
+        if url == f"{NOMISEC_API}/commits?per_page=100":
+            return self._json(self.snaps.nomisec_commits_at(now))
+        if url.startswith(f"{NOMISEC_API}/commits/"):
+            files = self.snaps.nomisec_files(url.rpartition("/")[2])
+            return self._json(files) if files else Response(404, b"not found", {})
+        if url.startswith(NOMISEC_RAW):
+            sha, _, path = url.removeprefix(NOMISEC_RAW).partition("/")
+            raw = self.snaps.nomisec_raw(sha, path)
+            return self._json(raw) if raw is not None else Response(404, b"not found", {})
         for cve in CVES:
             if url.endswith(f"/{cve}.json") and "cvelistV5" in url:
                 rec = self.snaps.record_at(cve, now)
@@ -311,8 +335,8 @@ def why(cve: str, records: Iterable[Record], lists: RuleLists, level: Level) -> 
 
 
 @cache
-def simulate(counterfactual: bool = False) -> Simulation:
-    lists = counterfactual_lists() if counterfactual else CONFIG_LISTS
+def simulate() -> Simulation:
+    lists = CONFIG_LISTS
     snaps = Snapshots()
     transport = SimTransport(snaps)
     engine = engine_for_feed(PUBLIC, lists, RulesConfig())
@@ -333,6 +357,8 @@ def simulate(counterfactual: bool = False) -> Simulation:
     connectors: dict[str, Connector] = {
         "cvelistv5": CveListV5Connector({}, transport=transport),
         "cisa_kev": CisaKevConnector({}, transport=transport),
+        # Sin heurísticas poc_suspicious: no se reconstruyen sin el código (ver docstring).
+        "nomisec": NomiSecConnector({"inspect": False}, transport=transport),
         "nvd": NvdReconstructionConnector([CVE_A], transport=transport, clock=clock),
         "github_search": search,
     }
@@ -430,7 +456,7 @@ def _changes(sim: Simulation) -> list[str]:
     out = []
     for c in CVES:
         if not sim.history[c]:
-            out.append(f"- {c}: ningún cambio de nivel entre las 15:00Z y las 18:00Z.")
+            out.append(f"- {c}: ningún cambio de nivel entre las 15:00Z y las 00:00Z.")
         for at, level, reason in sim.history[c]:
             out.append(f"- {c}: **{level.label}** a las {hhmm(at)}Z ({', '.join(reason)}).")
     return out
@@ -448,33 +474,35 @@ def _search_line(sim: Simulation) -> str:
 
 
 def render_trace() -> str:
-    real = simulate(False)
-    cf = simulate(True)
-    rec = real.publisher.record(f"VS-{CVE_A}")
-    vs = rec["database_specific"]["vuln_sentinel"]
+    real = simulate()
+    feed = []
+    for c in CVES:
+        vs = real.publisher.record(f"VS-{c}")["database_specific"]["vuln_sentinel"]
+        feed.append(
+            f"- `VS-{c}` al final: nivel `{vs['level']}`, `impact_class` `{vs['impact_class']}`, "
+            f"fix {', '.join(vs['signals']['fix']['versions'])}."
+        )
+    matched = {
+        c: producto_expuesto(product_refs(real.engine.records(c)), CONFIG_LISTS) for c in CVES
+    }
     lines = [
         BEGIN,
         "<!-- Generado por tests/test_nginx2root_reconstruction.py. No editar a mano. -->",
         "",
-        "### Resultado con las listas de `config/`",
+        "### Resultado con las listas de `config/` (15:00Z del 18/11 a 00:00Z del 19/11)",
         "",
         *_changes(real),
         "",
+        "Producto expuesto: "
+        + "; ".join(f"{c[-6:]} → `{m.id if m else 'ninguno'}`" for c, m in matched.items())
+        + ".",
+        "",
         *_table(real),
         "",
-        f"Registro del feed `VS-{CVE_A}` al final: nivel `{vs['level']}`, "
-        f"`impact_class` `{vs['impact_class']}`, "
-        f"fix {', '.join(vs['signals']['fix']['versions'])}; "
-        f"en el feed `alerts`: {len(real.publisher.logs['alerts'])} entradas.",
+        *feed,
+        f"- Entradas en el feed `alerts`: {len(real.publisher.logs['alerts'])}.",
         "",
-        "### Contrafactual de diagnóstico (no es el resultado)",
-        "",
-        "Las mismas fuentes con las listas de `config/` más un producto con los pares del CNA",
-        "(`F5 / NGINX Open Source`, alias `F5 / NGINX Plus`). No cambia ninguna lista del repo.",
-        "",
-        *_changes(cf),
-        "",
-        _search_line(cf),
+        _search_line(real),
         END,
     ]
     return "\n".join(lines) + "\n"
@@ -492,8 +520,11 @@ def test_snapshots_are_what_the_chronology_says():
     assert snaps.repo["created_at"] == "2026-11-18T11:16:51Z"
     assert snaps.repo["pushed_at"] == "2026-11-18T15:23:27Z"
     assert snaps.repo["owner"]["login"] == "sfewer-r7"
-    # KEV del día: ninguna de las dos.
-    assert not {v["cveID"] for v in snaps.kev["vulnerabilities"]} & set(CVES)
+    # KEV del día (los dos catálogos del 18/11): ninguna de las dos.
+    for _when, kev in snaps.kevs:
+        assert not {v["cveID"] for v in kev["vulnerabilities"]} & set(CVES)
+    assert snaps.kev_at(ts("2026-11-18T23:55:00Z"))["catalogVersion"] == "2026.11.17"
+    assert snaps.kev_at(STOP)["catalogVersion"] == "2026.11.18"
     # NVD: llega a las 16:18:04 solo con la referencia de F5.
     first = snaps.nvd_at(CVE_A, ts("2026-11-18T16:18:04.047Z"))
     assert first["published"] == "2026-11-18T16:18:04.047"
@@ -529,19 +560,30 @@ def test_nvd_reconstruction_matches_current_record():
     assert rebuilt == actual
 
 
-def test_nomisec_lists_the_poc_after_the_window():
-    """PoC-in-GitHub lista el repositorio de Rapid7 por primera vez a las 20:08Z, fuera de la
-    ventana."""
+def test_nomisec_history_matches_first_listing():
+    """PoC-in-GitHub lista el repositorio de Rapid7 por primera vez a las 20:08:35Z (commit
+    `f1868572`), dentro de la ventana; su autor está en la lista de confianza (E4 por cuenta)."""
     first = load("nomisec", "first-listing.json")
-    assert first["entry"]["full_name"] == "sfewer-r7/CVE-2026-123007"
-    assert ts(first["committed_at"]) > STOP
-    # Si se hubiera visto, el autor está en la lista de confianza (E4 por cuenta).
+    snaps = Snapshots()
+    adds = [c for c in snaps.nomisec if c["files"]]
+    assert [(c["sha"], c["committed_at"]) for c in adds] == [
+        (first["commit"], first["committed_at"])
+    ]
+    assert {f["filename"] for f in adds[0]["files"]} == {f"2026/{c}.json" for c in CVES}
+    repos_a = snaps.nomisec_raw(first["commit"], f"2026/{CVE_A}.json")
+    assert len(repos_a) == first["repos_in_file"]
+    sfewer = next(r for r in repos_a if r["full_name"] == first["entry"]["full_name"])
+    assert sfewer["created_at"] == first["entry"]["created_at"]
+    assert START < ts(first["committed_at"]) < STOP
     assert CONFIG_LISTS.trusted_account(first["entry"]["owner"]["login"])
+    # En el fichero de 123633 no hay ningún autor de la lista de confianza.
+    repos_b = snaps.nomisec_raw(first["commit"], f"2026/{CVE_B}.json")
+    assert repos_b and not any(CONFIG_LISTS.trusted_account(r["owner"]["login"]) for r in repos_b)
 
 
 def test_pipeline_runs_fail_closed_and_without_unknown():
-    sim = simulate(False)
-    assert len(sim.ticks) == 37
+    sim = simulate()
+    assert len(sim.ticks) == 109  # 15:00Z a 00:00Z en pasos de 5 min
     first = sim.ticks[0]
     assert all("carga inicial" in s for s in first.runs.values())
     for t in sim.ticks:
@@ -551,34 +593,45 @@ def test_pipeline_runs_fail_closed_and_without_unknown():
     assert seen.at == datetime(2026, 11, 18, 15, 30, tzinfo=UTC)
 
 
-def test_diagnosis_with_config_lists():
-    """Por qué no sale C ni B: el producto no casa; el impacto y la red sí (fija el diagnóstico)."""
-    sim = simulate(False)
+def test_exposed_product_is_the_deployment_entry():
+    """Criterio v4: el producto casa por la entrada de despliegue `deployment--nginx` (pares del
+    CNA de la lista), sin ninguna entrada hecha para el caso."""
+    sim = simulate()
     for c in CVES:
-        a = assess(c, sim.engine.records(c), CONFIG_LISTS)
-        assert not a.exposed
-        assert a.impact_class.value == "rce"
-        assert a.level is Level.NONE
+        records = sim.engine.records(c)
         pairs = {
             (r.value["vendor"], r.value["product"])
-            for r in sim.engine.records(c)
+            for r in records
             if r.entity is Entity.AFFECTED_PRODUCT
         }
         assert pairs == {("F5", "NGINX Open Source"), ("F5", "NGINX Plus")}
-    # La lista solo nombra nginx en `deployment_leg`, que `parse_lists` no carga.
-    assert not any("nginx" in p.id for p in CONFIG_LISTS.exposed)
-    assert len(sim.publisher.logs["alerts"]) == 0
+        match = producto_expuesto(product_refs(records), CONFIG_LISTS)
+        assert match is not None and match.id == "deployment--nginx"
+        assert match.category == "web-proxy"
+        a = assess(c, records, CONFIG_LISTS)
+        assert a.exposed and a.impact_class.value == "rce"
 
 
-def test_counterfactual_gives_c_but_no_b_in_window():
-    """Diagnóstico: aunque la lista casara, en la ventana sale C y no B (falta la señal de NVD)."""
-    sim = simulate(True)
+def test_nvd_plays_no_part_in_the_window():
+    """NVD no da ninguna señal de exploit el 18/11 (la etiqueta llega el 19/11)."""
+    sim = simulate()
     for c in CVES:
-        assert [(hhmm(at), lvl) for at, lvl, _ in sim.history[c]] == [("15:30", Level.C)]
+        assert not [
+            r
+            for r in sim.engine.records(c)
+            if r.kind == "exploit" and r.value.get("origin") == "reference"
+        ]
+
+
+def test_cve_b_stays_c_without_trusted_poc():
+    """CVE-2026-123633: C tras la publicación y sin B el 18/11 (ningún PoC de autor de
+    confianza en nomi-sec; NVD sin etiqueta)."""
+    sim = simulate()
+    assert [(hhmm(at), lvl) for at, lvl, _ in sim.history[CVE_B]] == [("15:30", Level.C)]
 
 
 def test_feed_record_has_ranges_and_signature_verifies():
-    sim = simulate(False)
+    sim = simulate()
     pub = sim.publisher
     for c in CVES:
         rec = pub.record(f"VS-{c}")
@@ -613,27 +666,26 @@ def test_trace_is_current():
     assert current == block, "traza desactualizada: VS_WRITE_TRACE=1 uv run pytest " + __file__
 
 
-XFAIL_REASON = (
-    "nginx2root no pasa en la reconstrucción (T12). (1) producto_expuesto no casa: el CNA firma "
-    "F5 / 'NGINX Open Source' y F5 / 'NGINX Plus'; config/exposed-products.yaml solo nombra nginx "
-    "en deployment_leg (sin vendor/product/CPE) y parse_lists no carga esa sección. (2) La "
-    "etiqueta 'Exploit' de NVD no existía el 18/11: la referencia de Rapid7 llega a NVD a las "
-    "20:18Z sin etiquetas y la etiqueta, el 19/11 a las 21:14Z. Preguntas para Juan en "
-    "docs/journey/nginx2root-reconstruccion.md."
-)
-
-
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
 def test_acceptance_c_after_publication():
-    sim = simulate(False)
+    """Aceptación 1 (PLAN §6): C tras la publicación, en el primer paso tras el commit de las
+    15:25:28Z."""
+    sim = simulate()
     for c in CVES:
         first = sim.history[c][0] if sim.history[c] else None
         assert first is not None and first[1] >= Level.C
         assert first[0] <= datetime(2026, 11, 18, 15, 30, tzinfo=UTC)
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_REASON)
-def test_acceptance_b_by_nvd_1618():
-    sim = simulate(False)
-    deadline = datetime(2026, 11, 18, 16, 20, tzinfo=UTC)  # primer paso tras las 16:18Z
-    assert any(at <= deadline and lvl >= Level.B for at, lvl, _ in sim.history[CVE_A])
+def test_acceptance_b_same_day_by_open_signals():
+    """Aceptación 2 (PLAN §6): B el mismo día 18/11 UTC por nomi-sec + autor de confianza
+    (≈ 20:10Z, primer paso tras el commit de las 20:08:35Z)."""
+    sim = simulate()
+    b = [(at, reason) for at, lvl, reason in sim.history[CVE_A] if lvl >= Level.B]
+    assert b, sim.history[CVE_A]
+    at, reason = b[0]
+    assert at < SAME_DAY_END
+    assert at == datetime(2026, 11, 18, 20, 10, tzinfo=UTC)
+    assert any("E4" in r for r in reason), reason
+    # La B queda publicada en el feed de alertas.
+    vs = sim.publisher.record(f"VS-{CVE_A}")["database_specific"]["vuln_sentinel"]
+    assert vs["level"] == "B"

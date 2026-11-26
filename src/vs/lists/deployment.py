@@ -16,6 +16,11 @@ RESULTADO (2026-11-26):
 Estado v3: `web-proxy` desde Common Crawl (`vs.lists.deployment_cc`, decisión de Juan del
 2026-11-26: fuente abierta primero). `identity`/SSH: sin fuente abierta, pendiente.
 
+Criterio v4 (decisión de Juan del 2026-11-26, T14): la pata de despliegue entra en
+`producto_expuesto`. Cada entrada lleva sus pares vendor/product del CNA y sus prefijos CPE,
+sacados de cvelistV5 con el método de `vs.lists.deployment_cna`, y `vs.rules.lists.parse_lists`
+la carga como producto.
+
 Formato de una encuesta (JSON):
   {"source": str, "url": "https://...", "license": str, "survey_date": "YYYY-MM-DD",
    "category": "web-proxy" | "identity", "ranking": [{"name": str, "share": float}, ...],
@@ -27,6 +32,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+from vs.lists import deployment_cna
 from vs.lists.common import sha256_bytes, slug
 
 N = 5
@@ -133,8 +139,39 @@ def _skipped(survey: dict, cut: float) -> list[dict]:
     return sorted(out, key=lambda r: r["name"])
 
 
-def build(survey_bytes: bytes | None) -> dict:
-    """Sección `deployment_leg` del YAML."""
+NO_RECORDS = "generado sin registros cvelistV5 de la pata de despliegue"
+
+
+def _with_pairs(
+    products: list[dict], records: dict[str, bytes] | None, cutoff: dt.date | None
+) -> list[dict]:
+    """Criterio v4: cada entrada con sus pares del CNA y sus CPE (`vs.lists.deployment_cna`)."""
+    if records is None or cutoff is None:
+        return [
+            {
+                **p,
+                "cna": [],
+                "cpe": [],
+                "records": 0,
+                "cna_missing_reason": NO_RECORDS,
+                "cpe_missing_reason": NO_RECORDS,
+            }
+            for p in products
+        ]
+    pairs = deployment_cna.pairs_for([p["name"] for p in products], records, cutoff)
+    return [{**p, **pairs[p["name"]]} for p in products]
+
+
+def build(
+    survey_bytes: bytes | None,
+    records: dict[str, bytes] | None = None,
+    cutoff: dt.date | None = None,
+) -> dict:
+    """Sección `deployment_leg` del YAML.
+
+    `records`: registros cvelistV5 de la pata de despliegue (`deployment_cna.scan_bulk`), de los
+    que salen los pares del CNA y los CPE de cada entrada (criterio v4).
+    """
     base = {
         "criterion": (
             f"los {N} primeros productos instalables por cuota de una fuente pública con fecha, "
@@ -182,6 +219,7 @@ def build(survey_bytes: bytes | None) -> dict:
         "source": source,
         "options_found": OPTIONS,
         "pending_parts": pending,
-        "products": [{**p, "category": category} for p in products],
+        "pairs_method": deployment_cna.PAIRS_METHOD,
+        "products": _with_pairs([{**p, "category": category} for p in products], records, cutoff),
         "skipped_above_cut": _skipped(survey, cut),
     }

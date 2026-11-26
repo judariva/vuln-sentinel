@@ -306,18 +306,27 @@ El código nunca se clona ni se ejecuta.
 | 18/11 15:23:27 | Último push del repo (`pushed_at`) y publicación de CVE-2026-123633 | Hecho | API de GitHub, cveawg |
 | 18/11 15:23:29 | Publicación de CVE-2026-123007 | Hecho | cveawg |
 | ? | El repo pasa a público y la búsqueda de GitHub lo indexa | **UNKNOWN**: la API no lo dice | — |
-| 18/11 16:18 | Llega a NVD, con la etiqueta «Exploit» en la referencia de Rapid7 | Hecho | NVD |
+| 18/11 15:25:28 | Primera versión de los dos registros en cvelistV5 (commit `590851bd`) | Hecho | cvelistV5 |
+| 18/11 16:18:04 | Llega a NVD **solo con la referencia de F5**, sin la de Rapid7 | Hecho | NVD, historial de cambios (`cvehistory/2.0`) |
 | 18/11 17:30 | Aviso CERT-EU 2026-022 | Hecho | CERT-EU |
+| 18/11 20:08:35 | PoC-in-GitHub (nomi-sec) lista `sfewer-r7/CVE-2026-123007` por primera vez (commit `f1868572`); `sfewer-r7` está en la lista de autores de confianza | Hecho | nomi-sec, historial de commits |
+| 18/11 20:18:54 | NVD añade la referencia del blog de Rapid7, **sin etiquetas** | Hecho | NVD, historial de cambios |
+| 19/11 21:14:10 | Análisis inicial de NVD: la referencia de Rapid7 recibe la etiqueta «Exploit» | Hecho | NVD, historial de cambios |
 | 25/11 | No está en KEV; sin explotación confirmada | Hecho | CISA, Sophos, Cloudflare |
 
-Comportamiento esperado:
-1. **C hacia las 15:30Z.** Es una INFERENCIA a partir del ciclo de 5 min y del retraso de
-   cvelistV5. Se justifica porque la coincidencia es con nginx (web-proxy) y por `AV:N/PR:N` con
-   CWE-787 y CWE-416, que dan `impact_class = rce`.
-2. **B entre las 15:35 y las 15:50Z: INFERENCIA.** Depende de cuándo pasó el repo a público y de
-   cuándo lo indexó la búsqueda, y ninguno de los dos datos es observable.
-3. **Lo defendible: B como tarde a las 16:18Z**, por la etiqueta «Exploit» de NVD (E4 por la
-   referencia), sin depender de la lista de autores. Es B el mismo día.
+La versión anterior de esta tabla juntaba en las 16:18Z la llegada a NVD (18/11) y la etiqueta
+«Exploit» (19/11, 29 horas después). Corregido el 2026-11-26 con el historial de cambios de NVD
+(reconstrucción de T12; fixture `tests/fixtures/nginx2root/nvd/`).
+
+Comportamiento esperado (criterio de aceptación corregido por Juan el 2026-11-26):
+1. **C tras la publicación (≈ 15:30Z).** Primer ciclo de 5 min tras el commit de cvelistV5. Se
+   justifica porque la coincidencia es con nginx (web-proxy, pata de despliegue de la lista) y por
+   `AV:N/PR:N` con CWE-787 y CWE-416, que dan `impact_class = rce`.
+2. **B el mismo día 18/11 UTC por las señales abiertas (≈ 20:10Z):** nomi-sec lista el PoC de
+   `sfewer-r7`, autor de la lista de confianza (E4 por cuenta).
+3. Lo de NVD queda como hecho del 19/11, **sin papel en la aceptación**. La B por la búsqueda de
+   GitHub antes de las 20:08Z es INFERENCIA: depende de cuándo pasó el repo a público y de cuándo
+   lo indexó la búsqueda, y ninguno de los dos datos es observable.
 
 La prueba de F1a es una **reconstrucción**: snapshots creados a partir de los datos publicados, no
 grabaciones de lo que devolvían las API el 18/11. Se llama así en el código, en la prueba y en la
@@ -520,7 +529,7 @@ La API valida además el JWT de Access (`Cf-Access-Jwt-Assertion`).
 |---|---|
 | **Carga inicial → 0 alertas** (R2) | La primera ejecución contra snapshots completos de KEV, Exploit-DB, Metasploit y nomi-sec no genera ninguna alerta. Una señal nueva sobre una CVE antigua tras la carga inicial sí alerta |
 | **Fuente nueva → 0 alertas** | Añadir una fuente con su histórico no dispara alertas |
-| **Reconstrucción de nginx2root** (R6) | Con snapshots reconstruidos y reloj simulado: C tras la publicación y B **como tarde con la señal de NVD de las 16:18Z**. La B anterior por búsqueda de GitHub solo se afirma si la lista de autores (commiteada antes, R7) lo permite. Rangos 1.30.7/1.31.9 en el feed |
+| **Reconstrucción de nginx2root** (R6) | Con snapshots reconstruidos y reloj simulado de 15:00Z del 18/11 a 00:00Z del 19/11: **C tras la publicación (≈ 15:30Z)** y **B el mismo día 18/11 UTC** por nomi-sec y el autor de la lista de confianza (≈ 20:10Z; conector de nomi-sec reconstruido desde su historial de commits). NVD no interviene (su etiqueta «Exploit» es del 19/11). La B anterior por búsqueda de GitHub solo se afirma si la lista de autores (commiteada antes, R7) lo permite. Rangos 1.30.7/1.31.9 en el feed |
 | **DoS con exploit → no B** (R3) | Un CVE solo de DoS en nginx con módulo `auxiliary/dos` y entrada de Exploit-DB de tipo `dos` → `impact_class = other` → solo resumen |
 | Casos de KEV | A al entrar en KEV; ventaja sobre KEV calculada con `observed_at` |
 | **Ruido** | Una USN de kernel con cientos de CVE → 0 alertas A, B o C salvo que alguna esté en KEV |
@@ -571,7 +580,7 @@ Alerta de presupuesto a 80 € (G-9).
 | **F0 · arranque (local)** | Reglas en `CLAUDE.md`; estructura; CI; licencia y `NOTICE`; plantillas de ADR; ADR-001…020; `architecture.yaml` inicial con su test; `docs/journey/`; `STATE.md`; criterio de `trusted-exploit-authors` (R7); DDL en borrador y consultas de métricas (R5) | `uv run pytest` y `ruff` en verde en local. **Hecho** (commit inicial local) |
 | **Repo privado** | `gh repo create` privado; `CONTRIBUTING` con DCO. Todo Apache-2.0 (ADR-011). Protección de `main` (PR obligatorio y CI en verde) **bloqueada en privado con el plan gratuito de GitHub**. Sin GitHub Pro (J-8): regla 9 de `CLAUDE.md` + hook `pre-push` local; la protección de rama se aplica al hacerlo público, al cerrar la F1a (J-7) | Hecho tras la búsqueda de fugas sobre el árbol y el historial. **Hacerlo público** es otra decisión de Juan, con otra búsqueda de fugas sobre el historial |
 | **F1a-0 · listas** | Scripts que generan `exposed-products` y `trusted-exploit-authors` con sus criterios escritos; **PR de revisión de Juan** (P-10). Desde entonces, cada cambio de las listas va por PR | PR aprobado y fusionado **antes** de cualquier fixture de nginx2root (R7). Necesita el repo (G-13) |
-| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (B como tarde a las 16:18Z) en verde; consultas de métricas en verde contra el esquema. **Al cerrar: búsqueda de fugas sobre todo el historial y, si Juan lo confirma, el repo pasa a público y se aplica la protección de `main`** (J-7) |
+| **F1a · núcleo sin desplegar** | Modelo de datos y migraciones; `config/sources.yaml` con uso comercial y aislamiento (ADR-020); reglas A/B/C con impacto y carga inicial; colectores de cvelistV5, CISA KEV, nomi-sec, búsqueda de GitHub y nginx.org; **feed completo y de alertas**, con índice paginado y páginas selladas (ADR-019); firma; API; reconstrucción de nginx2root | Pruebas de carga inicial = 0 alertas, DoS ≠ B, ruido, fallo de fuente, monotonía, **CVE fuera de listas en `all` antes de 10 min**, fuente excluida fuera del feed y reconstrucción de nginx2root (C tras la publicación y B el mismo día 18/11 UTC, §6) en verde; consultas de métricas en verde contra el esquema. **Al cerrar: búsqueda de fugas sobre todo el historial y, si Juan lo confirma, el repo pasa a público y se aplica la protección de `main`** (J-7) |
 | **F1b · resto del núcleo y en vivo** | El resto de fuentes (EPSS, GHSA, OSV, NVD, Metasploit, Exploit-DB, nuclei, fabricantes y CERT), cada una con su carga inicial; front (5 pantallas, con métricas); despliegue por OIDC (requiere el gate); 72 h en vivo | 72 h sin UNKNOWN no explicados; el portal muestra nginx2root (reconstrucción) con su línea de tiempo |
 | **F2 · IA** | Agente, redacción, verificador de citas, topes, conjunto de evaluación en CI, expediente en el portal | Conjunto de evaluación en verde, incluidos la inyección y el DoS |
 | **F3 · vigilancia** | Latido, reglas de Sentinel, `SentinelHealth`, **vigilante externo en GitHub Actions**, alerta de presupuesto | Se para `ingest` → llega el incidente; se corta el Tunnel → falla el vigilante externo |

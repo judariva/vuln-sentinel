@@ -1,0 +1,85 @@
+{
+  "commits": [
+    {
+      "sha": "642c55f68a060a855e71bfd9355294dd340ad65e",
+      "committed_at": "2026-11-18T20:08:40Z",
+      "message": "Auto Update README.md 2026/11/18 20:08:35",
+      "files": []
+    },
+    {
+      "sha": "f186857237e25fb1ad5d9242acdcdcafdfba41fd",
+      "committed_at": "2026-11-18T20:08:35Z",
+      "message": "Auto Update 2026/11/18 20:08:35",
+      "files": [
+        {
+          "filename": "2026/CVE-2026-123007.json",
+          "status": "added"
+        },
+        {
+          "filename": "2026/CVE-2026-123633.json",
+          "status": "added"
+        }
+      ]
+    },
+    {
+      "sha": "cfe7cf3053c6fb3ca8d1454f930aeab5e4fd0230",
+      "committed_at": "2026-11-18T13:56:49Z",
+      "message": "Auto Update README.md 2026/11/18 13:56:44",
+      "files": []
+    },
+    {
+      "sha": "8d6fbbdabcb1e4ba0e2db36a566d60c9c71e4402",
+      "committed_at": "2026-11-18T13:56:44Z",
+      "message": "Auto Update 2026/11/18 13:56:44",
+      "files": []
+    },
+    {
+      "sha": "cac97a15a73d216e6c486d8982be6f63474d43cf",
+      "committed_at": "2026-11-18T07:52:38Z",
+      "message": "Auto Update README.md 2026/11/18 07:52:34",
+      "files": []
+    },
+    {
+      "sha": "40f58f29b51a2859698c1c695cb235ec43fbaa33",
+      "committed_at": "2026-11-18T07:52:34Z",
+      "message": "Auto Update 2026/11/18 07:52:34",
+      "files": []
+    },
+    {
+      "sha": "15a26183d3ef02b3032cce8ab90f95a5d1067817",
+      "committed_at": "2026-11-18T01:52:11Z",
+      "message": "Auto Update README.md 2026/11/18 01:52:07",
+      "files": []
+    },
+    {
+      "sha": "cedf07b0c815aeb8eb1c6c30ad00629a19185189",
+      "committed_at": "2026-11-18T01:52:07Z",
+      "message": "Auto Update 2026/11/18 01:52:07",
+      "files": []
+    },
+    {
+      "sha": "40b885ec826c4a49e119190ae8a662f38f6c66ff",
+      "committed_at": "2026-11-17T19:55:35Z",
+      "message": "Auto Update README.md 2026/11/17 19:55:30",
+      "files": []
+    },
+    {
+      "sha": "0951b567df720c52439c05d97c637471db870138",
+      "committed_at": "2026-11-17T19:55:30Z",
+      "message": "Auto Update 2026/11/17 19:55:30",
+      "files": []
+    },
+    {
+      "sha": "f562028b1857b443292f150e6e827fbc16a12617",
+      "committed_at": "2026-11-17T14:15:14Z",
+      "message": "Auto Update README.md 2026/11/17 14:15:09",
+      "files": []
+    },
+    {
+      "sha": "60110b8bc6226df068e0acf926c6f9a130354ba9",
+      "committed_at": "2026-11-17T14:15:09Z",
+      "message": "Auto Update 2026/11/17 14:15:09",
+      "files": []
+    }
+  ]
+}

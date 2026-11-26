@@ -30,12 +30,15 @@ import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from vs.lists import cvelist, deployment
+from vs.lists import cvelist, deployment, deployment_cna
 from vs.lists.common import ROOT, dump_yaml, fetch, months_before, parse_date, sha256_bytes, slug
 
 GENERATOR = "vs.lists.build_exposed_products"
-GENERATOR_VERSION = "3.0.0"
-CRITERION_VERSION = 3
+GENERATOR_VERSION = "4.0.0"
+# v4 (decisión de Juan del 2026-11-26, T14): la pata de despliegue entra en `producto_expuesto` con
+# sus pares del CNA y sus CPE (`vs.lists.deployment_cna`). Las reglas de los productos de KEV no
+# cambian (RULES_VERSION sigue en 3).
+CRITERION_VERSION = 4
 RULES_VERSION = 3
 WINDOW_MONTHS = 36
 # Umbral por familia (criterio v3, decisión de Juan del 2026-11-26): 2 para los productos de borde
@@ -282,7 +285,10 @@ de mirar ningún caso; R7):
      de sus registros y comparten un término o salen de entradas de un solo producto (regla
      «majority»). Si no queda ninguno, `cpe_missing_reason` dice por qué.
   7. Pata de despliegue («los servidores web/proxy y de identidad de mayor despliegue»): ver
-     `deployment_leg`. N y la fuente se fijaron antes de ver ningún resultado.
+     `deployment_leg`. N y la fuente se fijaron antes de ver ningún resultado. v4: cada entrada
+     lleva sus pares del CNA y sus prefijos CPE (`deployment_leg.pairs_method`: registros
+     cvelistV5 de los últimos 36 meses cuyo `product` o CPE contiene el nombre) y las reglas la
+     cargan como producto (`producto_expuesto`). Sin pares ni CPE, no casa nada.
 
 Formato de cada producto:
   - id: estable (fabricante--producto canónicos), nunca se reutiliza
@@ -790,7 +796,11 @@ def build(
     cutoff: dt.date,
     records: dict[str, bytes] | None = None,
     survey: bytes | None = None,
+    deployment_records: dict[str, bytes] | None = None,
+    deployment_source: dict | None = None,
 ) -> dict:
+    """`deployment_records`: registros cvelistV5 de la pata de despliegue (criterio v4);
+    `deployment_source`: procedencia del volcado del que salen (`url`, `sha256`)."""
     sel = select(kev_bytes, cutoff)
     kev, products = sel["kev"], sel["canon"]["products"]
     included, review, below, out_of_scope = [], [], [], []
@@ -881,6 +891,20 @@ def build(
                 "sha256": cvelist.records_hash(used),
             }
         )
+    if deployment_records is not None:
+        src = deployment_source or {}
+        inputs.append(
+            {
+                "name": "cvelistV5-deployment",
+                "url": src.get("url") or deployment_cna.RELEASES_URL,
+                "license": cvelist.LICENSE,
+                "terms_url": cvelist.TERMS_URL,
+                "notice": cvelist.NOTICE,
+                "bulk_sha256": src.get("sha256"),
+                "records": len(deployment_records),
+                "sha256": cvelist.records_hash(deployment_records),
+            }
+        )
     with_cpe = sum(1 for p in included if p["cpe"])
     return {
         "criterion_version": CRITERION_VERSION,
@@ -916,7 +940,7 @@ def build(
         "products": included,
         "needs_review": review,
         "below_threshold": below,
-        "deployment_leg": deployment.build(survey),
+        "deployment_leg": deployment.build(survey, deployment_records, cutoff),
         "out_of_scope": out_of_scope,
     }
 
@@ -932,6 +956,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--survey", type=Path, help="encuesta normalizada (pata de despliegue)")
     ap.add_argument("--offline", action="store_true", help="solo registros cvelistV5 en caché")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar")
+    ap.add_argument(
+        "--cvelist-bulk",
+        type=Path,
+        help="volcado diario de cvelistV5 (…_all_CVEs_at_midnight.zip.zip) para la pata de "
+        "despliegue; sin él, se usan los registros ya en caché",
+    )
+    ap.add_argument("--cvelist-bulk-url", help="URL https de la release de la que sale el volcado")
     ap.add_argument("--output", type=Path, default=OUTPUT)
     args = ap.parse_args(argv)
     data = (
@@ -947,7 +978,19 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             print(f"sin registro cvelistV5: {missing}")
     survey = args.survey.read_bytes() if args.survey else None
-    doc = build(data, args.cutoff, records, survey)
+    dep_records, dep_source = None, None
+    if survey is not None:
+        names = [p["name"] for p in deployment.build(survey)["products"]]
+        if args.cvelist_bulk:
+            url = args.cvelist_bulk_url or deployment_cna.RELEASES_URL
+            if not url.startswith("https://"):
+                raise SystemExit("--cvelist-bulk-url debe ser https")
+            dep_records = deployment_cna.scan_bulk(args.cvelist_bulk, names, args.cutoff)
+            dep_source = {"url": url, "sha256": deployment_cna.file_sha256(args.cvelist_bulk)}
+            deployment_cna.save_cache(dep_records, dep_source)
+        elif (cached := deployment_cna.load_cache()) is not None:
+            dep_records, dep_source = cached
+    doc = build(data, args.cutoff, records, survey, dep_records, dep_source)
     args.output.write_text(render(doc), encoding="utf-8")
     print(f"{args.output}: {doc['stats']}")
     return 0

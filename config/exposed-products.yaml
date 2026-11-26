@@ -5,7 +5,7 @@
 # en el script, se regenera y se revisa por PR (P-10). `manual_changes` solo como excepción, con
 # motivo y PR.
 #
-# CRITERIO v3, reglas v3 (el criterio de partida se fijó en F0, antes
+# CRITERIO v4, reglas v3 (el criterio de partida se fijó en F0, antes
 # de mirar ningún caso; R7):
 #   1. Entradas de CISA KEV con `dateAdded` en los últimos 36 meses hasta `cutoff_date`.
 #   2. Canonicalización: un producto por (fabricante, producto) con las variantes de KEV en
@@ -31,7 +31,10 @@
 #      de sus registros y comparten un término o salen de entradas de un solo producto (regla
 #      «majority»). Si no queda ninguno, `cpe_missing_reason` dice por qué.
 #   7. Pata de despliegue («los servidores web/proxy y de identidad de mayor despliegue»): ver
-#      `deployment_leg`. N y la fuente se fijaron antes de ver ningún resultado.
+#      `deployment_leg`. N y la fuente se fijaron antes de ver ningún resultado. v4: cada entrada
+#      lleva sus pares del CNA y sus prefijos CPE (`deployment_leg.pairs_method`: registros
+#      cvelistV5 de los últimos 36 meses cuyo `product` o CPE contiene el nombre) y las reglas la
+#      cargan como producto (`producto_expuesto`). Sin pares ni CPE, no casa nada.
 #
 # Formato de cada producto:
 #   - id: estable (fabricante--producto canónicos), nunca se reutiliza
@@ -42,9 +45,9 @@
 #     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]; cpe_rule; cpe_missing_reason si vacío
 #     purl: [purl sin versión] (vacío en v2: los productos de borde no tienen purl)
 #     evidence: entradas de KEV que justifican el alta
-criterion_version: 3
+criterion_version: 4
 generator: vs.lists.build_exposed_products
-generator_version: 3.0.0
+generator_version: 4.0.0
 rules_version: 3
 cutoff_date: '2026-11-26'
 window:
@@ -80,6 +83,19 @@ inputs:
   records: 145
   records_missing: []
   sha256: sha256:fa0e94dfc16d1af903ff77a35986fa35afa19a517743e36681858de922a99dbe
+- name: cvelistV5-deployment
+  url: https://github.com/CVEProject/cvelistV5/releases/download/cve_2026-11-26_1800Z/2026-11-26_all_CVEs_at_midnight.zip.zip
+  license: CVE Program Terms of Use (MITRE)
+  terms_url: https://www.cve.org/Legal/TermsOfUse
+  notice: 'Contiene datos de registros CVE. CVE® es una marca de The MITRE Corporation. Usados según los
+    CVE Program Terms of Use (https://www.cve.org/Legal/TermsOfUse): «MITRE hereby grants you a perpetual,
+    worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare
+    derivative works of, publicly display, publicly perform, sublicense, and distribute Common Vulnerabilities
+    and Exposures (CVE). Any copy you make for such purposes is authorized provided that you reproduce
+    MITRE''s copyright designation and this license in any such copy.»'
+  bulk_sha256: sha256:6c06d3f6833d772c3de33e851d9e5d9e99615d8105cd679264137594221ef608
+  records: 2393
+  sha256: sha256:45af09992b5bbde6519307780d55eb608c2d48878173880fbcdabe4752b6c01b
 categories:
 - vpn
 - firewall
@@ -2120,27 +2136,1344 @@ deployment_leg:
     status: pending
     reason: 'ninguna fuente abierta da el despliegue de servidores de identidad o SSH: Common Crawl solo
       ve HTTP; queda como pregunta abierta'
+  pairs_method:
+    version: 1
+    source: cvelistV5, volcado diario completo (release `…_all_CVEs_at_midnight.zip.zip`)
+    records: state PUBLISHED y datePublished en (cutoff_date - 36 meses, cutoff_date]
+    match: los términos del nombre (slug) aparecen seguidos y completos en el `product` de un par de containers.cna.affected,
+      o en el componente product de un prefijo CPE 2.3 del CNA o de los ADP; el vendor no cuenta
+    output: pares vendor/product del CNA y prefijos cpe:2.3:<part>:<vendor>:<product> que contienen el
+      nombre, con el número de registros de la ventana de cada par
   products:
   - id: deployment--apache
     name: apache
     rank: 1
     category: web-proxy
+    cna:
+    - vendor: Aiven-Open
+      product: bigquery-connector-for-apache-kafka
+      records: 1
+    - vendor: Apache HTTP Server Project
+      product: Apache Lounge Windows
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache APISIX
+      records: 36
+    - vendor: Apache Software Foundation
+      product: Apache APISIX Java Plugin Runner
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Abdera
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Accumulo
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ
+      records: 34
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ AMQP
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ All
+      records: 20
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ All Module
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Artemis
+      records: 12
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Artemis Stomp Protocol
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Broker
+      records: 15
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Client
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ KahaDB
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ MQTT
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ MQTT Module
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ NMS AMQP Client
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ NMS OpenWire Client
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ NMS OpenWire Client Library
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Runtime Config
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Stomp
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Web
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache ActiveMQ Web Console
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow
+      records: 107
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Akeyless provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Amazon provider
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Apache Kafka provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow CNCF Kubernetes provider
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Common SQL Provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow FAB provider
+      records: 8
+    - vendor: Apache Software Foundation
+      product: Apache Airflow FTP Provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow FTP provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Fab Provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Git provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Google provider
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Airflow HashiCorp provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Keycloak provider
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Microsoft Azure provider
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Mongo Provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow MySQL Provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Provider for Databricks
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Amazon
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Edge3
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Elasticsearch
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers FAB
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Http
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Keycloak
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers OpenSearch
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers SMTP
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Providers Snowflake
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow SFTP provider
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Airflow SSH provider
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Samba provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Snowflake provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Task SDK
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Teradata provider
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Airflow Yandex provider
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Allura
+      records: 17
+    - vendor: Apache Software Foundation
+      product: Apache Ambari
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Answer
+      records: 37
+    - vendor: Apache Software Foundation
+      product: Apache Ant
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Archiva
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Arrow
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Arrow C++
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Arrow R package
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Arrow Rust
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Arrow Rust Object Store
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Artemis
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache Artemis Stomp Protocol
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Atlas
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Aurora
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Avro Java SDK
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Axis
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Axis 1.x (EOL)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Axis2/C
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Axis2/Java
+      records: 8
+    - vendor: Apache Software Foundation
+      product: Apache BuildStream
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache CXF
+      records: 44
+    - vendor: Apache Software Foundation
+      product: Apache Calcite
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Calcite Avatica
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel
+      records: 90
+    - vendor: Apache Software Foundation
+      product: Apache Camel AWS2 SNS
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Atmosphere Websocket
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel CoAP
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel DNS
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Dapr
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Google PubSub
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Iggy
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel JIRA
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel JMS
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel K
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Camel Karavan
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Camel Keycloak
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel LevelDB
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Lucene
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Mail
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Mina
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Neo4j
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel PQC
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Platform HTTP Main
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Quarkus
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Salesforce
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Undertow
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Camel Vertx Websocket
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Cassandra
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache Causeway
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache CloudStack
+      records: 47
+    - vendor: Apache Software Foundation
+      product: Apache CloudStack Quota plugin
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Cocoon
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache Commons BCEL
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Commons BeanUtils 1.x
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons BeanUtils 2.x
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons Codec
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Commons Compress
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Commons Configuration
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Commons FileUpload
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons IO
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons Lang
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons OGNL
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Commons VFS
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Continuum
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache CouchDB
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache DataSketches
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache DataSketches C++
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache DataSketches Java
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Directory LDAP API
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache DolphinScheduler
+      records: 36
+    - vendor: Apache Software Foundation
+      product: Apache Doris
+      records: 10
+    - vendor: Apache Software Foundation
+      product: Apache Doris MCP Server
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Doris-MCP-Server
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Drill
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Druid
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache Dubbo
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache ECharts
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache EventMesh
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache EventMesh Runtime
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Felix HTTP Webconsole Plugin
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Felix Webconsole
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Fesod (Incubating)
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Fineract
+      records: 12
+    - vendor: Apache Software Foundation
+      product: Apache Flink
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Flink CDC
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Flink Kubernetes Operator
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Fluss (incubating)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Fory
+      records: 11
+    - vendor: Apache Software Foundation
+      product: Apache FreeMarker
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Geode
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Gravitino
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Griffin Hive Metastore Module
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Griffin Web Service
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Guacamole
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache HBase
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HTTP Server
+      records: 75
+    - vendor: Apache Software Foundation
+      product: Apache Hadoop
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Helix Front (UI)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Helix REST
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HertzBeat
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache HertzBeat (incubating)
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Hive
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache Hop Engine
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HttpClient
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HttpComponents
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HttpComponents Client
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache HttpComponents Core
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache HugeGraph-Hubble
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache HugeGraph-Server
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Iggy
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Iggy Go SDK
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Ignite
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Impala
+      records: 7
+    - vendor: Apache Software Foundation
+      product: Apache InLong
+      records: 18
+    - vendor: Apache Software Foundation
+      product: Apache InLong TubeMQ Client
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache IoTDB
+      records: 28
+    - vendor: Apache Software Foundation
+      product: Apache IoTDB C++ client
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache IoTDB JDBC driver
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache IoTDB MCP Server
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache IoTDB Workbench
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Ivy
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache JClouds
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache JSPWIKI
+      records: 14
+    - vendor: Apache Software Foundation
+      product: Apache JSPWiki
+      records: 17
+    - vendor: Apache Software Foundation
+      product: Apache Jackrabbit
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Jackrabbit Core
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Jackrabbit JCR Commons
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache James
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache James Mime4J
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache James Mime4J Core
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache James Mime4J Dom
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache James server
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Jena
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Jena Fuseki
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Johnzon
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Juneau
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache Kafka
+      records: 19
+    - vendor: Apache Software Foundation
+      product: Apache Kafka Client
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Kafka Clients
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Karaf
+      records: 11
+    - vendor: Apache Software Foundation
+      product: Apache Karaf Cave
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Kerby
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Kudu
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Kvrocks
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache Kylin
+      records: 31
+    - vendor: Apache Software Foundation
+      product: Apache Kyuubi
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Linkis
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Linkis  Basic management services
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Linkis Basic management services
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Linkis DataSource
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Linkis Metadata Query Service JDBC
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Linkis Spark EngineConn
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Livy
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Log4cxx
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Log4cxx (Brew)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Log4cxx (Conan)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Log4j 1 to Log4j 2 bridge
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Log4j API
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Log4j Core
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Log4j JSON Template Layout
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Log4net
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Lucene Replicator
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Lucene.Net
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Lucene.Net.Replicator
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Lucy
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache MINA
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache MINA SSHD
+      records: 14
+    - vendor: Apache Software Foundation
+      product: Apache MyFaces
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Mynewt NimBLE
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Neethi
+      records: 11
+    - vendor: Apache Software Foundation
+      product: Apache NiFi
+      records: 21
+    - vendor: Apache Software Foundation
+      product: Apache NiFi Registry
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache NimBLE
+      records: 11
+    - vendor: Apache Software Foundation
+      product: Apache Nutch
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache NuttX RTOS
+      records: 4
+    - vendor: Apache Software Foundation
+      product: 'Apache NuttX RTOS: tools/bdf-converter.'
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache OFBiz
+      records: 82
+    - vendor: Apache Software Foundation
+      product: Apache ORC
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Oozie
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache OpenMeetings
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache OpenNLP
+      records: 7
+    - vendor: Apache Software Foundation
+      product: 'Apache OpenNLP :: Core :: ML :: LibSVM'
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache OpenOffice
+      records: 21
+    - vendor: Apache Software Foundation
+      product: Apache Ozone
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache PDFBox Examples
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache PLC4X
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache POI
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Parquet Hadoop
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Parquet Java
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Pekko Management
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Perl
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Pinot
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Polaris
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Portable Runtime (APR)
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Portable Runtime Utility
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache Pulsar
+      records: 21
+    - vendor: Apache Software Foundation
+      product: Apache Pulsar IO Kafka Connect Adaptor
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Pulsar IO Kafka Connector
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Pulsar Manager
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Pulsar WebSocket Proxy
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Qpid Broker-J
+      records: 13
+    - vendor: Apache Software Foundation
+      product: Apache Qpid Proton C
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Qpid Proton Dotnet
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Qpid Proton-J
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Qpid ProtonJ2
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache Ranger
+      records: 15
+    - vendor: Apache Software Foundation
+      product: Apache RocketMQ
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Roller
+      records: 37
+    - vendor: Apache Software Foundation
+      product: Apache SIS
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache SeaTunnel
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache SeaTunnel Web
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Seata
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Seata (incubating)
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache ServiceComb Service-Center
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache ShardingSphere ElasticJob-UI
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Shindig Common
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Shindig Social-Api
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Shiro
+      records: 19
+    - vendor: Apache Software Foundation
+      product: Apache Shiro Jakarta EE module
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache SkyWalking
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache SkyWalking BanyanDB
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache SkyWalking MCP
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Sling Engine
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Sling Security Bundle
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Sling Servlets Resolver
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Sling XSS
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Solr
+      records: 14
+    - vendor: Apache Software Foundation
+      product: Apache Solr Operator
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Spark
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache Storm
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Storm Client
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Storm DRPC
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Storm Logviewer
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Storm Nimbus
+      records: 8
+    - vendor: Apache Software Foundation
+      product: Apache Storm Prometheus Reporter
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Storm UI
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Storm Webapp
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Storm Worker
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Storm Worker Launcher
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache StormCrawler
+      records: 4
+    - vendor: Apache Software Foundation
+      product: Apache StreamPark
+      records: 9
+    - vendor: Apache Software Foundation
+      product: Apache StreamPark (incubating)
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache StreamPipes
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache Struts
+      records: 15
+    - vendor: Apache Software Foundation
+      product: Apache Struts Extras
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Submarine Commons Utils
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Submarine Server Core
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Subversion
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Superset
+      records: 36
+    - vendor: Apache Software Foundation
+      product: Apache Syncope
+      records: 41
+    - vendor: Apache Software Foundation
+      product: Apache Tapestry
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Texera
+      records: 8
+    - vendor: Apache Software Foundation
+      product: Apache Thrift
+      records: 87
+    - vendor: Apache Software Foundation
+      product: Apache Tika
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Tika PDF parser module
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Tika core
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Tika parsers
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Tiles
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache TomEE
+      records: 38
+    - vendor: Apache Software Foundation
+      product: Apache Tomcat
+      records: 98
+    - vendor: Apache Software Foundation
+      product: Apache Tomcat Connectors
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache Tomcat Native
+      records: 5
+    - vendor: Apache Software Foundation
+      product: Apache Traffic Control
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Traffic Server
+      records: 71
+    - vendor: Apache Software Foundation
+      product: Apache Uniffle
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache VCL
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache Vysper
+      records: 2
+    - vendor: Apache Software Foundation
+      product: Apache WSS4J
+      records: 8
+    - vendor: Apache Software Foundation
+      product: Apache Wicket
+      records: 37
+    - vendor: Apache Software Foundation
+      product: Apache XML Graphics Batik
+      records: 6
+    - vendor: Apache Software Foundation
+      product: Apache XML Graphics FOP
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache XMLSchema
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Xerces C++
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache YuniKorn
+      records: 3
+    - vendor: Apache Software Foundation
+      product: Apache Zeppelin
+      records: 17
+    - vendor: Apache Software Foundation
+      product: Apache Zeppelin SAP
+      records: 1
+    - vendor: Apache Software Foundation
+      product: Apache ZooKeeper
+      records: 15
+    - vendor: Apache Software Foundation
+      product: Apache bRPC
+      records: 39
+    - vendor: Apache Software Foundation
+      product: Apache log4net
+      records: 9
+    - vendor: CHORNY
+      product: Apache::Session
+      records: 1
+    - vendor: CHORNY
+      product: Apache::Session::Generate::MD5
+      records: 1
+    - vendor: CHORNY
+      product: Apache::Session::Generate::ModUniqueId
+      records: 1
+    - vendor: EG Secure Solutions Inc.
+      product: SiteGuard Server Edition for Apache httpd
+      records: 1
+    - vendor: EG Secure Solutions Inc.
+      product: SiteGuard Server Edition for Apache httpd on FreeBSD
+      records: 1
+    - vendor: GRICHTER
+      product: Apache::SessionX
+      records: 1
+    - vendor: GUIMARD
+      product: Apache::Session::Generate::SHA256
+      records: 1
+    - vendor: JDEGUEST
+      product: Apache::API::Password
+      records: 1
+    - vendor: KGOLDOV
+      product: Apache::AuthAny
+      records: 1
+    - vendor: Microsoft
+      product: Azure Managed Instance for Apache Cassandra
+      records: 5
+    - vendor: Progress
+      product: DataDirect Connect for JDBC for Apache Cassandra
+      records: 2
+    - vendor: Progress
+      product: DataDirect Connect for JDBC for Apache Impala
+      records: 2
+    - vendor: Progress
+      product: DataDirect Connect for JDBC for Apache SparkSQL
+      records: 2
+    - vendor: Quiter
+      product: Quiter Gateway (Java WAR on Apache Tomcat)
+      records: 11
+    - vendor: Red Hat
+      product: HawtIO 4.0.0 for Red Hat build of Apache Camel 4
+      records: 2
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 3.33.3.SP1
+      records: 2
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 3.33.3.SP2
+      records: 9
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 3.33.4.redhat
+      records: 4
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 4.18 for Quarkus 3.33
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 4.4 for Quarkus 3.8
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat Build of Apache Camel 4.8 for Quarkus 3.15
+      records: 3
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel - HawtIO 4
+      records: 19
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 3.20.7 for Spring Boot
+      records: 2
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4 for Quarkus 3
+      records: 38
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.14.2 for Spring Boot 3.5.8
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.14.4 for Spring Boot 3.5.11
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.18.1 for Spring Boot 3.5.14
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.4.0 for Spring Boot
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.4.1 for Spring Boot 3.2
+      records: 5
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.4.2 for Spring Boot
+      records: 2
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel 4.8.5 for Spring Boot
+      records: 1
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel for Spring Boot 3
+      records: 9
+    - vendor: Red Hat
+      product: Red Hat build of Apache Camel for Spring Boot 4
+      records: 39
+    - vendor: Red Hat
+      product: Streams for Apache Kafka 2.8.0
+      records: 1
+    - vendor: Red Hat
+      product: Streams for Apache Kafka 2.9.0
+      records: 1
+    - vendor: Red Hat
+      product: Streams for Apache Kafka 2.9.1
+      records: 1
+    - vendor: Red Hat
+      product: Streams for Apache Kafka 3.0.0
+      records: 1
+    - vendor: Red Hat
+      product: Streams for Apache Kafka 3.1.0
+      records: 1
+    - vendor: Red Hat
+      product: StreamsHub Console for Apache Kafka®
+      records: 3
+    - vendor: Red Hat
+      product: streams for Apache Kafka
+      records: 7
+    - vendor: Red Hat
+      product: streams for Apache Kafka 2
+      records: 5
+    - vendor: Red Hat
+      product: streams for Apache Kafka 3
+      records: 8
+    - vendor: Spring
+      product: Spring for Apache Kafka
+      records: 5
+    - vendor: Spring
+      product: Spring for Apache Pulsar
+      records: 1
+    - vendor: TYPO3
+      product: Extension "Apache Solr for TYPO3 - Enterprise Search"
+      records: 5
+    - vendor: WSO2
+      product: org.apache.synapse:synapse-core
+      records: 1
+    - vendor: WSO2
+      product: org.apache.synapse:synapse-extensions
+      records: 1
+    - vendor: WSO2
+      product: org.apache.ws.commons.axiom.wso2:axiom
+      records: 1
+    cpe:
+    - cpe:2.3:a:apache:apache_http_server
+    - cpe:2.3:a:apache_software_foundation:Apache_APISIX
+    - cpe:2.3:a:apache_software_foundation:apache_answer
+    - cpe:2.3:a:apache_software_foundation:apache_archiva
+    - cpe:2.3:a:apache_software_foundation:apache_arrow_r_package
+    - cpe:2.3:a:apache_software_foundation:apache_aurora
+    - cpe:2.3:a:apache_software_foundation:apache_cloudstack
+    - cpe:2.3:a:apache_software_foundation:apache_dolphinscheduler
+    - cpe:2.3:a:apache_software_foundation:apache_drill
+    - cpe:2.3:a:apache_software_foundation:apache_helix_front\/ui\/
+    - cpe:2.3:a:apache_software_foundation:apache_http_server
+    - cpe:2.3:a:apache_software_foundation:apache_inlong
+    - cpe:2.3:a:apache_software_foundation:apache_kylin
+    - cpe:2.3:a:apache_software_foundation:apache_linkis_spark_engineconn
+    - cpe:2.3:a:apache_software_foundation:apache_ofbiz
+    - cpe:2.3:a:apache_software_foundation:apache_seatunnel_web
+    - cpe:2.3:a:apache_software_foundation:apache_solr
+    - cpe:2.3:a:apache_software_foundation:apache_streampark
+    - cpe:2.3:a:apache_software_foundation:apache_streampipes
+    - cpe:2.3:a:apache_software_foundation:apache_superset
+    - cpe:2.3:a:apache_software_foundation:apache_traffic_server
+    - cpe:2.3:a:apache_software_foundation:apache_zeppelin
+    records: 2214
   - id: deployment--nginx
     name: nginx
     rank: 2
     category: web-proxy
+    cna:
+    - vendor: 0xJacky
+      product: nginx-ui
+      records: 44
+    - vendor: Anipaleja
+      product: nginx-defender
+      records: 1
+    - vendor: EG Secure Solutions Inc.
+      product: SiteGuard Server Edition for Nginx
+      records: 1
+    - vendor: EG Secure Solutions Inc.
+      product: SiteGuard Server Edition for Nginx on FreeBSD
+      records: 1
+    - vendor: F5
+      product: NGINX API Connectivity Manager
+      records: 1
+    - vendor: F5
+      product: NGINX Agent
+      records: 2
+    - vendor: F5
+      product: NGINX App Protect WAF
+      records: 1
+    - vendor: F5
+      product: NGINX Gateway Fabric
+      records: 6
+    - vendor: F5
+      product: NGINX Ingress Controller
+      records: 7
+    - vendor: F5
+      product: NGINX Instance Manager
+      records: 2
+    - vendor: F5
+      product: NGINX JavaScript
+      records: 6
+    - vendor: F5
+      product: NGINX Open Source
+      records: 46
+    - vendor: F5
+      product: NGINX OpenID Connect
+      records: 1
+    - vendor: F5
+      product: NGINX Plus
+      records: 45
+    - vendor: F5
+      product: NGINX Unit
+      records: 1
+    - vendor: Juni
+      product: Hestia Nginx Cache
+      records: 1
+    - vendor: Kubernetes
+      product: ingress-nginx
+      records: 9
+    - vendor: NginxProxyManager
+      product: nginx-proxy-manager
+      records: 4
+    - vendor: Razvan Stanga
+      product: Varnish/Nginx Proxy Caching
+      records: 2
+    - vendor: SUSE
+      product: Rancher Prime RKE2 ingress-nginx
+      records: 1
+    - vendor: ekaterir
+      product: Cache Sniper for Nginx
+      records: 1
+    - vendor: getclouder
+      product: NGINX Cache Optimizer
+      records: 1
+    - vendor: kubernetes
+      product: ingress-nginx
+      records: 5
+    - vendor: lucasdillmann
+      product: nginx-ignition
+      records: 3
+    - vendor: openresty
+      product: stream-lua-nginx-module
+      records: 1
+    - vendor: psauxit
+      product: Nginx Cache Purge Preload
+      records: 1
+    - vendor: winshining
+      product: nginx-http-flv-module
+      records: 1
+    cpe:
+    - cpe:2.3:a:f5:nginx
+    - cpe:2.3:a:f5:nginx_plus
+    - cpe:2.3:a:jc21:nginx_proxy_manager
+    - cpe:2.3:a:kubernetes:ingress-nginx
+    - cpe:2.3:a:nginxproxymanager:nginx-proxy-manager
+    - cpe:2.3:a:nginxproxymanager:nginx_proxy_manager
+    - cpe:2.3:a:nginxui:nginx_ui
+    records: 150
   - id: deployment--litespeed
     name: litespeed
     rank: 3
     category: web-proxy
+    cna:
+    - vendor: Hai Zheng / Lite Speed Cache
+      product: LiteSpeed Cache
+      records: 2
+    - vendor: LiteSpeed Technologies
+      product: LiteSpeed Cache
+      records: 10
+    - vendor: LiteSpeed Technologies
+      product: LiteSpeed Cache Plugin for Prestashop
+      records: 1
+    - vendor: LiteSpeed Technologies Inc
+      product: LiteSpeed Web Server Enterprise
+      records: 1
+    - vendor: Unknown
+      product: LiteSpeed Cache
+      records: 3
+    - vendor: litespeedtech
+      product: LiteSpeed Cache
+      records: 11
+    - vendor: litespeedtech
+      product: LiteSpeed Web Server
+      records: 1
+    cpe:
+    - cpe:2.3:a:litespeed_technologies:litespeed_cache
+    - cpe:2.3:a:litespeedtech:litespeed_cache
+    records: 29
   - id: deployment--microsoft-iis
     name: microsoft-iis
     rank: 4
     category: web-proxy
+    cna: []
+    cpe: []
+    records: 0
+    cna_missing_reason: ningún registro de la ventana tiene un par del CNA cuyo producto contenga el nombre
+    cpe_missing_reason: ningún registro de la ventana tiene un CPE cuyo producto contenga el nombre
   - id: deployment--openresty
     name: openresty
     rank: 5
     category: web-proxy
+    cna:
+    - vendor: openresty
+      product: openresty
+      records: 1
+    cpe: []
+    records: 1
+    cpe_missing_reason: ningún registro de la ventana tiene un CPE cuyo producto contenga el nombre
   skipped_above_cut:
   - name: cloudflare
     reason: servicio o CDN

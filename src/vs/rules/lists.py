@@ -1,7 +1,8 @@
 """Listas que usan las reglas: productos expuestos y autores de exploits de confianza.
 
 Se leen con el formato que generan los scripts de `vs.lists` (F1a-0, R7). Solo cuentan las
-secciones aprobadas: `products` y `authors`. Lo que está en `needs_review` o `below_threshold` no
+secciones aprobadas: `products`, `deployment_leg.products` (si está activa; criterio v4) y
+`authors`. Lo que está en `needs_review` o `below_threshold` no
 decide nada hasta que Juan lo revise.
 
 Las reglas no saben de dónde salen las listas: los tests usan listas de fixture
@@ -91,6 +92,26 @@ def _exposed(item: Mapping[str, Any]) -> ExposedProduct:
     )
 
 
+def _deployment(item: Mapping[str, Any]) -> ExposedProduct:
+    """Entrada de `deployment_leg` (criterio v4): casa por sus pares del CNA y sus prefijos CPE.
+
+    No tiene `vendor`/`product` propios: su nombre sale de la cabecera `Server`. Sin pares ni CPE,
+    no casa nada.
+    """
+    names = {
+        (norm(c.get("vendor")), norm(c.get("product")))
+        for c in item.get("cna") or []
+        if isinstance(c, Mapping)
+    }
+    return ExposedProduct(
+        id=str(item["id"]),
+        category=str(item["category"]),
+        names=frozenset(n for n in names if n[1]),
+        cpe_prefixes=tuple(sorted(norm(c) for c in item.get("cpe") or [] if c)),
+        purls=frozenset(),
+    )
+
+
 def _author(item: Mapping[str, Any]) -> TrustedAuthor:
     gh = item.get("github") or []
     if isinstance(gh, str):
@@ -108,6 +129,13 @@ def parse_lists(
         if categories and p.get("category") not in categories:
             raise ValueError(f"producto {p.get('id')!r} con categoría desconocida")
         exposed.append(_exposed(p))
+    # Criterio v4: la pata de despliegue activa también es `producto_expuesto`.
+    leg = (exposed_doc or {}).get("deployment_leg") or {}
+    if leg.get("status") == "active":
+        for p in leg.get("products") or []:
+            if categories and p.get("category") not in categories:
+                raise ValueError(f"producto {p.get('id')!r} con categoría desconocida")
+            exposed.append(_deployment(p))
     authors = [_author(a) for a in (authors_doc or {}).get("authors") or []]
     return RuleLists(
         exposed=tuple(sorted(exposed, key=lambda e: e.id)),

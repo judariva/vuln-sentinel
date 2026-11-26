@@ -9,6 +9,21 @@
       "commit": "07059e5cb353a3860ad31fbea95956c728885075",
       "committed_at": "2026-11-18T16:15:24Z",
       "file": "CVE-2026-123007.07059e5c.json"
+    },
+    {
+      "commit": "89edb96c18693b38ae4d8dcd87c464c425faf3fd",
+      "committed_at": "2026-11-18T19:40:59Z",
+      "file": "CVE-2026-123007.89edb96c.json"
+    },
+    {
+      "commit": "8f5b7cfd9a7c07f659ae44ee759ba2a669d11115",
+      "committed_at": "2026-11-18T19:52:50Z",
+      "file": "CVE-2026-123007.8f5b7cfd.json"
+    },
+    {
+      "commit": "6eca39f00ea29b77961243c99895c4d21c4b4cac",
+      "committed_at": "2026-11-18T20:17:41Z",
+      "file": "CVE-2026-123007.6eca39f0.json"
     }
   ],
   "CVE-2026-123633": [
@@ -21,6 +36,26 @@
       "commit": "35e04952aea5448a0d3d26601adbeaa6ffed21ec",
       "committed_at": "2026-11-18T16:57:10Z",
       "file": "CVE-2026-123633.35e04952.json"
+    },
+    {
+      "commit": "bc1b5d8ce8f8170af5eb197bdb4595fa692a84d4",
+      "committed_at": "2026-11-18T19:28:22Z",
+      "file": "CVE-2026-123633.bc1b5d8c.json"
+    },
+    {
+      "commit": "8f5b7cfd9a7c07f659ae44ee759ba2a669d11115",
+      "committed_at": "2026-11-18T19:52:50Z",
+      "file": "CVE-2026-123633.8f5b7cfd.json"
+    },
+    {
+      "commit": "6eca39f00ea29b77961243c99895c4d21c4b4cac",
+      "committed_at": "2026-11-18T20:17:41Z",
+      "file": "CVE-2026-123633.6eca39f0.json"
+    },
+    {
+      "commit": "253db544f18b9e04ecddb414410476c4128ddffd",
+      "committed_at": "2026-11-18T22:19:17Z",
+      "file": "CVE-2026-123633.253db544.json"
     }
   ]
 }
