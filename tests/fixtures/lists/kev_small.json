@@ -1,0 +1,25 @@
+{
+  "title": "Fixture sintético con la forma del catálogo CISA KEV (fabricantes ficticios)",
+  "catalogVersion": "2026.11.25",
+  "dateReleased": "2026-11-25T00:00:00.0000Z",
+  "count": 17,
+  "vulnerabilities": [
+    {"cveID": "CVE-2026-90001", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Command Injection Vulnerability", "dateAdded": "2026-10-01"},
+    {"cveID": "CVE-2025-90002", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Authentication Bypass Vulnerability", "dateAdded": "2025-03-10"},
+    {"cveID": "CVE-2024-90003", "vendorProject": "ACME", "product": "VPN gateway", "vulnerabilityName": "ACME VPN gateway Path Traversal Vulnerability", "dateAdded": "2024-01-15"},
+    {"cveID": "CVE-2019-90004", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Old Vulnerability", "dateAdded": "2020-06-01"},
+    {"cveID": "CVE-2026-90005", "vendorProject": "Acme", "product": "Secure Access", "vulnerabilityName": "Acme Secure Access Code Injection Vulnerability", "dateAdded": "2026-05-05"},
+    {"cveID": "CVE-2026-90006", "vendorProject": "Acme", "product": "VPN Gateway", "vulnerabilityName": "Acme VPN Gateway Future Vulnerability", "dateAdded": "2026-12-01"},
+    {"cveID": "CVE-2026-90007", "vendorProject": "Globex", "product": "Mail Relay", "vulnerabilityName": "Globex Mail Relay Deserialization Vulnerability", "dateAdded": "2026-02-02"},
+    {"cveID": "CVE-2025-90008", "vendorProject": "Globex", "product": "Mail Relay", "vulnerabilityName": "Globex Mail Relay SQL Injection Vulnerability", "dateAdded": "2025-08-08"},
+    {"cveID": "CVE-2026-90009", "vendorProject": "Initech", "product": "Office Suite", "vulnerabilityName": "Initech Office Suite Use-After-Free Vulnerability", "dateAdded": "2026-01-01"},
+    {"cveID": "CVE-2025-90010", "vendorProject": "Initech", "product": "Office Suite", "vulnerabilityName": "Initech Office Suite Type Confusion Vulnerability", "dateAdded": "2025-01-01"},
+    {"cveID": "CVE-2024-90011", "vendorProject": "Initech", "product": "Office Suite", "vulnerabilityName": "Initech Office Suite Memory Corruption Vulnerability", "dateAdded": "2024-06-01"},
+    {"cveID": "CVE-2026-90012", "vendorProject": "Umbrella", "product": "Email Firewall", "vulnerabilityName": "Umbrella Email Firewall Command Injection Vulnerability", "dateAdded": "2026-03-03"},
+    {"cveID": "CVE-2026-90013", "vendorProject": "Hooli", "product": "Desktop OS", "vulnerabilityName": "Hooli Desktop OS Hypervisor Escape Vulnerability", "dateAdded": "2026-04-04"},
+    {"cveID": "CVE-2026-90014", "vendorProject": "Hooli", "product": "Desktop OS", "vulnerabilityName": "Hooli Desktop OS Privilege Escalation Vulnerability", "dateAdded": "2026-04-05"},
+    {"cveID": "CVE-2026-90015", "vendorProject": "Hooli", "product": "Desktop OS", "vulnerabilityName": "Hooli Desktop OS Kernel Vulnerability", "dateAdded": "2026-04-06"},
+    {"cveID": "CVE-2026-90016", "vendorProject": "Hooli", "product": "Desktop OS", "vulnerabilityName": "Hooli Desktop OS Driver Vulnerability", "dateAdded": "2026-04-07"},
+    {"cveID": "CVE-2026-90017", "vendorProject": "Soylent", "product": "Widget", "vulnerabilityName": "Soylent Widget Vulnerability", "dateAdded": "2026-04-08"}
+  ]
+}

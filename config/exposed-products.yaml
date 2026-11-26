@@ -1,29 +1,2391 @@
 # Productos expuestos a Internet de uso masivo (PLAN.md §5.2, `producto_expuesto`).
 #
-# CRITERIO v1 (antes de mirar ningún caso):
-#   Productos de las categorías de abajo cuyo fabricante tenga al menos 3 entradas en CISA KEV en
-#   los últimos 36 meses en esa categoría, más los servidores web/proxy y de identidad de mayor
-#   despliegue. La lista inicial la propone un script en F1a a partir de KEV y Juan la revisa
-#   (P-10). Cada alta o baja es un commit con su motivo.
+# FICHERO GENERADO por vs.lists.build_exposed_products
+# (src/vs/lists/build_exposed_products.py). No se edita a mano: se cambia el criterio o las reglas
+# en el script, se regenera y se revisa por PR (P-10).
+#
+# CRITERIO v1 (fijado antes de mirar ningún caso; R7):
+#   1. Entradas de CISA KEV con `dateAdded` en los últimos 36 meses hasta `cutoff_date`.
+#   2. Cada entrada recibe las categorías cuyas palabras clave (`rules`, abajo) aparecen en
+#      vendorProject, product o vulnerabilityName. Son palabras de tipo de producto; algunas
+#      (esxi, vcenter, vsphere, hyper-v, connect secure, exchange server) son nombres de producto
+#      usados como tipo y Juan debe confirmarlas o quitarlas en la revisión.
+#   3. Un producto (vendor/product normalizados) tiene categoría si sus entradas dan una sola y esa
+#      casa en al menos la mitad de sus entradas. Entra en `products` si su fabricante suma al menos
+#      3 entradas de esa categoría en la ventana; si no, va a `below_threshold`.
+#   4. Van a `needs_review` (NUNCA a `products`): los productos con varias categorías, aquellos cuya
+#      categoría casa en menos de la mitad de sus entradas y los productos sin categoría cuyo
+#      fabricante suma al menos 3 entradas en la ventana.
+#   5. Lo demás se ignora y solo se cuenta en `stats`.
+#   Pendiente (pregunta abierta del PR): «los servidores web/proxy y de identidad de mayor
+#   despliegue» del criterio anterior no tiene fuente determinista y no se aplica.
 #
 # Formato de cada producto:
-#   - id: estable, nunca se reutiliza
+#   - id: estable (fabricante--producto normalizados), nunca se reutiliza
 #     category: una de `categories`
-#     vendor: nombre normalizado
-#     product: nombre normalizado
-#     aliases: [nombres vendor/product tal como aparecen en registros CVE de distintos CNA]
-#     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>]
-#     purl: [purl sin versión, si existe]
+#     vendor / product: tal como aparecen en KEV (forma más frecuente)
+#     aliases: [{vendor, product} tal como aparecen en KEV]
+#     cpe: [prefijos cpe:2.3:<part>:<vendor>:<product>] (vacío en v1: KEV no trae CPE)
+#     purl: [purl sin versión] (vacío en v1)
+#     evidence: entradas de KEV que justifican el alta
 criterion_version: 1
+generator: vs.lists.build_exposed_products
+generator_version: 1.0.0
+rules_version: 1
+cutoff_date: '2026-11-26'
+window:
+  months: 36
+  from_exclusive: '2023-11-26'
+threshold: 3
+inputs:
+- name: cisa-kev
+  url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  license: CC0-1.0
+  catalog_version: 2026.11.25
+  sha256: sha256:a76360009e4a65794a2b8073df5475f7a787a3bb83c3bfad2b0c3434a067631a
 categories:
+- vpn
+- firewall
+- load-balancer
+- web-proxy
+- identity
+- hypervisor
+- cicd
+- mail
+- file-transfer
+- remote-access
+rules:
+  vpn:
   - vpn
+  - ssl[- ]?vpn
+  - secure access
+  - access gateway
+  - connect secure
+  firewall:
   - firewall
-  - load-balancer
-  - web-proxy
+  - waf
+  - threat defense
+  - security gateway
+  - utm
+  load-balancer:
+  - load[- ]balanc\w*
+  - adc
+  - application delivery
+  - traffic manager
+  web-proxy:
+  - proxy
+  - reverse proxy
+  - web server
+  - http server
+  - httpd
+  identity:
   - identity
+  - sso
+  - single sign[- ]on
+  - access manager
+  - active directory
+  - federation
+  - adfs
+  hypervisor:
   - hypervisor
-  - cicd
-  - mail
-  - file-transfer
-  - remote-access
-products: []
+  - esxi
+  - vcenter
+  - vsphere
+  - hyper-v
+  - virtualization
+  cicd:
+  - ci/cd
+  - continuous integration
+  - build server
+  - devops
+  - artifact repository
+  - repository manager
+  mail:
+  - \w*mail\w*
+  - exchange server
+  file-transfer:
+  - file transfer
+  - \w*ftp\w*
+  - mft
+  - file sharing
+  remote-access:
+  - remote access
+  - remote support
+  - remote desktop
+  - remote management
+  - remote monitoring
+  - rmm
+stats:
+  kev_entries_total: 1805
+  kev_entries_in_window: 765
+  products_in_window: 389
+  products: 27
+  needs_review: 184
+  below_threshold: 18
+  ignored: 160
+products:
+- id: beyondtrust--privileged-remote-access-pra-and-remote-support-rs
+  category: remote-access
+  vendor: BeyondTrust
+  product: Privileged Remote Access (PRA) and Remote Support (RS)
+  aliases:
+  - vendor: BeyondTrust
+    product: Privileged Remote Access (PRA) and Remote Support (RS)
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 4
+    cves:
+    - CVE-2024-12356
+    - CVE-2024-12686
+- id: beyondtrust--remote-support
+  category: remote-access
+  vendor: BeyondTrust
+  product: Remote Support
+  aliases:
+  - vendor: BeyondTrust
+    product: Remote Support
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 4
+    cves:
+    - CVE-2026-102764
+- id: beyondtrust--remote-support-rs-and-privileged-remote-access-pra
+  category: remote-access
+  vendor: BeyondTrust
+  product: Remote Support (RS) and Privileged Remote Access (PRA)
+  aliases:
+  - vendor: BeyondTrust
+    product: Remote Support (RS) and Privileged Remote Access (PRA)
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 4
+    cves:
+    - CVE-2026-1731
+- id: broadcom--vmware-vcenter
+  category: hypervisor
+  vendor: Broadcom
+  product: VMware vCenter
+  aliases:
+  - vendor: Broadcom
+    product: VMware vCenter
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 3
+    cves:
+    - CVE-2026-123890
+    - CVE-2026-59310
+- id: broadcom--vmware-vcenter-server
+  category: hypervisor
+  vendor: Broadcom
+  product: VMware vCenter Server
+  aliases:
+  - vendor: Broadcom
+    product: VMware vCenter Server
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 3
+    cves:
+    - CVE-2024-37079
+- id: cisco--adaptive-security-appliance-asa-and-firepower-threat-defense-ftd
+  category: firewall
+  vendor: Cisco
+  product: Adaptive Security Appliance (ASA) and Firepower Threat Defense (FTD)
+  aliases:
+  - vendor: Cisco
+    product: Adaptive Security Appliance (ASA) and Firepower Threat Defense (FTD)
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 11
+    cves:
+    - CVE-2020-3259
+    - CVE-2024-20353
+    - CVE-2024-20359
+    - CVE-2024-20481
+- id: cisco--identity-services-engine
+  category: identity
+  vendor: Cisco
+  product: Identity Services Engine
+  aliases:
+  - vendor: Cisco
+    product: Identity Services Engine
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2025-20281
+    - CVE-2025-20337
+    - CVE-2026-76460
+- id: cisco--secure-firewall-adaptive-security-appliance-and-secure-firewall-threat-defense
+  category: firewall
+  vendor: Cisco
+  product: Secure Firewall Adaptive Security Appliance and Secure Firewall Threat Defense
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance and Secure Firewall Threat Defense
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 11
+    cves:
+    - CVE-2025-20333
+    - CVE-2025-20362
+- id: cisco--secure-firewall-adaptive-security-appliance-asa-and-secure-firewall-threat-defense-ftd
+  category: firewall
+  vendor: Cisco
+  product: Secure Firewall Adaptive Security Appliance (ASA) and Secure Firewall Threat Defense (FTD)
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Adaptive Security Appliance (ASA) and Secure Firewall Threat Defense (FTD)
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 11
+    cves:
+    - CVE-2026-20349
+- id: cisco--secure-firewall-asa-software-and-cisco-secure-ftd-software
+  category: firewall
+  vendor: Cisco
+  product: Secure Firewall ASA Software and Cisco Secure FTD Software
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall ASA Software and Cisco Secure FTD Software
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 11
+    cves:
+    - CVE-2026-76418
+- id: cisco--secure-firewall-management-center-fmc
+  category: firewall
+  vendor: Cisco
+  product: Secure Firewall Management Center (FMC)
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Management Center (FMC)
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 11
+    cves:
+    - CVE-2026-20131
+    - CVE-2026-20316
+- id: cisco--secure-firewall-management-center-fmc-and-security-cloud-control-scc-firewall-management
+  category: firewall
+  vendor: Cisco
+  product: Secure Firewall Management Center (FMC) and Security Cloud Control (SCC) Firewall Management
+  aliases:
+  - vendor: Cisco
+    product: Secure Firewall Management Center (FMC) and Security Cloud Control (SCC) Firewall Management
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 11
+    cves:
+    - CVE-2026-20079
+- id: citrix--netscaler-adc-and-gateway
+  category: load-balancer
+  vendor: Citrix
+  product: NetScaler ADC and Gateway
+  aliases:
+  - vendor: Citrix
+    product: NetScaler ADC and Gateway
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 5
+    cves:
+    - CVE-2025-5777
+    - CVE-2025-6543
+- id: citrix--netscaler-adc-and-netscaler-gateway
+  category: load-balancer
+  vendor: Citrix
+  product: NetScaler ADC and NetScaler Gateway
+  aliases:
+  - vendor: Citrix
+    product: NetScaler ADC and NetScaler Gateway
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 5
+    cves:
+    - CVE-2023-6548
+    - CVE-2023-6549
+    - CVE-2026-8452
+- id: crushftp--crushftp
+  category: file-transfer
+  vendor: CrushFTP
+  product: CrushFTP
+  aliases:
+  - vendor: CrushFTP
+    product: CrushFTP
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2024-4040
+    - CVE-2025-31161
+    - CVE-2025-54309
+- id: ivanti--connect-secure
+  category: vpn
+  vendor: Ivanti
+  product: Connect Secure
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 8
+    cves:
+    - CVE-2026-104935
+    - CVE-2026-111357
+    - CVE-2026-118527
+- id: ivanti--connect-secure-and-policy-secure
+  category: vpn
+  vendor: Ivanti
+  product: Connect Secure and Policy Secure
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure and Policy Secure
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 8
+    cves:
+    - CVE-2023-46805
+    - CVE-2024-21887
+- id: ivanti--connect-secure-policy-secure-and-neurons
+  category: vpn
+  vendor: Ivanti
+  product: Connect Secure, Policy Secure, and Neurons
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and Neurons
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 8
+    cves:
+    - CVE-2024-21893
+- id: ivanti--connect-secure-policy-secure-and-zta-gateways
+  category: vpn
+  vendor: Ivanti
+  product: Connect Secure, Policy Secure, and ZTA Gateways
+  aliases:
+  - vendor: Ivanti
+    product: Connect Secure, Policy Secure, and ZTA Gateways
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 8
+    cves:
+    - CVE-2025-0282
+    - CVE-2025-22457
+- id: microsoft--exchange-server
+  category: mail
+  vendor: Microsoft
+  product: Exchange Server
+  aliases:
+  - vendor: Microsoft
+    product: Exchange Server
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 4
+    cves:
+    - CVE-2021-31196
+    - CVE-2023-21529
+    - CVE-2024-21410
+- id: microsoft--microsoft
+  category: mail
+  vendor: Microsoft
+  product: Microsoft
+  aliases:
+  - vendor: Microsoft
+    product: Microsoft
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 4
+    cves:
+    - CVE-2026-42897
+- id: roundcube--webmail
+  category: mail
+  vendor: Roundcube
+  product: Webmail
+  aliases:
+  - vendor: Roundcube
+    product: Webmail
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 6
+    vendor_category_entries: 6
+    cves:
+    - CVE-2020-13965
+    - CVE-2023-43770
+    - CVE-2024-37383
+    - CVE-2024-42009
+    - CVE-2025-49113
+    - CVE-2025-68461
+- id: smartertools--smartermail
+  category: mail
+  vendor: SmarterTools
+  product: SmarterMail
+  aliases:
+  - vendor: SmarterTools
+    product: SmarterMail
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 3
+    vendor_category_entries: 3
+    cves:
+    - CVE-2025-52691
+    - CVE-2026-23760
+    - CVE-2026-24423
+- id: vmware--esxi
+  category: hypervisor
+  vendor: VMware
+  product: ESXi
+  aliases:
+  - vendor: VMware
+    product: ESXi
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 2
+    vendor_category_entries: 8
+    cves:
+    - CVE-2024-37085
+    - CVE-2025-22225
+- id: vmware--esxi-and-workstation
+  category: hypervisor
+  vendor: VMware
+  product: ESXi and Workstation
+  aliases:
+  - vendor: VMware
+    product: ESXi and Workstation
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 8
+    cves:
+    - CVE-2025-22224
+- id: vmware--esxi-workstation-and-fusion
+  category: hypervisor
+  vendor: VMware
+  product: ESXi, Workstation, and Fusion
+  aliases:
+  - vendor: VMware
+    product: ESXi, Workstation, and Fusion
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 1
+    vendor_category_entries: 8
+    cves:
+    - CVE-2025-22226
+- id: vmware--vcenter-server
+  category: hypervisor
+  vendor: VMware
+  product: vCenter Server
+  aliases:
+  - vendor: VMware
+    product: vCenter Server
+  cpe: []
+  purl: []
+  evidence:
+    kev_entries: 4
+    vendor_category_entries: 8
+    cves:
+    - CVE-2022-22948
+    - CVE-2023-34048
+    - CVE-2024-38812
+    - CVE-2024-38813
+needs_review:
+- id: adobe--acrobat
+  vendor: Adobe
+  product: Acrobat
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2020-9715
+- id: adobe--acrobat-and-reader
+  vendor: Adobe
+  product: Acrobat and Reader
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2009-3459
+  - CVE-2026-34621
+- id: adobe--coldfusion
+  vendor: Adobe
+  product: ColdFusion
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2017-3066
+  - CVE-2023-29300
+  - CVE-2023-38203
+  - CVE-2024-20767
+  - CVE-2026-48282
+- id: adobe--commerce-and-magento
+  vendor: Adobe
+  product: Commerce and Magento
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2025-54236
+  - CVE-2026-48356
+  - CVE-2026-71362
+  - CVE-2026-75650
+- id: adobe--commerce-and-magento-open-source
+  vendor: Adobe
+  product: Commerce and Magento Open Source
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-34102
+- id: adobe--experience-manager-aem-forms
+  vendor: Adobe
+  product: Experience Manager (AEM) Forms
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-54253
+- id: adobe--flash-player
+  vendor: Adobe
+  product: Flash Player
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 18 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2013-0643
+  - CVE-2013-0648
+  - CVE-2014-0497
+  - CVE-2014-0502
+- id: android--framework
+  vendor: Android
+  product: Framework
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2024-43093
+  - CVE-2025-48572
+  - CVE-2025-48595
+  - CVE-2025-48633
+- id: android--kernel
+  vendor: Android
+  product: Kernel
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-36971
+- id: android--pixel
+  vendor: Android
+  product: Pixel
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2023-21237
+  - CVE-2024-29745
+  - CVE-2024-29748
+  - CVE-2024-32896
+- id: android--runtime
+  vendor: Android
+  product: Runtime
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-48543
+- id: apache--activemq
+  vendor: Apache
+  product: ActiveMQ
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-34197
+- id: apache--axis
+  vendor: Apache
+  product: Axis
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-90436
+- id: apache--flink
+  vendor: Apache
+  product: Flink
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2020-17519
+- id: apache--hugegraph-server
+  vendor: Apache
+  product: HugeGraph-Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-27348
+- id: apache--ofbiz
+  vendor: Apache
+  product: OFBiz
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2024-32113
+  - CVE-2024-38856
+  - CVE-2024-45195
+- id: apache--roller
+  vendor: Apache
+  product: Roller
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-129448
+- id: apache--struts
+  vendor: Apache
+  product: Struts
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2016-3081
+- id: apache--superset
+  vendor: Apache
+  product: Superset
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-27524
+- id: apache--tomcat
+  vendor: Apache
+  product: Tomcat
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2025-24813
+  - CVE-2026-34486
+- id: apple--ios-and-ipados
+  vendor: Apple
+  product: iOS and iPadOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 28 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2023-41974
+  - CVE-2025-24200
+- id: apple--ios-ipados-and-macos
+  vendor: Apple
+  product: iOS, iPadOS, and macOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 28 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-43300
+- id: apple--macos
+  vendor: Apple
+  product: macOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 28 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-65400
+- id: apple--multiple-products
+  vendor: Apple
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 28 entradas
+  kev_entries: 24
+  cves:
+  - CVE-2021-30952
+  - CVE-2022-48503
+  - CVE-2022-48618
+  - CVE-2023-41990
+  - CVE-2023-42916
+  - CVE-2023-42917
+  - CVE-2023-43000
+  - CVE-2024-23222
+  - CVE-2024-23225
+  - CVE-2024-23296
+  - CVE-2024-27834
+  - CVE-2024-44308
+  - CVE-2024-44309
+  - CVE-2025-24085
+  - CVE-2025-24201
+  - CVE-2025-31200
+  - CVE-2025-31201
+  - CVE-2025-31277
+  - CVE-2025-43200
+  - CVE-2025-43510
+  - CVE-2025-43520
+  - CVE-2025-43529
+  - CVE-2026-20700
+  - CVE-2026-86950
+- id: arista--extensible-operating-system
+  vendor: Arista
+  product: Extensible Operating System
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-7473
+- id: arista--velocloud-orchestrator
+  vendor: Arista
+  product: VeloCloud Orchestrator
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-114625
+  - CVE-2026-16812
+  - CVE-2026-93952
+- id: asus--live-update
+  vendor: ASUS
+  product: Live Update
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-59374
+- id: asus--routers
+  vendor: ASUS
+  product: Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-32030
+- id: asus--rt-ax55-routers
+  vendor: ASUS
+  product: RT-AX55 Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-39780
+- id: atlassian--confluence-data-center-and-server
+  vendor: Atlassian
+  product: Confluence Data Center and Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-22527
+- id: atlassian--jira-server-and-data-center
+  vendor: Atlassian
+  product: Jira Server and Data Center
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-26086
+- id: atlassian--multiple-products
+  vendor: Atlassian
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-21589
+- id: barracuda-networks--barracuda-email-security-gateway-esg
+  vendor: Barracuda Networks
+  product: Barracuda Email Security Gateway (ESG)
+  categories_matched:
+    firewall: 1
+    mail: 1
+  reason: varias categorías
+  kev_entries: 1
+  cves:
+  - CVE-2026-116606
+- id: berriai--litellm
+  vendor: BerriAI
+  product: LiteLLM
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2026-40217
+  - CVE-2026-42208
+  - CVE-2026-42271
+  - CVE-2026-59822
+- id: broadcom--brocade-fabric-os
+  vendor: Broadcom
+  product: Brocade Fabric OS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-1976
+- id: broadcom--vmware-aria-operations
+  vendor: Broadcom
+  product: VMware Aria Operations
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-22719
+- id: broadcom--vmware-aria-operations-and-vmware-tools
+  vendor: Broadcom
+  product: VMware Aria Operations and VMware Tools
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-41244
+- id: broadcom--vmware-esx
+  vendor: Broadcom
+  product: VMware ESX
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-41709
+- id: check-point--multiple-products
+  vendor: Check Point
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 6 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-123039
+  - CVE-2026-85102
+  - CVE-2026-93616
+- id: check-point--quantum-security-gateways
+  vendor: Check Point
+  product: Quantum Security Gateways
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 6 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-24919
+- id: check-point--smartconsole
+  vendor: Check Point
+  product: SmartConsole
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 6 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-16232
+- id: cisco--adaptive-security-appliance-asa
+  vendor: Cisco
+  product: Adaptive Security Appliance (ASA)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2014-2120
+- id: cisco--broadworks
+  vendor: Cisco
+  product: BroadWorks
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-20320
+- id: cisco--catalyst-sd-wan
+  vendor: Cisco
+  product: Catalyst SD-WAN
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-20182
+- id: cisco--catalyst-sd-wan-controller-and-manager
+  vendor: Cisco
+  product: Catalyst SD-WAN Controller and Manager
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-20127
+- id: cisco--catalyst-sd-wan-manager
+  vendor: Cisco
+  product: Catalyst SD-WAN Manager
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2026-20128
+  - CVE-2026-20133
+  - CVE-2026-20245
+  - CVE-2026-20262
+  - CVE-2026-76504
+- id: cisco--catalyst-sd-wan-manger
+  vendor: Cisco
+  product: Catalyst SD-WAN Manger
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-20122
+- id: cisco--expressway-series
+  vendor: Cisco
+  product: Expressway Series
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-76466
+- id: cisco--ios
+  vendor: Cisco
+  product: IOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2008-4128
+- id: cisco--ios-and-ios-xe
+  vendor: Cisco
+  product: IOS and IOS XE
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-20352
+- id: cisco--multiple-products
+  vendor: Cisco
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-20393
+- id: cisco--nx-os
+  vendor: Cisco
+  product: NX-OS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-20399
+- id: cisco--sd-wan
+  vendor: Cisco
+  product: SD-WAN
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2022-20775
+- id: cisco--small-business-rv-series-routers
+  vendor: Cisco
+  product: Small Business RV Series Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-20118
+- id: cisco--smart-licensing-utility
+  vendor: Cisco
+  product: Smart Licensing Utility
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-20439
+- id: cisco--unified-communications-manager
+  vendor: Cisco
+  product: Unified Communications Manager
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 36 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2026-20045
+  - CVE-2026-20230
+- id: citrix--netscaler
+  vendor: Citrix
+  product: NetScaler
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 6
+  cves:
+  - CVE-2025-7775
+  - CVE-2026-19490
+  - CVE-2026-3055
+  - CVE-2026-88771
+  - CVE-2026-88772
+  - CVE-2026-88779
+- id: citrix--session-recording
+  vendor: Citrix
+  product: Session Recording
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-8068
+  - CVE-2024-8069
+- id: connectwise--screenconnect
+  vendor: ConnectWise
+  product: ScreenConnect
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2024-1708
+  - CVE-2024-1709
+  - CVE-2025-3935
+  - CVE-2026-84869
+- id: craft-cms--craft-cms
+  vendor: Craft CMS
+  product: Craft CMS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2024-56145
+  - CVE-2025-23209
+  - CVE-2025-32432
+  - CVE-2025-35939
+- id: d-link--dcs-2530l-and-dcs-2670l-devices
+  vendor: D-Link
+  product: DCS-2530L and DCS-2670L Devices
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2020-25078
+  - CVE-2020-25079
+- id: d-link--dir-600-router
+  vendor: D-Link
+  product: DIR-600 Router
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2014-100005
+- id: d-link--dir-605-router
+  vendor: D-Link
+  product: DIR-605 Router
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-40655
+- id: d-link--dir-820-router
+  vendor: D-Link
+  product: DIR-820 Router
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-25280
+- id: d-link--dir-823x
+  vendor: D-Link
+  product: DIR-823X
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-29635
+- id: d-link--dir-859-router
+  vendor: D-Link
+  product: DIR-859 Router
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-0769
+- id: d-link--dnr-322l
+  vendor: D-Link
+  product: DNR-322L
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2022-40799
+- id: d-link--dsl-2750b-devices
+  vendor: D-Link
+  product: DSL-2750B Devices
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2016-20017
+- id: d-link--multiple-nas-devices
+  vendor: D-Link
+  product: Multiple NAS Devices
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-3272
+  - CVE-2024-3273
+- id: d-link--routers
+  vendor: D-Link
+  product: Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2022-37055
+- id: danfoss--ak-sm-800a-series
+  vendor: Danfoss
+  product: AK-SM 800A Series
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2023-25914
+  - CVE-2023-25915
+  - CVE-2025-41450
+- id: dassault-systemes--delmia-apriso
+  vendor: Dassault Systèmes
+  product: DELMIA Apriso
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2025-5086
+  - CVE-2025-6204
+  - CVE-2025-6205
+- id: draytek--multiple-vigor-routers
+  vendor: DrayTek
+  product: Multiple Vigor Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2020-15415
+- id: draytek--vigor-routers
+  vendor: DrayTek
+  product: Vigor Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-12987
+- id: draytek--vigorconnect
+  vendor: DrayTek
+  product: VigorConnect
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2021-20123
+  - CVE-2021-20124
+- id: fortinet--forticlient-ems
+  vendor: Fortinet
+  product: FortiClient EMS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2023-48788
+  - CVE-2026-21643
+  - CVE-2026-35616
+- id: fortinet--fortimanager
+  vendor: Fortinet
+  product: FortiManager
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-47575
+- id: fortinet--fortios
+  vendor: Fortinet
+  product: FortiOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2019-6693
+  - CVE-2024-21762
+  - CVE-2025-68686
+- id: fortinet--fortios-and-fortiproxy
+  vendor: Fortinet
+  product: FortiOS and FortiProxy
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-55591
+  - CVE-2025-24472
+- id: fortinet--fortisandbox
+  vendor: Fortinet
+  product: FortiSandbox
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2026-25089
+  - CVE-2026-39808
+- id: fortinet--fortiweb
+  vendor: Fortinet
+  product: FortiWeb
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2025-25257
+  - CVE-2025-58034
+  - CVE-2025-64446
+- id: fortinet--multiple-products
+  vendor: Fortinet
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 21 entradas
+  kev_entries: 6
+  cves:
+  - CVE-2024-23113
+  - CVE-2025-25249
+  - CVE-2025-32756
+  - CVE-2025-59718
+  - CVE-2025-61624
+  - CVE-2026-24858
+- id: gitlab--community-and-enterprise-editions
+  vendor: GitLab
+  product: Community and Enterprise Editions
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-39935
+- id: gitlab--community-edition-and-enterprise-edition
+  vendor: GitLab
+  product: Community Edition and Enterprise Edition
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2026-85706
+  - CVE-2026-97229
+- id: gitlab--gitlab
+  vendor: GitLab
+  product: GitLab
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-22175
+- id: gitlab--gitlab-ce-ee
+  vendor: GitLab
+  product: GitLab CE/EE
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-7028
+- id: gladinet--centrestack
+  vendor: Gladinet
+  product: CentreStack
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-30406
+- id: gladinet--centrestack-and-triofox
+  vendor: Gladinet
+  product: CentreStack and Triofox
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2025-11371
+  - CVE-2025-14611
+- id: gladinet--triofox
+  vendor: Gladinet
+  product: Triofox
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-12480
+- id: google--brotli
+  vendor: Google
+  product: Brotli
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-111497
+- id: google--chromium
+  vendor: Google
+  product: Chromium
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2024-4671
+  - CVE-2025-14174
+  - CVE-2025-6558
+  - CVE-2026-125350
+  - CVE-2026-2441
+- id: google--chromium-mojo
+  vendor: Google
+  product: Chromium Mojo
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-2783
+- id: google--chromium-skia
+  vendor: Google
+  product: Chromium Skia
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-6345
+- id: google--chromium-v8
+  vendor: Google
+  product: Chromium V8
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 15
+  cves:
+  - CVE-2023-4762
+  - CVE-2024-0519
+  - CVE-2024-4761
+  - CVE-2024-4947
+  - CVE-2024-5274
+  - CVE-2024-7965
+  - CVE-2024-7971
+  - CVE-2025-10585
+  - CVE-2025-13223
+  - CVE-2025-5419
+  - CVE-2025-6554
+  - CVE-2026-11645
+  - CVE-2026-3910
+  - CVE-2026-85046
+  - CVE-2026-87491
+- id: google--chromium-webrtc
+  vendor: Google
+  product: Chromium WebRTC
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-7024
+- id: google--dawn
+  vendor: Google
+  product: Dawn
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-5281
+- id: google--pixel
+  vendor: Google
+  product: Pixel
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-58704
+- id: google--skia
+  vendor: Google
+  product: Skia
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 27 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-3909
+- id: ivanti--cloud-services-appliance
+  vendor: Ivanti
+  product: Cloud Services Appliance
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-8190
+- id: ivanti--cloud-services-appliance-csa
+  vendor: Ivanti
+  product: Cloud Services Appliance (CSA)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2024-8963
+  - CVE-2024-9379
+  - CVE-2024-9380
+- id: ivanti--endpoint-manager-cloud-service-appliance-epm-csa
+  vendor: Ivanti
+  product: Endpoint Manager Cloud Service Appliance (EPM CSA)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2021-44529
+- id: ivanti--endpoint-manager-epm
+  vendor: Ivanti
+  product: Endpoint Manager (EPM)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2024-13159
+  - CVE-2024-13160
+  - CVE-2024-13161
+  - CVE-2024-29824
+  - CVE-2026-1603
+- id: ivanti--endpoint-manager-mobile-epmm
+  vendor: Ivanti
+  product: Endpoint Manager Mobile (EPMM)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2025-4427
+  - CVE-2025-4428
+  - CVE-2026-1281
+  - CVE-2026-1340
+  - CVE-2026-6973
+- id: ivanti--endpoint-manager-mobile-epmm-and-mobileiron-core
+  vendor: Ivanti
+  product: Endpoint Manager Mobile (EPMM) and MobileIron Core
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-35082
+- id: ivanti--sentry
+  vendor: Ivanti
+  product: Sentry
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 26 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-10520
+- id: jetbrains--teamcity
+  vendor: JetBrains
+  product: TeamCity
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2024-27198
+  - CVE-2024-27199
+  - CVE-2026-63077
+- id: jfrog--artifactory
+  vendor: JFrog
+  product: Artifactory
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2026-42016
+  - CVE-2026-42018
+  - CVE-2026-66384
+  - CVE-2026-82329
+- id: kentico--kentico-xperience
+  vendor: Kentico
+  product: Kentico Xperience
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-2749
+- id: kentico--xperience-cms
+  vendor: Kentico
+  product: Xperience CMS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2025-2746
+  - CVE-2025-2747
+- id: langflow--langflow
+  vendor: Langflow
+  product: Langflow
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2025-3248
+  - CVE-2025-34291
+  - CVE-2026-0770
+  - CVE-2026-33017
+  - CVE-2026-55255
+- id: libraesva--email-security-gateway
+  vendor: Libraesva
+  product: Email Security Gateway
+  categories_matched:
+    firewall: 1
+    mail: 1
+  reason: varias categorías
+  kev_entries: 1
+  cves:
+  - CVE-2025-59689
+- id: linux--kernel
+  vendor: Linux
+  product: Kernel
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 20 entradas
+  kev_entries: 20
+  cves:
+  - CVE-2017-1000253
+  - CVE-2018-14634
+  - CVE-2021-22555
+  - CVE-2022-0185
+  - CVE-2022-0492
+  - CVE-2022-0995
+  - CVE-2022-2586
+  - CVE-2023-0386
+  - CVE-2024-1086
+  - CVE-2024-50302
+  - CVE-2024-53104
+  - CVE-2024-53150
+  - CVE-2024-53197
+  - CVE-2025-38352
+  - CVE-2025-39682
+  - CVE-2025-39964
+  - CVE-2026-31431
+  - CVE-2026-46300
+  - CVE-2026-53266
+  - CVE-2026-53362
+- id: microsoft--configuration-manager
+  vendor: Microsoft
+  product: Configuration Manager
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-43468
+- id: microsoft--defender
+  vendor: Microsoft
+  product: Defender
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-33825
+  - CVE-2026-41091
+  - CVE-2026-45498
+- id: microsoft--directx
+  vendor: Microsoft
+  product: DirectX
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2009-1537
+- id: microsoft--dwm-core-library
+  vendor: Microsoft
+  product: DWM Core Library
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-30051
+- id: microsoft--internet-explorer
+  vendor: Microsoft
+  product: Internet Explorer
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2010-0249
+  - CVE-2010-0806
+  - CVE-2010-3962
+  - CVE-2012-4792
+  - CVE-2013-3893
+- id: microsoft--internet-key-exchange-ike-service-extensions
+  vendor: Microsoft
+  product: Internet Key Exchange (IKE) Service Extensions
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-33824
+- id: microsoft--net-framework
+  vendor: Microsoft
+  product: .NET Framework
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-29059
+- id: microsoft--office
+  vendor: Microsoft
+  product: Office
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 6
+  cves:
+  - CVE-2007-0671
+  - CVE-2009-0238
+  - CVE-2009-0556
+  - CVE-2026-124194
+  - CVE-2026-21509
+  - CVE-2026-21514
+- id: microsoft--office-outlook
+  vendor: Microsoft
+  product: Office Outlook
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-21413
+- id: microsoft--partner-center
+  vendor: Microsoft
+  product: Partner Center
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-49035
+- id: microsoft--power-pages
+  vendor: Microsoft
+  product: Power Pages
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-24989
+- id: microsoft--project
+  vendor: Microsoft
+  product: Project
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-38189
+- id: microsoft--publisher
+  vendor: Microsoft
+  product: Publisher
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-38226
+- id: microsoft--sharepoint
+  vendor: Microsoft
+  product: SharePoint
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 9
+  cves:
+  - CVE-2024-38094
+  - CVE-2025-49704
+  - CVE-2025-49706
+  - CVE-2025-53770
+  - CVE-2026-20963
+  - CVE-2026-50522
+  - CVE-2026-55040
+  - CVE-2026-58644
+  - CVE-2026-65660
+- id: microsoft--sharepoint-server
+  vendor: Microsoft
+  product: SharePoint Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2023-24955
+  - CVE-2023-29357
+  - CVE-2026-32201
+  - CVE-2026-45659
+  - CVE-2026-56164
+- id: microsoft--smartscreen-prompt
+  vendor: Microsoft
+  product: SmartScreen Prompt
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-29988
+- id: microsoft--sql-server
+  vendor: Microsoft
+  product: SQL Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2019-1068
+  - CVE-2020-0618
+- id: microsoft--streaming-service
+  vendor: Microsoft
+  product: Streaming Service
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-29360
+- id: microsoft--visual-basic-for-applications-vba
+  vendor: Microsoft
+  product: Visual Basic for Applications (VBA)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2012-1854
+- id: microsoft--windows
+  vendor: Microsoft
+  product: Windows
+  categories_matched:
+    hypervisor: 4
+  reason: la categoría casa en 4 de 67 entradas
+  kev_entries: 67
+  cves:
+  - CVE-2008-0015
+  - CVE-2008-4250
+  - CVE-2011-3402
+  - CVE-2013-3918
+  - CVE-2018-0824
+  - CVE-2018-8639
+  - CVE-2021-43226
+  - CVE-2022-38028
+  - CVE-2023-36424
+  - CVE-2024-21338
+  - CVE-2024-21351
+  - CVE-2024-21412
+  - CVE-2024-26169
+  - CVE-2024-30040
+  - CVE-2024-30088
+  - CVE-2024-35250
+  - CVE-2024-38014
+  - CVE-2024-38080
+  - CVE-2024-38106
+  - CVE-2024-38107
+  - CVE-2024-38112
+  - CVE-2024-38178
+  - CVE-2024-38193
+  - CVE-2024-38213
+  - CVE-2024-38217
+  - CVE-2024-43451
+  - CVE-2024-43461
+  - CVE-2024-43572
+  - CVE-2024-43573
+  - CVE-2024-49039
+  - CVE-2024-49138
+  - CVE-2025-21333
+  - CVE-2025-21334
+  - CVE-2025-21335
+  - CVE-2025-21391
+  - CVE-2025-21418
+  - CVE-2025-24054
+  - CVE-2025-24983
+  - CVE-2025-24984
+  - CVE-2025-24985
+  - CVE-2025-24990
+  - CVE-2025-24991
+  - CVE-2025-24993
+  - CVE-2025-26633
+  - CVE-2025-29824
+  - CVE-2025-30397
+  - CVE-2025-30400
+  - CVE-2025-32701
+  - CVE-2025-32706
+  - CVE-2025-32709
+  - CVE-2025-33053
+  - CVE-2025-33073
+  - CVE-2025-59230
+  - CVE-2025-59287
+  - CVE-2025-60710
+  - CVE-2025-62215
+  - CVE-2025-62221
+  - CVE-2026-20805
+  - CVE-2026-21510
+  - CVE-2026-21513
+  - CVE-2026-21519
+  - CVE-2026-21525
+  - CVE-2026-21533
+  - CVE-2026-32202
+  - CVE-2026-81963
+  - CVE-2026-85880
+  - CVE-2026-96951
+- id: microsoft--windows-ancillary-function-driver-for-winsock
+  vendor: Microsoft
+  product: Windows Ancillary Function Driver for WinSock
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 116 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-68820
+- id: mikrotik--routeros
+  vendor: MikroTik
+  product: RouterOS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-67277
+  - CVE-2026-67279
+  - CVE-2026-86060
+- id: mitel--micollab
+  vendor: Mitel
+  product: MiCollab
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 8 entradas
+  kev_entries: 7
+  cves:
+  - CVE-2024-41713
+  - CVE-2024-55550
+  - CVE-2026-133275
+  - CVE-2026-133303
+  - CVE-2026-133311
+  - CVE-2026-133323
+  - CVE-2026-133324
+- id: mitel--sip-phones
+  vendor: Mitel
+  product: SIP Phones
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 8 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-41710
+- id: n-able--n-central
+  vendor: N-able
+  product: N-central
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 6 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2025-8875
+  - CVE-2025-8876
+  - CVE-2026-18556
+  - CVE-2026-18577
+  - CVE-2026-86218
+- id: oracle--adf-faces
+  vendor: Oracle
+  product: ADF Faces
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2022-21445
+- id: oracle--agile-product-lifecycle-management-plm
+  vendor: Oracle
+  product: Agile Product Lifecycle Management (PLM)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-20953
+  - CVE-2024-21287
+- id: oracle--e-business-suite
+  vendor: Oracle
+  product: E-Business Suite
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2025-61882
+  - CVE-2025-61884
+  - CVE-2026-46817
+- id: oracle--fusion-middleware
+  vendor: Oracle
+  product: Fusion Middleware
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-61757
+- id: oracle--peoplesoft-enterprise-peopletools
+  vendor: Oracle
+  product: PeopleSoft Enterprise PeopleTools
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-35273
+- id: oracle--weblogic-server
+  vendor: Oracle
+  product: WebLogic Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 13 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2017-3506
+  - CVE-2020-14644
+  - CVE-2020-2883
+  - CVE-2024-21182
+- id: osgeo--geoserver
+  vendor: OSGeo
+  product: GeoServer
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-36401
+  - CVE-2025-58360
+- id: osgeo--jai-ext
+  vendor: OSGeo
+  product: JAI-EXT
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2022-24816
+- id: palo-alto-networks--expedition
+  vendor: Palo Alto Networks
+  product: Expedition
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2024-5910
+  - CVE-2024-9463
+  - CVE-2024-9465
+- id: palo-alto-networks--pan-os
+  vendor: Palo Alto Networks
+  product: PAN-OS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 12 entradas
+  kev_entries: 9
+  cves:
+  - CVE-2024-0012
+  - CVE-2024-3393
+  - CVE-2024-3400
+  - CVE-2024-9474
+  - CVE-2025-0108
+  - CVE-2025-0111
+  - CVE-2026-0257
+  - CVE-2026-0300
+  - CVE-2026-0322
+- id: papercut--ng-mf
+  vendor: PaperCut
+  product: NG/MF
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2023-2533
+  - CVE-2023-27351
+  - CVE-2026-81578
+  - CVE-2026-82078
+- id: php-group--php
+  vendor: PHP Group
+  product: PHP
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2024-4577
+  - CVE-2026-109618
+  - CVE-2026-109619
+- id: plex--media-server
+  vendor: Plex
+  product: Media Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2026-96652
+  - CVE-2026-96654
+  - CVE-2026-96655
+  - CVE-2026-96656
+- id: progress--kemp-loadmaster
+  vendor: Progress
+  product: Kemp LoadMaster
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-1212
+- id: progress--loadmaster
+  vendor: Progress
+  product: LoadMaster
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-8037
+- id: progress--telerik-report-server
+  vendor: Progress
+  product: Telerik Report Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-4358
+- id: progress--whatsup-gold
+  vendor: Progress
+  product: WhatsUp Gold
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-4885
+  - CVE-2024-6670
+- id: qlik--sense
+  vendor: Qlik
+  product: Sense
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2023-41265
+  - CVE-2023-41266
+  - CVE-2023-48365
+- id: qualcomm--multiple-chipsets
+  vendor: Qualcomm
+  product: Multiple Chipsets
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 9 entradas
+  kev_entries: 9
+  cves:
+  - CVE-2022-22071
+  - CVE-2023-33063
+  - CVE-2023-33106
+  - CVE-2023-33107
+  - CVE-2024-43047
+  - CVE-2025-21479
+  - CVE-2025-21480
+  - CVE-2025-27038
+  - CVE-2026-21385
+- id: samsung--magicinfo-9-server
+  vendor: Samsung
+  product: MagicINFO 9 Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-7399
+  - CVE-2025-4632
+- id: samsung--mobile-devices
+  vendor: Samsung
+  product: Mobile Devices
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2025-21042
+  - CVE-2025-21043
+- id: sangoma--freepbx
+  vendor: Sangoma
+  product: FreePBX
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2019-19006
+  - CVE-2025-57819
+  - CVE-2025-64328
+- id: sangoma--switchvox
+  vendor: Sangoma
+  product: Switchvox
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-9586
+- id: sap--commerce-cloud
+  vendor: SAP
+  product: Commerce Cloud
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2019-0344
+- id: sap--netweaver
+  vendor: SAP
+  product: NetWeaver
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 5 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2017-12637
+  - CVE-2025-31324
+  - CVE-2025-42884
+  - CVE-2025-42999
+- id: simplehelp--simplehelp
+  vendor: SimpleHelp
+  product: SimpleHelp
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 4
+  cves:
+  - CVE-2024-57726
+  - CVE-2024-57727
+  - CVE-2024-57728
+  - CVE-2026-48558
+- id: sitecore--cms-and-experience-platform-xp
+  vendor: Sitecore
+  product: CMS and Experience Platform (XP)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2019-9874
+  - CVE-2019-9875
+- id: sitecore--multiple-products
+  vendor: Sitecore
+  product: Multiple Products
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-53690
+- id: solarwinds--serv-u
+  vendor: SolarWinds
+  product: Serv-U
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-28995
+  - CVE-2026-28318
+- id: solarwinds--web-help-desk
+  vendor: SolarWinds
+  product: Web Help Desk
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 7 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2024-28986
+  - CVE-2024-28987
+  - CVE-2025-26399
+  - CVE-2025-40536
+  - CVE-2025-40551
+- id: sonicwall--sma100-appliances
+  vendor: SonicWall
+  product: SMA100 Appliances
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 11 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2021-20035
+  - CVE-2023-44221
+- id: sonicwall--sma1000-appliance
+  vendor: SonicWall
+  product: SMA1000 appliance
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 11 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2025-40602
+- id: sonicwall--sma1000-appliances
+  vendor: SonicWall
+  product: SMA1000 Appliances
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 11 entradas
+  kev_entries: 5
+  cves:
+  - CVE-2025-23006
+  - CVE-2026-15409
+  - CVE-2026-15410
+  - CVE-2026-83548
+  - CVE-2026-83549
+- id: synacor--zimbra-collaboration-suite
+  vendor: Synacor
+  product: Zimbra Collaboration Suite
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2020-7796
+- id: synacor--zimbra-collaboration-suite-zcs
+  vendor: Synacor
+  product: Zimbra Collaboration Suite (ZCS)
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 10 entradas
+  kev_entries: 9
+  cves:
+  - CVE-2019-9621
+  - CVE-2023-34192
+  - CVE-2024-27443
+  - CVE-2024-45519
+  - CVE-2025-27915
+  - CVE-2025-48700
+  - CVE-2025-66376
+  - CVE-2025-68645
+  - CVE-2026-73570
+- id: telemessage--tm-sgnl
+  vendor: TeleMessage
+  product: TM SGNL
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2025-47729
+  - CVE-2025-48927
+  - CVE-2025-48928
+- id: tp-link--multiple-routers
+  vendor: TP-Link
+  product: Multiple Routers
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2023-33538
+  - CVE-2025-9377
+- id: tp-link--tl-wa855re
+  vendor: TP-Link
+  product: TL-WA855RE
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2020-24363
+- id: tp-link--tl-wr841n
+  vendor: TP-Link
+  product: TL-WR841N
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2023-50224
+- id: trueconf--client
+  vendor: TrueConf
+  product: Client
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-3502
+- id: trueconf--server
+  vendor: TrueConf
+  product: Server
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2026-72529
+  - CVE-2026-72530
+- id: ubiquiti--unifi-os
+  vendor: Ubiquiti
+  product: UniFi OS
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 3 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-34908
+  - CVE-2026-34909
+  - CVE-2026-34910
+- id: wordpress--core
+  vendor: WordPress
+  product: Core
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 3
+  cves:
+  - CVE-2026-60137
+  - CVE-2026-63030
+  - CVE-2026-87902
+- id: wordpress--wordpress-core
+  vendor: WordPress
+  product: WordPress Core
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-119977
+- id: zyxel--dsl-cpe-devices
+  vendor: Zyxel
+  product: DSL CPE Devices
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 2
+  cves:
+  - CVE-2024-40890
+  - CVE-2024-40891
+- id: zyxel--gs1900-series-switches
+  vendor: Zyxel
+  product: GS1900 Series Switches
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2026-7273
+- id: zyxel--multiple-firewalls
+  vendor: Zyxel
+  product: Multiple Firewalls
+  categories_matched: {}
+  reason: sin categoría; el fabricante suma 4 entradas
+  kev_entries: 1
+  cves:
+  - CVE-2024-11667
+below_threshold:
+- id: apache--http-server
+  category: web-proxy
+  vendor_category_entries: 1
+- id: check-point--security-gateway
+  category: firewall
+  vendor_category_entries: 1
+- id: cisco--secure-email-gateway
+  category: mail
+  vendor_category_entries: 2
+- id: commvault--web-server
+  category: web-proxy
+  vendor_category_entries: 1
+- id: fortinet--fortimail
+  category: mail
+  vendor_category_entries: 1
+- id: fortra--goanywhere-mft
+  category: file-transfer
+  vendor_category_entries: 1
+- id: ivanti--virtual-traffic-manager
+  category: load-balancer
+  vendor_category_entries: 1
+- id: mdaemon--email-server
+  category: mail
+  vendor_category_entries: 1
+- id: microsoft--active-directory-federation-services
+  category: identity
+  vendor_category_entries: 1
+- id: n-able--mailassure
+  category: mail
+  vendor_category_entries: 1
+- id: oracle--http-server-and-oracle-weblogic-server-proxy-plug-in
+  category: web-proxy
+  vendor_category_entries: 1
+- id: php--phpmailer
+  category: mail
+  vendor_category_entries: 1
+- id: proftpd--proftpd
+  category: file-transfer
+  vendor_category_entries: 1
+- id: qualitia--active-mail
+  category: mail
+  vendor_category_entries: 1
+- id: sonicwall--sonicos
+  category: vpn
+  vendor_category_entries: 2
+- id: sonicwall--sonicos-sslvpn
+  category: vpn
+  vendor_category_entries: 2
+- id: sophos--xg-firewall
+  category: firewall
+  vendor_category_entries: 1
+- id: wing-ftp-server--wing-ftp-server
+  category: file-transfer
+  vendor_category_entries: 2
