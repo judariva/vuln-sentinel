@@ -16,7 +16,7 @@ const SCREENS = [
   },
   { name: "Métricas", path: "/metricas", ready: (p: Page) => expect(p.locator(".recharts-surface").first()).toBeVisible() },
   { name: "Fuentes", path: "/fuentes", ready: (p: Page) => expect(p.getByTestId("access-notice")).toBeVisible() },
-  { name: "Administración", path: "/admin", ready: (p: Page) => expect(p.getByTestId("access-notice")).toBeVisible() },
+  { name: "Administración", path: "/gestion", ready: (p: Page) => expect(p.getByTestId("access-notice")).toBeVisible() },
 ];
 
 const GRAVE = new Set(["serious", "critical"]);

@@ -9,7 +9,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from tests.portal_fixture import CVE_B, CVE_C, make_app
+from tests.portal_fixture import CVE_B, CVE_C, is_api, make_app
 from tests.test_feed import CVE_EXPOSED
 from vs.feed.osv import alert_id
 
@@ -37,3 +37,10 @@ def test_fixture_admin_is_closed():
     client = TestClient(make_app())
     # Sin Access configurado, /admin cierra con 403 (T6).
     assert client.get("/admin").status_code == 403
+
+
+def test_fixture_routes_api_by_segment():
+    # `/admin` y `/admin/...` son de la API; las rutas del portal, aunque empiecen igual, no.
+    assert is_api("/admin") and is_api("/admin/") and is_api("/admin/x?y=1")
+    assert is_api("/v1/feed/alerts/latest.json") and is_api("/.well-known/x")
+    assert not is_api("/administracion") and not is_api("/gestion") and not is_api("/v1x")

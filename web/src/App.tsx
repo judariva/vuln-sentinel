@@ -7,6 +7,7 @@ import { AlertDetailPage } from "@/pages/AlertDetail";
 import { NotFoundPage } from "@/pages/NotFound";
 import { SourcesPage } from "@/pages/Sources";
 import { TodayPage } from "@/pages/Today";
+import { PATHS } from "@/routes";
 
 // Las gráficas (Recharts) solo se descargan al abrir Métricas.
 const MetricsPage = lazy(() => import("@/pages/Metrics").then((m) => ({ default: m.MetricsPage })));
@@ -15,18 +16,18 @@ export function App() {
   return (
     <Layout>
       <Routes>
-        <Route path="/" element={<TodayPage />} />
-        <Route path="/alertas/:id" element={<AlertDetailPage />} />
+        <Route path={PATHS.today} element={<TodayPage />} />
+        <Route path={`${PATHS.detail}/:id`} element={<AlertDetailPage />} />
         <Route
-          path="/metricas"
+          path={PATHS.metrics}
           element={
             <Suspense fallback={<Loading />}>
               <MetricsPage />
             </Suspense>
           }
         />
-        <Route path="/fuentes" element={<SourcesPage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        <Route path={PATHS.sources} element={<SourcesPage />} />
+        <Route path={PATHS.admin} element={<AdminPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Layout>

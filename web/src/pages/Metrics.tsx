@@ -73,7 +73,7 @@ export function MetricsView({ doc }: { doc: MetricsDaily }) {
       </p>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard title="Embudo" description="Ingeridas → elegibles → candidatas → A, B o C, en todo el periodo.">
-          <ChartContainer config={funnelConfig} className="h-64 w-full" aria-label="Gráfica del embudo">
+          <ChartContainer config={funnelConfig} className="h-64 w-full" role="img" aria-label="Gráfica del embudo">
             <BarChart data={steps} layout="vertical" margin={{ left: 24 }}>
               <CartesianGrid horizontal={false} />
               <XAxis type="number" scale="sqrt" />
@@ -106,7 +106,7 @@ export function MetricsView({ doc }: { doc: MetricsDaily }) {
         </ChartCard>
 
         <ChartCard title="Alertas por día y nivel" description="Lo que despierta a alguien: A, B y C de cada día.">
-          <ChartContainer config={levelsConfig} className="h-64 w-full" aria-label="Alertas por día y nivel">
+          <ChartContainer config={levelsConfig} className="h-64 w-full" role="img" aria-label="Alertas por día y nivel">
             <BarChart data={perDay}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} minTickGap={16} />
@@ -124,7 +124,7 @@ export function MetricsView({ doc }: { doc: MetricsDaily }) {
           title="Tiempo de detección"
           description={`p50 y p95 por nivel, en minutos, del ${det.day ?? "—"}: desde que la fuente publica hasta la alerta.`}
         >
-          <ChartContainer config={detectionConfig} className="h-64 w-full" aria-label="Tiempo de detección por nivel">
+          <ChartContainer config={detectionConfig} className="h-64 w-full" role="img" aria-label="Tiempo de detección por nivel">
             <BarChart data={det.byLevel}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="level" />
@@ -163,7 +163,7 @@ export function MetricsView({ doc }: { doc: MetricsDaily }) {
           {lead.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin altas de KEV con alerta previa en el periodo.</p>
           ) : (
-            <ChartContainer config={kevConfig} className="h-64 w-full" aria-label="Ventaja sobre KEV en horas">
+            <ChartContainer config={kevConfig} className="h-64 w-full" role="img" aria-label="Ventaja sobre KEV en horas">
               <LineChart data={lead}>
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} />
@@ -176,7 +176,7 @@ export function MetricsView({ doc }: { doc: MetricsDaily }) {
         </ChartCard>
 
         <ChartCard title="Tipos de cambio" description="Cambios publicados en el feed completo, por tipo.">
-          <ChartContainer config={typesConfig} className="h-64 w-full" aria-label="Cambios por tipo">
+          <ChartContainer config={typesConfig} className="h-64 w-full" role="img" aria-label="Cambios por tipo">
             <BarChart data={types} layout="vertical" margin={{ left: 24 }}>
               <CartesianGrid horizontal={false} />
               <XAxis type="number" scale="sqrt" />

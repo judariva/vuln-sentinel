@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { config } from "@/config";
 import { cn } from "@/lib/utils";
+import { PATHS } from "@/routes";
 import { applyTheme, storedTheme, THEME_KEY, type Theme } from "@/theme/tokens";
 
 const NAV: { to: string; label: string; restricted?: boolean }[] = [
-  { to: "/", label: "Hoy" },
-  { to: "/metricas", label: "Métricas" },
-  { to: "/fuentes", label: "Fuentes", restricted: true },
-  { to: "/admin", label: "Administración", restricted: true },
+  { to: PATHS.today, label: "Hoy" },
+  { to: PATHS.metrics, label: "Métricas" },
+  { to: PATHS.sources, label: "Fuentes", restricted: true },
+  { to: PATHS.admin, label: "Administración", restricted: true },
 ];
 
 function safeStorage(): Storage | undefined {

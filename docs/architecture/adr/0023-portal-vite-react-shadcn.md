@@ -98,6 +98,11 @@ above):». La misma página no habla de dependencias que solo se usan en los tes
   el host del portal, o servirse bajo el mismo host. La API de T6 no envía CORS (pregunta abierta).
 - Fuentes y Administración muestran datos de ejemplo, no de la API (`/admin/*` es un esqueleto que
   responde 501). Quedan marcadas como «detrás de Access».
+- Las rutas del portal no empiezan, ni como cadena, por un prefijo de la API (`/v1`, `/.well-known`,
+  `/admin`): en el mismo origen, o con una regla con comodín como `/admin*`, la petición iría a la
+  API. Por eso la pantalla de administración vive en `/gestion` (`web/src/routes.ts` y su test).
+- Los contenedores de gráficas llevan `role="img"` con su nombre: un `div` sin rol no admite
+  `aria-label` (axe `aria-prohibited-attr`). Las cifras van además en tablas donde importan.
 - Control nuevo: CTL-018 frente a THR-016 (enlaces del feed que no son https nunca llegan a un `href`).
 
 ## Evidencia

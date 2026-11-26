@@ -116,7 +116,7 @@ describe("Métricas", () => {
 describe("Pantallas restringidas", () => {
   it.each([
     ["/fuentes", "Fuentes"],
-    ["/admin", "Administración"],
+    ["/gestion", "Administración"],
   ])("%s se marca como «detrás de Access» y no llama a la API", (path, title) => {
     const fetchSpy = vi.fn(fakeFetch({}));
     vi.stubGlobal("fetch", fetchSpy);

@@ -50,7 +50,14 @@ INSTANCE = load_instance(ROOT / "config" / "instance.public.yaml")
 NOW = datetime(2099, 3, 1, 18, 0, tzinfo=UTC)  # «hoy» es el 2099-03-01 (T1..T3)
 CVE_C = "CVE-2099-1004"  # producto expuesto, RCE sin auth, sin exploit: C
 CVE_B = "CVE-2099-1005"  # producto expuesto, RCE sin auth, exploit a T2: C y luego B
-PROXIED = ("/v1/", "/.well-known/", "/admin")
+PROXIED = ("/v1/", "/.well-known/", "/admin/")
+PROXIED_EXACT = ("/admin",)  # `/admin` sin barra también es de la API; `/administracion` no
+
+
+def is_api(path: str) -> bool:
+    """¿La petición es de la API? Por segmentos, no por prefijo de cadena."""
+    bare = path.split("?", 1)[0]
+    return bare.startswith(PROXIED) or bare in PROXIED_EXACT
 
 
 def publisher():
@@ -168,7 +175,7 @@ def handler(client: TestClient, static: Path | None):
             self._send(200, {"Content-Type": ctype, "Cache-Control": "no-store"}, path.read_bytes())
 
         def do_GET(self):  # noqa: N802 - nombre de BaseHTTPRequestHandler
-            if self.path.startswith(PROXIED):
+            if is_api(self.path):
                 self._api()
             else:
                 self._static()
@@ -176,7 +183,7 @@ def handler(client: TestClient, static: Path | None):
         do_HEAD = do_GET  # noqa: N815
 
         def _write(self):
-            if self.path.startswith(PROXIED):
+            if is_api(self.path):
                 self._api()
             else:
                 self._send(405, {"Allow": "GET"}, b"")
@@ -202,4 +209,4 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["NOW", "make_app", "metric_rows", "publisher"]
+__all__ = ["NOW", "is_api", "make_app", "metric_rows", "publisher"]
