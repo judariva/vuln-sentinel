@@ -1,0 +1,129 @@
+name: deploy
+
+# Despliegue del núcleo en Azure (infra/main.bicep). Solo manual, solo desde `main` y solo en el
+# entorno `prod`, que exige la aprobación de Juan (regla de protección del entorno en GitHub).
+# Login con OIDC (credencial federada de la identidad del pipeline, G-2): sin secretos de
+# cliente. La identidad solo tiene Contributor y RBAC Administrator con condición sobre el RG
+# (ADR-0014).
+#
+# Configuración: secrets del entorno `prod` (regla 8). Van como secrets, aunque no todos sean
+# secretos, para que GitHub los enmascare en los logs: cuando el repo sea público, los logs de
+# Actions también lo serán. Por lo mismo, ningún paso imprime la salida de az.
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, VS_RESOURCE_GROUP, VS_NAME_PREFIX,
+#   VS_VNET_CIDR, VS_SUBNET_ACA_CIDR, VS_SUBNET_PG_CIDR, VS_SUBNET_PE_CIDR, VS_CLOUDFLARED_IMAGE,
+#   VS_KV_SECRET_TUNNEL, VS_KV_SECRET_GITHUB, VS_KV_SECRET_R2, VS_HEARTBEAT_ENDPOINT,
+#   VS_HEARTBEAT_DCR_ID, VS_FOUNDRY_ACCOUNT.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Digest de la imagen publicada por images.yml (sha256:...)"
+        required: true
+        type: string
+      what_if_only:
+        description: "Solo validar y what-if, sin aplicar cambios"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VS_RESOURCE_GROUP: ${{ secrets.VS_RESOURCE_GROUP }}
+      VS_NAME_PREFIX: ${{ secrets.VS_NAME_PREFIX }}
+      VS_VNET_CIDR: ${{ secrets.VS_VNET_CIDR }}
+      VS_SUBNET_ACA_CIDR: ${{ secrets.VS_SUBNET_ACA_CIDR }}
+      VS_SUBNET_PG_CIDR: ${{ secrets.VS_SUBNET_PG_CIDR }}
+      VS_SUBNET_PE_CIDR: ${{ secrets.VS_SUBNET_PE_CIDR }}
+      VS_CLOUDFLARED_IMAGE: ${{ secrets.VS_CLOUDFLARED_IMAGE }}
+      VS_KV_SECRET_TUNNEL: ${{ secrets.VS_KV_SECRET_TUNNEL }}
+      VS_KV_SECRET_GITHUB: ${{ secrets.VS_KV_SECRET_GITHUB }}
+      VS_KV_SECRET_R2: ${{ secrets.VS_KV_SECRET_R2 }}
+      VS_HEARTBEAT_ENDPOINT: ${{ secrets.VS_HEARTBEAT_ENDPOINT }}
+      VS_HEARTBEAT_DCR_ID: ${{ secrets.VS_HEARTBEAT_DCR_ID }}
+      VS_FOUNDRY_ACCOUNT: ${{ secrets.VS_FOUNDRY_ACCOUNT }}
+      EXPECTED_TENANT: ${{ secrets.AZURE_TENANT_ID }}
+      EXPECTED_SUBSCRIPTION: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # La entrada llega por variable de entorno, nunca interpolada en el script.
+      - name: Validar el digest y fijar la imagen
+        env:
+          DIGEST: ${{ inputs.image_digest }}
+        run: |
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::image_digest debe ser sha256:<64 hex>"
+            exit 1
+          fi
+          if [[ "$VS_CLOUDFLARED_IMAGE" != *@sha256:* ]]; then
+            echo "::error::VS_CLOUDFLARED_IMAGE debe ir fijada por digest"
+            exit 1
+          fi
+          echo "VS_IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}@${DIGEST}" >> "$GITHUB_ENV"
+
+      # SHA leído en el enlace del commit de la release v3.1.0 (2026-11-26); verificar con
+      # `git ls-remote` antes de fusionar (informe de T9).
+      - name: Login en Azure con OIDC
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Regla 6 de CLAUDE.md: antes de escribir, el tenant y la suscripción son los esperados.
+      - name: Comprobar tenant y suscripción
+        run: |
+          tenant="$(az account show --query tenantId -o tsv)"
+          sub="$(az account show --query id -o tsv)"
+          if [[ "$tenant" != "$EXPECTED_TENANT" || "$sub" != "$EXPECTED_SUBSCRIPTION" ]]; then
+            echo "::error::El contexto de az no es el de la plataforma; se para."
+            exit 1
+          fi
+
+      - name: Validar la plantilla
+        run: |
+          az deployment group validate \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --parameters infra/main.bicepparam \
+            --output none
+
+      # Solo el recuento por tipo de cambio: el detalle llevaría nombres e IDs al log.
+      - name: What-if (recuento de cambios)
+        run: |
+          az deployment group what-if \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --parameters infra/main.bicepparam \
+            --no-pretty-print --output json \
+            | jq -r '[.changes[].changeType] | group_by(.) | map("\(.[0]): \(length)") | .[]' \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Desplegar
+        if: ${{ !inputs.what_if_only }}
+        run: |
+          az deployment group create \
+            --resource-group "$VS_RESOURCE_GROUP" \
+            --name "vs-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --parameters infra/main.bicepparam \
+            --output none
+
+      - name: Cerrar sesión en Azure
+        if: always()
+        run: az logout || true

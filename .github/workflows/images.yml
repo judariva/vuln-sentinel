@@ -1,0 +1,79 @@
+name: images
+
+# Construye la imagen del producto y la publica en GHCR (PLAN §14: GHCR, 0 €). La imagen se
+# identifica por digest; el despliegue (`deploy.yml`) solo acepta un digest, nunca una etiqueta.
+# Sin acciones de terceros para el build: solo el CLI de docker del runner.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # Actions fijadas por SHA (tag entre comentarios), como en ci.yml.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Dependencias exactas y con hash desde uv.lock
+        run: uv export --locked --no-dev --no-emit-project --format requirements-txt -o requirements.lock.txt
+
+      - name: Nombre de la imagen
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          docker build --pull \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.licenses=Apache-2.0" \
+            -t "${IMAGE}:${GITHUB_SHA}" .
+
+      - name: Prueba de humo (importa la API y las migraciones, sin red ni root)
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          docker run --rm --network none --entrypoint python "${IMAGE}:${GITHUB_SHA}" \
+            -c "import os, vs.api.app, vs.model.migrate; assert os.getuid() != 0"
+
+      - name: Publicar en GHCR
+        id: push
+        env:
+          IMAGE: ${{ steps.name.outputs.image }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")"
+          digest="${digest#*@}"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Imagen publicada"
+            echo
+            echo "- Imagen: \`${IMAGE}@${digest}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "Para desplegar: workflow \`deploy\` con \`image_digest=${digest}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cerrar sesión en GHCR
+        if: always()
+        run: docker logout ghcr.io

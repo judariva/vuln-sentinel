@@ -45,6 +45,28 @@ jobs:
           VS_TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/postgres
         run: uv run pytest -rs
 
+  # Infraestructura como código (T9): compila y pasa el lint de Bicep y valida los workflows.
+  # Sin login en Azure: nada de este job toca la nube.
+  infra:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Bicep (build y lint)
+        run: |
+          for f in infra/main.bicep infra/platform/platform.bicep; do
+            az bicep build --file "$f" --stdout > /dev/null
+            az bicep lint --file "$f"
+          done
+          for f in infra/main.bicepparam infra/platform/platform.bicepparam; do
+            az bicep lint --file "$f"
+          done
+      - name: actionlint
+        run: uv run --no-project --with actionlint-py==1.7.12.25 actionlint
+
   # Portal (T8a, ADR-0023): build, lint, tests de componentes y prueba de humo con axe contra la
   # API de T6 con fixtures (`tests/portal_fixture.py`), todo en 127.0.0.1.
   web:
