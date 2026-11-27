@@ -41,7 +41,7 @@ from vs.feed.config import FEED_SCHEMA_VERSION
 from vs.feed.osv import ID_RE, canonical_bytes, sha256_hex
 from vs.feed.publish import HEAD, IMMUTABLE, JSON, Document, FeedPublisher
 from vs.feed.rights import Audience, audience_for
-from vs.feed.sign import Signer
+from vs.feed.sign import Signer, SigningUnavailable
 from vs.instance import Instance
 from vs.metrics.store import (
     COST_EUR,
@@ -265,6 +265,11 @@ def create_app(cfg: ApiConfig) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.exception_handler(SigningUnavailable)
+    async def signing_unavailable(request: Request, exc: SigningUnavailable):
+        # La API en Azure no firma (D-3): los `.jws` y las claves salen del job de publicación.
+        return error(503, "signing_unavailable", "este origen no sirve firmas ni claves")
 
     @app.middleware("http")
     async def common_headers(request: Request, call_next):

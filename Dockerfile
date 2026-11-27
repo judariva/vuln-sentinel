@@ -16,6 +16,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONPATH=/app/src
 
+# /app es de solo lectura para el usuario 10001: lo que escribe el job de publicación va a /tmp
+# (efímero; en la F1b, a R2). compose.yaml lo cambia por su volumen.
+ENV VS_FEED_DIR=/tmp/vs/feed
+
 WORKDIR /app
 
 COPY requirements.lock.txt ./

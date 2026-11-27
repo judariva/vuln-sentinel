@@ -22,20 +22,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, delete, func, select, text, update
+from sqlalchemy import Engine, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from vs.feed.changes import ChangeEntry
 from vs.feed.osv import alert_id
 from vs.instance import Instance, audit
-from vs.model.migrate import DATABASE_URL_ENV, normalize_url
+from vs.model.migrate import create_db_engine, require_url
 from vs.model.schema import (
     AffectedProduct,
     Alert,
@@ -72,11 +71,9 @@ ALERT_STATUS = "active"
 
 
 def connect(url: str | None = None) -> Engine:
-    """Motor de SQLAlchemy desde `VS_DATABASE_URL` (o la URL dada). Nunca escribe la URL en logs."""
-    url = url or os.environ.get(DATABASE_URL_ENV)
-    if not url:
-        raise RuntimeError(f"Falta la URL de la base de datos ({DATABASE_URL_ENV}).")
-    return create_engine(normalize_url(url), pool_pre_ping=True)
+    """Motor de SQLAlchemy desde la URL dada o la del entorno (`VS_DATABASE_URL` o Entra, ver
+    `vs.model.migrate`). Nunca escribe la URL en logs."""
+    return create_db_engine(require_url(url), pool_pre_ping=True)
 
 
 def fact_key(record: Record) -> str:

@@ -126,13 +126,16 @@ def test_signers_implement_interface():
     assert issubclass(KeyVaultSigner, Signer)
 
 
-def test_key_vault_signer_is_interface_only():
+def test_key_vault_signer_without_tokens_fails_closed():
+    # La firma real con Key Vault se prueba en test_azure_runtime.py con un vault simulado.
     kv = KeyVaultSigner("https://vault.example.invalid", "feed-signing", "v1", KID)
     assert kv.kid == KID
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(SignatureError):
         kv.sign(DOC)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(SignatureError):
         kv.public_jwk()
+    with pytest.raises(ValueError):
+        KeyVaultSigner("http://vault.example.invalid", "feed-signing", "v1", KID)
     assert not any(m == "azure" or m.startswith("azure.") for m in sys.modules)
 
 

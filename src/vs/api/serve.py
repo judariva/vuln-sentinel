@@ -150,7 +150,7 @@ def build_app(settings: Settings, engine: Engine | None = None) -> FastAPI:
         engine,
         audience,
         feed_cfg,
-        settings.signer(feed_cfg),
+        settings.signer(feed_cfg, required=False),
         settings.lists(),
         refresh_seconds=float(os.environ.get("VS_API_REFRESH", "15")),
     )

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from vs.azure_identity import IdentityError
 from vs.heartbeat import (
     FakeHeartbeatClient,
     Heartbeat,
@@ -241,9 +242,10 @@ def test_logs_ingestion_config_validated(endpoint, dcr, stream):
         LogsIngestionClient(endpoint, dcr, stream, FakeTokens(), FakePost())
 
 
-def test_managed_identity_is_interface_only():
-    provider = ManagedIdentityTokenProvider("client-id-de-prueba")
-    with pytest.raises(NotImplementedError):
+def test_managed_identity_without_endpoint_fails_closed():
+    # El token real se prueba en test_azure_runtime.py con un endpoint de identidad simulado.
+    provider = ManagedIdentityTokenProvider("client-id-de-prueba", env={})
+    with pytest.raises(IdentityError):
         provider.token(MONITOR_SCOPE)
     with pytest.raises(ValueError):
         ManagedIdentityTokenProvider("")

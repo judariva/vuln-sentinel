@@ -14,13 +14,14 @@ https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-ingestion-api-ov
 SIN VERIFICAR (la página usa el marcador `{apiVersion}` sin valor): la versión `2023-01-01` de la
 API de subida y el tamaño máximo por llamada. Se comprueban en la F1a con el primer envío real.
 
-La autenticación real es la identidad gestionada del job (`ManagedIdentityTokenProvider`). Aquí
-solo está su interfaz, como `KeyVaultSigner`: ninguna llamada a Azure ni ningún SDK.
+La autenticación real es la identidad gestionada del job (`ManagedIdentityTokenProvider`, que usa
+`vs.azure_identity`): el endpoint local de identidad de Container Apps, sin ningún SDK.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -28,6 +29,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 from urllib.parse import quote, urlsplit
+
+from vs.azure_identity import ManagedIdentityCredential
 
 DEFAULT_API_VERSION = "2023-01-01"  # SIN VERIFICAR (ver docstring)
 MONITOR_SCOPE = "https://monitor.azure.com/.default"
@@ -72,17 +75,24 @@ class TokenProvider(Protocol):
 class ManagedIdentityTokenProvider:
     """Token de la identidad gestionada del job (asignada por el usuario, CMP-026).
 
-    Solo la interfaz: en la F1a pedirá el token al endpoint de identidad de Container Apps con el
-    `client_id` de la identidad del job. No hay secretos que guardar.
+    Lo pide al endpoint de identidad de Container Apps con el `client_id` de la identidad del job
+    (`vs.azure_identity.ManagedIdentityCredential`). No hay secretos que guardar.
     """
 
-    def __init__(self, client_id: str) -> None:
+    def __init__(self, client_id: str, env: Mapping[str, str] | None = None, **kwargs: Any) -> None:
         if not client_id:
             raise ValueError("client_id vacío")
         self.client_id = client_id
+        self._env = env
+        self._kwargs = kwargs
+        self._credential: ManagedIdentityCredential | None = None
 
     def token(self, scope: str) -> str:
-        raise NotImplementedError("ManagedIdentityTokenProvider.token: se implementa en la F1a")
+        if self._credential is None:
+            env = dict(os.environ if self._env is None else self._env)
+            env["AZURE_CLIENT_ID"] = self.client_id
+            self._credential = ManagedIdentityCredential.from_env(env, **self._kwargs)
+        return self._credential.token(scope)
 
 
 class PostTransport(Protocol):
