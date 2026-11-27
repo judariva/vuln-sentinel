@@ -123,11 +123,6 @@ output "postgres" {
   }
 }
 
-output "postgres_private_endpoint_id" {
-  description = "Endpoint privado de PostgreSQL si lo crea el módulo; null si lo crea la plataforma (por defecto)."
-  value       = one(azurerm_private_endpoint.postgres[*].id)
-}
-
 output "signing_key_scope" {
   description = "Alcance ARM de la clave de firma de la plataforma (Crypto User de publish)."
   value       = local.signing_key_scope

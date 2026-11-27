@@ -60,7 +60,7 @@ def test_module_creates_no_platform_resources(resources):
     # Identidades, roles, RG, Key Vault, redes y zonas DNS son del vending y de la plataforma.
     forbidden = re.compile(
         r"^azurerm_(role_assignment|role_definition|user_assigned_identity|resource_group"
-        r"|key_vault\w*|private_dns_zone\w*|virtual_network|subnet\w*"
+        r"|key_vault\w*|private_dns_zone\w*|private_endpoint\w*|virtual_network|subnet\w*"
         r"|network_security_group\w*|log_analytics_workspace|management_lock)$"
     )
     types = {t for t, _ in resources}
@@ -116,27 +116,18 @@ def test_postgres_private_endpoint_and_entra_only(resources):
     assert re.search(r"password_auth_enabled\s*=\s*false", pg)
     assert re.search(r"active_directory_auth_enabled\s*=\s*true", pg)
     assert "administrator_password" not in pg and "administrator_login" not in pg
-    # D-7: endpoint privado, sin subred delegada. Por defecto lo crea la plataforma (v0.1.1): el
-    # del módulo solo existe si se le da la subred.
+    # D-7: sin subred delegada; el endpoint privado lo crea la plataforma (v0.1.2).
     assert "delegated_subnet_id" not in pg and "private_dns_zone_id" not in pg
-    pe = resources[("azurerm_private_endpoint", "postgres")]
-    assert re.search(r"count\s*=\s*var\.private_endpoint_subnet_id == null \? 0 : 1", pe)
-    assert "var.private_endpoint_subnet_id" in pe
-    assert "azurerm_postgresql_flexible_server.this.id" in pe
-    assert re.search(r'subresource_names\s*=\s*\["postgresqlServer"\]', pe)
-    assert "private_dns_zone_group" in pe and "var.postgres_private_dns_zone_id" in pe
     tls = resources[("azurerm_postgresql_flexible_server_configuration", "require_tls")]
     assert '"require_secure_transport"' in tls and '"on"' in tls
 
 
-def test_postgres_private_endpoint_off_by_default():
+def test_postgres_outputs_for_platform_private_endpoint():
+    # La puerta de la factoría es estática: un recurso declarado con count 0 también cuenta. El
+    # módulo no declara endpoints ni variables de red de endpoints (v0.1.2).
     variables = (MODULE / "variables.tf").read_text(encoding="utf-8")
-    for name in ("private_endpoint_subnet_id", "postgres_private_dns_zone_id"):
-        block = _block(variables, variables.index(f'variable "{name}"'))
-        assert re.search(r"default\s*=\s*null", block), name
-    # El ejemplo golden no se lo pasa: el endpoint es de la plataforma.
-    example = _strip_comments(_tf(EXAMPLE))
-    assert "private_endpoint_subnet_id" not in example
+    assert "private_endpoint_subnet_id" not in variables
+    assert "postgres_private_dns_zone_id" not in variables
     outputs = (MODULE / "outputs.tf").read_text(encoding="utf-8")
     pg_out = _block(outputs, outputs.index('output "postgres"'))
     assert re.search(r"name\s*=\s*azurerm_postgresql_flexible_server\.this\.name", pg_out)
@@ -236,7 +227,7 @@ def test_secret_and_image_inputs_are_validated():
 
 def test_names_follow_type_name_env():
     main = (MODULE / "main.tf").read_text(encoding="utf-8")
-    for prefix in ("cae", "psql", "pe-psql", "ca", "caj"):
+    for prefix in ("cae", "psql", "ca", "caj"):
         assert re.search(rf'"{prefix}-\$\{{var\.name\}}-', main), prefix
     # El nombre más largo de ACA (caj-<16>-xxx-prod) cabe en 32 caracteres.
     assert len("caj-" + "x" * 16 + "-inv-prod") <= 32
@@ -269,8 +260,8 @@ def test_checkov_suppressions_are_scoped_and_justified():
                 found.append(m[1])
                 assert re.fullmatch(r"CKV2?_AZURE_\d+", m[1]), line  # nunca comodines (S-24)
                 assert m[2] and len(m[2].strip()) > 20, line  # con motivo
-    # CKV2_AZURE_57 ya no se suprime: con el endpoint privado pasa (T16b).
-    assert sorted(found) == ["CKV_AZURE_136"]
+    # CKV2_AZURE_57 vuelve en v0.1.2: el endpoint privado lo crea la plataforma, fuera del módulo.
+    assert sorted(found) == ["CKV2_AZURE_57", "CKV_AZURE_136"]
 
 
 def test_tflint_ignores_are_scoped():

@@ -59,7 +59,6 @@ locals {
   names = {
     environment      = "cae-${var.name}-${var.environment}"
     postgres         = "psql-${var.name}-${var.environment}-${local.hash4}"
-    postgres_pe      = "pe-psql-${var.name}-${var.environment}"
     app              = { for k, c in local.codes : k => "ca-${var.name}-${c}-${var.environment}" }
     job              = { for k, c in local.codes : k => "caj-${var.name}-${c}-${var.environment}" }
     diag_environment = "${var.diagnostic_setting_prefix}cae-${var.name}-${var.environment}"

@@ -1,9 +1,8 @@
 # PostgreSQL Flexible (CMP-007, ADR-0003). CONDICIONAL del patrón de Container Apps: privado y con
 # Entra ID.
-# - Acceso privado por endpoint privado: sin acceso público, sin subred delegada por workload y sin
-#   crear zonas. Por defecto el endpoint lo crea la plataforma (D-7 de golden), con las salidas
-#   postgres.id y postgres.name; el módulo solo lo crea si recibe private_endpoint_subnet_id
-#   (landing zones sin esa capacidad).
+# - Acceso privado por endpoint privado, sin acceso público ni subred delegada. El endpoint y su
+#   registro DNS son de la red, y la red es de la plataforma: los crea ella con las salidas
+#   postgres.id y postgres.name (v0.1.2). El módulo no declara ningún recurso de red.
 # - Solo Entra ID: sin contraseña de administrador ni autenticación por contraseña. Por defecto el
 #   administrador Entra es la identidad runtime (job migrate); los demás componentes entran con su
 #   identidad y los roles de base de datos que les da la migración.
@@ -25,6 +24,7 @@ locals {
 resource "azurerm_postgresql_flexible_server" "this" {
   # Supresión acotada a este recurso (T16b):
   # checkov:skip=CKV_AZURE_136:Geo-backup por entorno, no literal. postgres.geo_redundant_backup null = activado en prod y desactivado en lab, dev y pre (respuesta 4 de Juan, T16b); Checkov no evalúa la expresión.
+  # checkov:skip=CKV2_AZURE_57:El endpoint privado existe pero lo crea la plataforma con la salida postgres.id (D-7, v0.1.2), no este módulo. Sin acceso público (public_network_access_enabled = false): sin endpoint no hay acceso, no hay exposición.
   name                          = local.names.postgres
   location                      = var.location
   resource_group_name           = var.resource_group.name
@@ -46,36 +46,6 @@ resource "azurerm_postgresql_flexible_server" "this" {
   lifecycle {
     # Azure elige la zona al crear; cambiarla después no es un cambio del módulo.
     ignore_changes = [zone]
-  }
-}
-
-resource "azurerm_private_endpoint" "postgres" {
-  count                         = var.private_endpoint_subnet_id == null ? 0 : 1
-  name                          = local.names.postgres_pe
-  location                      = var.location
-  resource_group_name           = var.resource_group.name
-  subnet_id                     = var.private_endpoint_subnet_id
-  custom_network_interface_name = "nic-${local.names.postgres_pe}"
-  tags                          = var.tags
-
-  private_service_connection {
-    name                           = "psc-${local.names.postgres}"
-    private_connection_resource_id = azurerm_postgresql_flexible_server.this.id
-    subresource_names              = ["postgresqlServer"]
-    is_manual_connection           = false
-  }
-
-  # Registro A del endpoint en la zona privatelink de la plataforma.
-  private_dns_zone_group {
-    name                 = "default"
-    private_dns_zone_ids = [var.postgres_private_dns_zone_id]
-  }
-
-  lifecycle {
-    precondition {
-      condition     = var.postgres_private_dns_zone_id != null
-      error_message = "Con private_endpoint_subnet_id hace falta postgres_private_dns_zone_id."
-    }
   }
 }
 
