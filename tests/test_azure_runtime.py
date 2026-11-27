@@ -43,6 +43,7 @@ from vs.model.migrate import create_db_engine, database_url, downgrade, upgrade,
 from vs.model.roles import (
     Principal,
     ensure_publish_role,
+    ensure_roles,
     grant_statements,
     publish_principal,
 )
@@ -331,6 +332,86 @@ def test_ensure_publish_role_is_idempotent_and_optional():
     assert ensure_publish_role(APP_URL, {}, _factory([], exists=False)) == "skipped"
 
 
+RO_OID = "99999999-8888-7777-6666-555555555555"
+RO_ENV = {"VS_DATABASE_READONLY_ROLE": "id-ejemplo-api", "VS_DATABASE_READONLY_OID": RO_OID}
+
+
+def test_readonly_grants_only_read_and_revoke_writes():
+    stmts = grant_statements(Principal("id-ejemplo-api", RO_OID, "readonly"))
+    grants = [s for s in stmts if s.startswith("GRANT")]
+    assert grants == [
+        'GRANT USAGE ON SCHEMA public TO "id-ejemplo-api"',
+        'GRANT SELECT ON ALL TABLES IN SCHEMA public TO "id-ejemplo-api"',
+    ]
+    assert any(s.startswith("REVOKE INSERT, UPDATE, DELETE, TRUNCATE") for s in stmts)
+    assert not any(t in " ".join(grants) for t in ("INSERT", "UPDATE", "DELETE", "SEQUENCES"))
+
+
+def test_principal_profile_is_closed_list():
+    with pytest.raises(ValueError):
+        Principal("id-ejemplo-api", RO_OID, "admin")
+
+
+def test_ensure_roles_creates_both_profiles():
+    log: list = []
+    res = ensure_roles(APP_URL, {**ROLE_ENV, **RO_ENV}, _factory(log, exists=False))
+    assert res == {"publish": "created", "readonly": "created"}
+    created = [p["n"] for s, p in log if "pgaadauth_create_principal_with_oid" in s]
+    assert created == ["id-ejemplo-publish", "id-ejemplo-api"]
+    assert ensure_roles(APP_URL, ROLE_ENV, _factory([], exists=True)) == {
+        "publish": "granted",
+        "readonly": "skipped",
+    }
+    with pytest.raises(ValueError):
+        ensure_roles(
+            APP_URL,
+            {
+                **ROLE_ENV,
+                "VS_DATABASE_READONLY_ROLE": "id-ejemplo-publish",
+                "VS_DATABASE_READONLY_OID": RO_OID,
+            },
+            _factory([], exists=False),
+        )
+
+
+@pytest.mark.db
+@pytest.mark.skipif(not os.environ.get("VS_TEST_DATABASE_URL"), reason="sin VS_TEST_DATABASE_URL")
+def test_readonly_role_on_real_postgres(db_url):  # noqa: F811 - fixture importada de test_db
+    """Solo lectura de verdad: aunque alguien le diera INSERT a mano, tras migrate no lo tiene."""
+    upgrade(db_url)
+    role = f"vs-test-api-{uuid.uuid4().hex[:8]}"
+    engine = create_engine(db_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'CREATE ROLE "{role}" NOLOGIN'))
+            conn.execute(text(f'GRANT INSERT, DELETE ON vulnerability, job_state TO "{role}"'))
+            for stmt in grant_statements(Principal(role, RO_OID, "readonly")):
+                conn.execute(text(stmt))
+        with engine.connect() as conn:
+            tables = [
+                r[0]
+                for r in conn.execute(
+                    text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+                )
+            ]
+
+            def can(table: str, priv: str) -> bool:
+                q = text("SELECT has_table_privilege(:r, :t, :p)")
+                return bool(
+                    conn.execute(q, {"r": role, "t": f"public.{table}", "p": priv}).scalar()
+                )
+
+            assert tables and all(can(t, "SELECT") for t in tables)
+            for priv in ("INSERT", "UPDATE", "DELETE", "TRUNCATE"):
+                assert not any(can(t, priv) for t in tables), priv
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP OWNED BY "{role}"'))
+            conn.execute(text(f'DROP ROLE IF EXISTS "{role}"'))
+        engine.dispose()
+        downgrade(db_url)
+
+
 @pytest.mark.db
 @pytest.mark.skipif(not os.environ.get("VS_TEST_DATABASE_URL"), reason="sin VS_TEST_DATABASE_URL")
 def test_publish_grants_on_real_postgres(db_url):  # noqa: F811 - fixture importada de test_db
@@ -563,3 +644,6 @@ def test_module_job_env_names_match_the_code():
     migrate = re.sub(r"\s+", " ", _block(main, "migrate"))
     assert f"{vs_roles.ROLE_ENV} = var.identities.publish.name" in migrate
     assert f"{vs_roles.OID_ENV} = var.identities.publish.principal_id" in migrate
+    flat = re.sub(r"\s+", " ", main)
+    assert f"{vs_roles.READONLY_ROLE_ENV} = var.identities.api.name" in flat
+    assert f"{vs_roles.READONLY_OID_ENV} = var.identities.api.principal_id" in flat

@@ -37,6 +37,7 @@ Key Vault y el pull de ACR fallan al crear la revisión).
 |---|---|
 | `runtime` (API, cloudflared, ingest, investigate, daily, migrate) | AcrPull sobre el ACR; Key Vault Secrets User sobre cada secreto que usa; Monitoring Metrics Publisher (DCR, App Insights); Cognitive Services User (Foundry) |
 | `publish` (job publish) | AcrPull sobre el ACR (el job extrae su imagen con su identidad); **Key Vault Crypto User sobre la clave de firma**; Monitoring Metrics Publisher; Cognitive Services User; Secrets User solo sobre el secreto de R2 si se da |
+| `api` (opcional: la API, si el vending la da; si no, la API va con `runtime`) | AcrPull sobre el ACR; Monitoring Metrics Publisher (App Insights). En PostgreSQL, migrate le crea un rol de **solo lectura** (`VS_DATABASE_READONLY_*`): la API está expuesta y no escribe |
 
 Sin Cost Management Reader: ningún componente consulta Cost Management todavía. Se pedirá con el
 colector de coste, no antes.

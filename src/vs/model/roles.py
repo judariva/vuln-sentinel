@@ -1,10 +1,12 @@
-"""Rol de PostgreSQL de la identidad de publicación (F1a, D-3: dos identidades).
+"""Roles de PostgreSQL de las identidades que no administran la base de datos (F1a, D-3).
 
-El administrador Entra del servidor es la identidad `runtime` (la del job de migración). La
-identidad `publish` solo firma el feed y necesita su propio rol, con lo justo:
+El administrador Entra del servidor es la identidad `runtime` (la del job de migración). Las demás
+identidades tienen su propio rol, con lo justo:
 
-- lectura de todas las tablas (arma el feed desde los hechos, niveles e historial);
-- escritura solo en `feed_record`, `feed_change` (con borrado de lo caducado) y `job_state`.
+- `publish` (solo firma el feed): lectura de todas las tablas y escritura solo en `feed_record`,
+  `feed_change` (con borrado de lo caducado) y `job_state`.
+- `readonly` (la API, que está expuesta y no escribe): SOLO lectura. Además de los GRANT, un REVOKE
+  explícito de toda escritura, para que lo siga siendo aunque alguien le diera permisos a mano.
 
 El rol se crea con `pgaadauth_create_principal_with_oid`, que vive en la base de datos `postgres`
 y no consulta Microsoft Graph (learn.microsoft.com/azure/postgresql/flexible-server/
@@ -26,6 +28,9 @@ from vs.model.migrate import create_db_engine, normalize_url
 
 ROLE_ENV = "VS_DATABASE_PUBLISH_ROLE"
 OID_ENV = "VS_DATABASE_PUBLISH_OID"
+READONLY_ROLE_ENV = "VS_DATABASE_READONLY_ROLE"
+READONLY_OID_ENV = "VS_DATABASE_READONLY_OID"
+PROFILES = ("publish", "readonly")
 _ROLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$")
 _OID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -41,12 +46,15 @@ PUBLISH_WRITES: Mapping[str, str] = {
 class Principal:
     name: str
     oid: str
+    profile: str = "publish"
 
     def __post_init__(self) -> None:
         if not _ROLE_RE.fullmatch(self.name):
             raise ValueError(f"{ROLE_ENV} no es un nombre de rol válido")
         if not _OID_RE.fullmatch(self.oid):
             raise ValueError(f"{OID_ENV} no es un object id válido")
+        if self.profile not in PROFILES:
+            raise ValueError(f"perfil de rol desconocido: {self.profile}")
 
     @property
     def ident(self) -> str:
@@ -54,37 +62,49 @@ class Principal:
         return f'"{self.name}"'
 
 
-def publish_principal(env: Mapping[str, str] | None = None) -> Principal | None:
-    env = os.environ if env is None else env
-    name = env.get(ROLE_ENV, "").strip()
-    oid = env.get(OID_ENV, "").strip().lower()
+def _principal(env: Mapping[str, str], role_env: str, oid_env: str, profile: str):
+    name = env.get(role_env, "").strip()
+    oid = env.get(oid_env, "").strip().lower()
     if not name and not oid:
         return None
     if not (name and oid):
-        raise ValueError(f"{ROLE_ENV} y {OID_ENV} van juntas")
-    return Principal(name, oid)
+        raise ValueError(f"{role_env} y {oid_env} van juntas")
+    return Principal(name, oid, profile)
+
+
+def publish_principal(env: Mapping[str, str] | None = None) -> Principal | None:
+    return _principal(os.environ if env is None else env, ROLE_ENV, OID_ENV, "publish")
+
+
+def readonly_principal(env: Mapping[str, str] | None = None) -> Principal | None:
+    return _principal(
+        os.environ if env is None else env, READONLY_ROLE_ENV, READONLY_OID_ENV, "readonly"
+    )
 
 
 def grant_statements(p: Principal) -> list[str]:
     stmts = [
         f"GRANT USAGE ON SCHEMA public TO {p.ident}",
         f"GRANT SELECT ON ALL TABLES IN SCHEMA public TO {p.ident}",
-        f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {p.ident}",
     ]
+    if p.profile == "readonly":
+        return [
+            *stmts,
+            "REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON ALL TABLES IN SCHEMA public"
+            f" FROM {p.ident}",
+            f"REVOKE CREATE ON SCHEMA public FROM {p.ident}",
+        ]
+    stmts.append(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {p.ident}")
     stmts += [f"GRANT {privs} ON {table} TO {p.ident}" for table, privs in PUBLISH_WRITES.items()]
     return stmts
 
 
-def ensure_publish_role(
+def _ensure(
     app_url: str,
-    env: Mapping[str, str] | None = None,
-    engine_factory: Callable[..., Engine] | None = None,
+    principal: Principal,
+    env: Mapping[str, str] | None,
+    engine_factory: Callable[..., Engine],
 ) -> str:
-    """Crea el rol si falta y da los permisos. Devuelve `skipped`, `granted` o `created`."""
-    principal = publish_principal(env)
-    if principal is None:
-        return "skipped"
-    engine_factory = engine_factory or create_db_engine
     result = "granted"
     admin = engine_factory(
         make_url(normalize_url(app_url)).set(database="postgres"), env=env, poolclass=pool.NullPool
@@ -113,3 +133,31 @@ def ensure_publish_role(
     finally:
         app.dispose()
     return result
+
+
+def ensure_publish_role(
+    app_url: str,
+    env: Mapping[str, str] | None = None,
+    engine_factory: Callable[..., Engine] | None = None,
+) -> str:
+    """Crea el rol de publish si falta y da los permisos. `skipped`, `granted` o `created`."""
+    principal = publish_principal(env)
+    if principal is None:
+        return "skipped"
+    return _ensure(app_url, principal, env, engine_factory or create_db_engine)
+
+
+def ensure_roles(
+    app_url: str,
+    env: Mapping[str, str] | None = None,
+    engine_factory: Callable[..., Engine] | None = None,
+) -> dict[str, str]:
+    """Roles de publish y de solo lectura. Por perfil: `skipped`, `granted` o `created`."""
+    pub, ro = publish_principal(env), readonly_principal(env)
+    if pub and ro and pub.name == ro.name:
+        raise ValueError("el rol de solo lectura no puede ser el de publish")
+    factory = engine_factory or create_db_engine
+    return {
+        "publish": "skipped" if pub is None else _ensure(app_url, pub, env, factory),
+        "readonly": "skipped" if ro is None else _ensure(app_url, ro, env, factory),
+    }
