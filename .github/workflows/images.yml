@@ -119,14 +119,18 @@ jobs:
       IMAGE: ${{ needs.build.outputs.image }}
       DIGEST: ${{ needs.build.outputs.digest }}
     steps:
-      - name: Extraer el SBOM (SPDX) que BuildKit adjuntó a la imagen
+      # La sesión de GHCR sigue abierta hasta el último paso: push-to-registry de las dos
+      # atestaciones la necesita (sin ella: "No credentials found for registry ghcr.io"). Se cierra
+      # siempre al final, también si algo falla.
+      - name: Iniciar sesión en GHCR (token del job, packages write)
         env:
           GHCR_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Extraer el SBOM (SPDX) que BuildKit adjuntó a la imagen
         run: |
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx imagetools inspect "${IMAGE}@${DIGEST}" --format '{{ json .SBOM }}' \
             > "$RUNNER_TEMP/sbom-raw.json"
-          docker logout ghcr.io
           # Una sola plataforma: {"SPDX": ...}; varias: {"linux/amd64": {"SPDX": ...}}.
           jq 'if has("SPDX") then .SPDX else (to_entries[0].value.SPDX) end' \
             "$RUNNER_TEMP/sbom-raw.json" > "$RUNNER_TEMP/sbom.spdx.json"
@@ -152,6 +156,10 @@ jobs:
           subject-digest: ${{ env.DIGEST }}
           sbom-path: ${{ runner.temp }}/sbom.spdx.json
           push-to-registry: true
+
+      - name: Cerrar la sesión de GHCR
+        if: always()
+        run: docker logout ghcr.io
 
       - name: Resumen
         run: |
