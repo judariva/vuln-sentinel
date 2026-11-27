@@ -77,8 +77,13 @@ def test_ingress_is_internal_and_tls_only(resources):
     for name, body in apps.items():
         assert not re.search(r"external_enabled\s*=\s*true", body), name
         assert not re.search(r"allow_insecure_connections\s*=\s*true", body), name
-    assert re.search(r"external_enabled\s*=\s*false", apps["api"])
-    assert re.search(r"allow_insecure_connections\s*=\s*false", apps["api"])
+    # La API solo se abre a la VNet con api.vnet_ingress_from (CIDR privados validados; el entorno
+    # es interno) y entonces cada CIDR es una regla Allow. El comportamiento lo prueba
+    # tests/api_ingress.tftest.hcl con `terraform test`.
+    api = apps["api"]
+    assert re.search(r"external_enabled\s*=\s*length\(var\.api\.vnet_ingress_from\)\s*>\s*0", api)
+    assert re.search(r'action\s*=\s*"Allow"', api) and '"Deny"' not in api
+    assert re.search(r"allow_insecure_connections\s*=\s*false", api)
     assert "ingress" not in apps["cloudflared"]
 
 
@@ -176,21 +181,15 @@ def test_diagnostic_names_follow_platform_convention():
 
 
 def test_two_identities_and_only_publish_signs(code):
-    # D-3: dos UAMI. Solo el job publish usa la identidad publish.
+    # D-3: dos UAMI. Solo el job publish usa la identidad publish. La API, con identities.api,
+    # usa la suya (solo lectura en PostgreSQL); sin ella, runtime.
     m = re.search(r"identity_key = \{(.*?)\}", code, re.S)
     assert m
     pairs = dict(re.findall(r"(\w+)\s*=\s*\"(\w+)\"", m[1]))
     assert set(pairs.values()) == {"runtime", "publish"}
     assert [c for c, k in pairs.items() if k == "publish"] == ["publish"]
-    assert set(pairs) == {
-        "api",
-        "cloudflared",
-        "ingest",
-        "investigate",
-        "publish",
-        "daily",
-        "migrate",
-    }
+    assert set(pairs) == {"cloudflared", "ingest", "investigate", "publish", "daily", "migrate"}
+    assert re.search(r'\bapi\s*=\s*var\.identities\.api == null \? "runtime" : "api"', m[1])
     # Las identidades salen del mapa, nunca de var.identities indexado por componente.
     assert not re.search(r"var\.identities\[", code)
 

@@ -160,9 +160,17 @@ def test_dockerfile_base_pinned_by_digest():
         for line in (ROOT / "Dockerfile").read_text(encoding="utf-8").splitlines()
         if line.startswith("FROM ")
     ]
-    assert froms
+    assert len(froms) == 2  # portal (node) + imagen final (python)
     for line in froms:
-        assert re.search(r"@sha256:[0-9a-f]{64}$", line), line
+        # Digest obligatorio; solo se admite detrás el alias de la etapa (`AS web`).
+        assert re.search(r"@sha256:[0-9a-f]{64}( AS [a-z][a-z0-9_-]*)?$", line), line
+    assert "COPY --from=web /web/dist ./web/dist" in (ROOT / "Dockerfile").read_text("utf-8")
+
+
+def test_dockerignore_keeps_local_web_files_out():
+    ignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    for entry in ("web/node_modules", "web/dist", "web/.env*"):
+        assert entry in ignore, entry
 
 
 def test_dependabot_covers_every_ecosystem_weekly():

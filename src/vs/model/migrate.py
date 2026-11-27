@@ -10,8 +10,9 @@ La URL sale de dos sitios:
   verificación del certificado y del nombre del servidor (`sslmode=verify-full`).
 
 Uso: `python -m vs.model.migrate upgrade head` (o `downgrade base`). Tras `upgrade`, si el entorno
-trae la identidad de publicación (`VS_DATABASE_PUBLISH_ROLE` y `VS_DATABASE_PUBLISH_OID`), crea su
-rol de Entra y le da solo los permisos que necesita (`vs.model.roles`).
+trae la identidad de publicación (`VS_DATABASE_PUBLISH_ROLE` y `VS_DATABASE_PUBLISH_OID`) o la de
+solo lectura de la API (`VS_DATABASE_READONLY_ROLE` y `VS_DATABASE_READONLY_OID`), crea sus roles de
+Entra y les da solo los permisos que necesitan (`vs.model.roles`).
 """
 
 from __future__ import annotations
@@ -158,10 +159,16 @@ def main(argv: list[str]) -> int:
         _log("migrate", action="downgrade", revision=revision)
         return 0
     upgrade(revision=revision)
-    from vs.model.roles import ensure_publish_role
+    from vs.model.roles import ensure_roles
 
-    granted = ensure_publish_role(require_url())
-    _log("migrate", action="upgrade", revision=revision, publish_role=granted)
+    roles = ensure_roles(require_url())
+    _log(
+        "migrate",
+        action="upgrade",
+        revision=revision,
+        publish_role=roles["publish"],
+        readonly_role=roles["readonly"],
+    )
     return 0
 
 

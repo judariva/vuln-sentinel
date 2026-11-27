@@ -19,13 +19,14 @@ locals {
   use_acr = var.image_registry == "acr"
   image   = "${var.registry_server}/${var.image_repository}@${var.image_digest}"
 
-  # Dos UAMI (D-3): solo el job publish firma el feed; todo lo demás va con runtime.
-  identity_by_key = {
-    runtime = var.identities.runtime
-    publish = var.identities.publish
-  }
+  # UAMI (D-3): solo el job publish firma el feed. La API, expuesta y de solo lectura, usa su propia
+  # identidad si el vending la da (mínimo privilegio en PostgreSQL); si no, runtime.
+  identity_by_key = merge(
+    { runtime = var.identities.runtime, publish = var.identities.publish },
+    var.identities.api == null ? {} : { api = var.identities.api },
+  )
   identity_key = {
-    api         = "runtime"
+    api         = var.identities.api == null ? "runtime" : "api"
     cloudflared = "runtime"
     ingest      = "runtime"
     investigate = "runtime"
@@ -123,17 +124,24 @@ locals {
     }
     # Migraciones: manual, con la identidad runtime. Por defecto runtime es el administrador Entra
     # de PostgreSQL (postgres_entra_admin); el pipeline no administra la BD. Tras migrar, crea el rol
-    # de Entra de publish (por object id, sin Graph) y le da solo lo que necesita (vs.model.roles).
+    # de Entra de publish (por object id, sin Graph) y le da solo lo que necesita (vs.model.roles); y,
+    # con identities.api, el de la API, de SOLO LECTURA.
     migrate = {
       args       = ["vs.model.migrate", "upgrade", "head"]
       cron       = null
       timeout    = 900
       secrets    = {}
       secret_env = {}
-      env = {
-        VS_DATABASE_PUBLISH_ROLE = var.identities.publish.name
-        VS_DATABASE_PUBLISH_OID  = var.identities.publish.principal_id
-      }
+      env = merge(
+        {
+          VS_DATABASE_PUBLISH_ROLE = var.identities.publish.name
+          VS_DATABASE_PUBLISH_OID  = var.identities.publish.principal_id
+        },
+        var.identities.api == null ? {} : {
+          VS_DATABASE_READONLY_ROLE = var.identities.api.name
+          VS_DATABASE_READONLY_OID  = var.identities.api.principal_id
+        },
+      )
     }
   }
 }
