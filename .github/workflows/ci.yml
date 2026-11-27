@@ -101,6 +101,8 @@ jobs:
           terraform -chdir=infra/terraform/examples/golden-lab validate
           terraform -chdir=infra/terraform/modules/vuln-sentinel init -backend=false -input=false
           terraform -chdir=infra/terraform/modules/vuln-sentinel validate
+      - name: terraform test (módulo, proveedor simulado, sin nube)
+        run: terraform -chdir=infra/terraform/modules/vuln-sentinel test -no-color
       - name: tflint
         env:
           GITHUB_TOKEN: ${{ github.token }}

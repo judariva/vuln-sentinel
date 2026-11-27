@@ -19,7 +19,7 @@ el `.terraform.lock.hcl` los pone la raíz que lo instancia, como hace el ejempl
 | Recurso | Nombre | Notas |
 |---|---|---|
 | Entorno de ACA | `cae-<nombre>-<env>` | En la subred de entrada, interno (sin IP pública), solo perfil Consumption, `logs_destination = azure-monitor` |
-| API | `ca-<nombre>-api-<env>` | Ingress interno, TLS, probes `/healthz`, escala 0–1 por defecto |
+| API | `ca-<nombre>-api-<env>` | Ingress solo dentro del entorno por defecto, TLS, probes `/healthz`, escala 0–1 por defecto. Con `api.vnet_ingress_from` (CIDR privados, máximo 8), visible en la VNet solo desde esos CIDR (reglas Allow), para un conector de la plataforma fuera del entorno. Nunca desde Internet: el entorno es interno |
 | cloudflared (opcional) | `ca-<nombre>-cfd-<env>` | Sin ingress, 1 réplica, token del Tunnel por referencia de Key Vault, probes `/ready` en el puerto de métricas. Con `acr`, imagen replicada en el ACR. Apagado por defecto: en LAB el conector es el de la plataforma |
 | Jobs | `caj-<nombre>-{ing,inv,pub,day,mig}-<env>` | ingest, publish y daily con cron (UTC); investigate manual y con `VS_AGENT_ENABLED=0` mientras `investigate_enabled = false`; migrate manual |
 | PostgreSQL Flexible | `psql-<nombre>-<env>-<hash4>` | Sin acceso público, solo Entra ID (administrador por defecto: la identidad runtime), TLS obligatorio. Geo-backup activado en prod y desactivado en el resto. Sin `prevent_destroy` (ver abajo) |

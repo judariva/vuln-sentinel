@@ -1,5 +1,6 @@
-# Container Apps: la API (CMP-002) y cloudflared (CMP-010, opcional). Nunca con ingress externo: el
-# entorno es interno y al origen solo se llega por el Tunnel (ADR-0004, CTL-008). Revisión Single,
+# Container Apps: la API (CMP-002) y cloudflared (CMP-010, opcional). Nunca desde Internet: el
+# entorno es interno y al origen solo se llega por el Tunnel (ADR-0004, CTL-008), con el conector
+# dentro del entorno o, con api.vnet_ingress_from, uno de la plataforma en la VNet. Revisión Single,
 # réplicas explícitas, probes de liveness y readiness, secretos solo como referencias de Key Vault.
 
 resource "azurerm_container_app" "api" {
@@ -25,14 +26,27 @@ resource "azurerm_container_app" "api" {
     }
   }
 
+  # Por defecto solo la ven las apps del entorno (cloudflared del módulo). Con vnet_ingress_from, la
+  # ve la VNet, nunca Internet: el entorno es interno (internal_load_balancer_enabled), y solo desde
+  # esos CIDR privados (reglas Allow: lo demás queda denegado). Es el caso de un conector de la
+  # plataforma fuera del entorno.
   ingress {
-    external_enabled           = false
+    external_enabled           = length(var.api.vnet_ingress_from) > 0
     target_port                = var.api.port
     transport                  = "http"
     allow_insecure_connections = false
     traffic_weight {
       latest_revision = true
       percentage      = 100
+    }
+    dynamic "ip_security_restriction" {
+      for_each = var.api.vnet_ingress_from
+      content {
+        name             = "allow-${replace(replace(ip_security_restriction.value, ".", "-"), "/", "-")}"
+        action           = "Allow"
+        ip_address_range = ip_security_restriction.value
+        description      = "Conector del borde (vnet_ingress_from)"
+      }
     }
   }
 

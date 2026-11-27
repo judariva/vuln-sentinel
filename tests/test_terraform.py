@@ -77,8 +77,13 @@ def test_ingress_is_internal_and_tls_only(resources):
     for name, body in apps.items():
         assert not re.search(r"external_enabled\s*=\s*true", body), name
         assert not re.search(r"allow_insecure_connections\s*=\s*true", body), name
-    assert re.search(r"external_enabled\s*=\s*false", apps["api"])
-    assert re.search(r"allow_insecure_connections\s*=\s*false", apps["api"])
+    # La API solo se abre a la VNet con api.vnet_ingress_from (CIDR privados validados; el entorno
+    # es interno) y entonces cada CIDR es una regla Allow. El comportamiento lo prueba
+    # tests/api_ingress.tftest.hcl con `terraform test`.
+    api = apps["api"]
+    assert re.search(r"external_enabled\s*=\s*length\(var\.api\.vnet_ingress_from\)\s*>\s*0", api)
+    assert re.search(r'action\s*=\s*"Allow"', api) and '"Deny"' not in api
+    assert re.search(r"allow_insecure_connections\s*=\s*false", api)
     assert "ingress" not in apps["cloudflared"]
 
 
