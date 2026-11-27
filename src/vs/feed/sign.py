@@ -8,8 +8,9 @@ Formato: JWS compacto con el payload separado, `<cabecera>..<firma>`. La cabecer
 La firma va detrás de la interfaz `Signer`:
 
 - `LocalDevSigner`: clave P-256 en memoria, generada en el test o leída de `.cache/`. Nunca en git.
-- `KeyVaultSigner`: la clave no exportable de Key Vault (CMP-008). Aquí solo está la interfaz; la
-  llamada a Azure se escribe en la F1a.
+- `KeyVaultSigner`: la clave no exportable de Key Vault (CMP-008), por su API REST y con la
+  identidad gestionada del job (F1a). Sin SDK de Azure.
+- `UnavailableSigner`: para un proceso que no firma (la API en Azure, D-3).
 
 Cualquiera puede verificar con `openssl` o con una librería JOSE (`examples/verify/`).
 """
@@ -20,10 +21,13 @@ import base64
 import hashlib
 import json
 import os
+import re
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
@@ -167,18 +171,178 @@ def _check_key_path(path: Path) -> None:
         raise ValueError(f"una clave de firma dentro del repo solo puede ir en .cache/: {path}")
 
 
+class TokenSource(Protocol):
+    def token(self, scope: str) -> str: ...
+
+
+class HttpTransport(Protocol):
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        body: bytes | None,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        """Petición HTTPS; devuelve (código, cuerpo). Error de red: `OSError`."""
+        ...
+
+
+class UrllibHttpTransport:
+    def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        body: bytes | None,
+        timeout: float,
+    ) -> tuple[int, bytes]:
+        if not url.startswith("https://"):
+            raise SignatureError("Key Vault solo por HTTPS")
+        req = urllib.request.Request(url, data=body, headers=dict(headers), method=method)  # noqa: S310
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - HTTPS comprobado
+                return resp.status, resp.read()
+        except urllib.error.HTTPError as exc:
+            return exc.code, b""
+
+
+KV_API_VERSION = "7.4"
+KV_SCOPE = "https://vault.azure.net/.default"
+_KV_URI_RE = re.compile(
+    r"^(https://[a-z0-9-]{3,24}\.vault\.azure\.net)/keys/([A-Za-z0-9-]{1,127})(?:/([0-9a-f]{32}))?/?$"
+)
+
+
 class KeyVaultSigner(Signer):
     """Firma con la clave ES256 no exportable de Azure Key Vault (ADR-0008, CMP-008).
 
-    Solo la interfaz. En la F1a, `sign_digest` llamará a la operación `sign` de Key Vault
-    (algoritmo `ES256`, con la identidad administrada del job) y `public_jwk` leerá la parte
-    pública de la clave. Esta clase no importa ningún SDK de Azure ni hace llamadas de red.
+    Sin SDK de Azure: API REST de Key Vault (operaciones `get` y `sign`, api-version 7.4) con un
+    token de la identidad gestionada del job. Sin versión en el URI, se fija la versión actual en la
+    primera llamada y se usa la misma para firmar y para la clave pública durante todo el proceso.
+    Cada firma se comprueba con la clave pública antes de devolverla.
     """
 
-    def __init__(self, vault_url: str, key_name: str, key_version: str, kid: str) -> None:
-        self.vault_url = vault_url
+    def __init__(
+        self,
+        vault_url: str,
+        key_name: str,
+        key_version: str,
+        kid: str,
+        tokens: TokenSource | None = None,
+        transport: HttpTransport | None = None,
+        timeout: float = 10.0,
+    ) -> None:
+        if not vault_url.startswith("https://"):
+            raise ValueError("vault_url tiene que ser HTTPS")
+        if not key_name or not kid:
+            raise ValueError("key_name y kid son obligatorios")
+        self.vault_url = vault_url.rstrip("/")
         self.key_name = key_name
         self.key_version = key_version
+        self._kid = kid
+        self.tokens = tokens
+        self.transport = transport or UrllibHttpTransport()
+        self.timeout = timeout
+        self._public: ec.EllipticCurvePublicKey | None = None
+
+    @classmethod
+    def from_uri(cls, uri: str, kid: str, tokens: TokenSource, **kwargs: Any) -> KeyVaultSigner:
+        """`https://<vault>.vault.azure.net/keys/<nombre>[/<versión>]`."""
+        m = _KV_URI_RE.fullmatch(uri.strip())
+        if not m:
+            raise ValueError("VS_SIGNING_KEY_URI no es un URI de clave de Key Vault")
+        return cls(m.group(1), m.group(2), m.group(3) or "", kid, tokens, **kwargs)
+
+    @property
+    def kid(self) -> str:
+        return self._kid
+
+    def _call(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict:
+        if self.tokens is None:
+            raise SignatureError("KeyVaultSigner sin proveedor de tokens")
+        try:
+            token = self.tokens.token(KV_SCOPE)
+        except Exception as exc:
+            # Sin el texto: podría llevar detalles de la identidad.
+            raise SignatureError(f"no se pudo obtener el token ({type(exc).__name__})") from None
+        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        url = f"{self.vault_url}{path}?api-version={KV_API_VERSION}"
+        try:
+            status, raw = self.transport.request(
+                method, url, headers=headers, body=body, timeout=self.timeout
+            )
+        except OSError as exc:
+            raise SignatureError(f"error de red con Key Vault ({type(exc).__name__})") from None
+        if status != 200:
+            raise SignatureError(f"Key Vault respondió HTTP {status}")
+        try:
+            return json.loads(raw)
+        except ValueError:
+            raise SignatureError("respuesta de Key Vault no válida") from None
+
+    def _load(self) -> ec.EllipticCurvePublicKey:
+        if self._public is not None:
+            return self._public
+        path = f"/keys/{self.key_name}" + (f"/{self.key_version}" if self.key_version else "")
+        doc = self._call("GET", path)
+        try:
+            key = doc["key"]
+            version = str(key["kid"]).rstrip("/").rsplit("/", 1)[-1]
+            if key.get("kty") not in ("EC", "EC-HSM") or key.get("crv") != "P-256":
+                raise SignatureError("la clave de Key Vault no es EC P-256")
+            x, y = b64url_decode(key["x"]), b64url_decode(key["y"])
+        except (KeyError, TypeError, AttributeError):
+            raise SignatureError("clave de Key Vault sin los campos esperados") from None
+        if len(x) != _COORD or len(y) != _COORD:
+            raise SignatureError("coordenadas de la clave de Key Vault no válidas")
+        if self.key_version and version != self.key_version:
+            raise SignatureError("Key Vault devolvió otra versión de la clave")
+        self.key_version = version
+        nums = ec.EllipticCurvePublicNumbers(
+            int.from_bytes(x, "big"), int.from_bytes(y, "big"), ec.SECP256R1()
+        )
+        self._public = nums.public_key()
+        return self._public
+
+    def sign_digest(self, digest: bytes) -> bytes:
+        if len(digest) != hashlib.sha256().digest_size:
+            raise ValueError("sign_digest espera un resumen SHA-256")
+        public = self._load()
+        doc = self._call(
+            "POST",
+            f"/keys/{self.key_name}/{self.key_version}/sign",
+            {"alg": ALG, "value": b64url(digest)},
+        )
+        sig = b64url_decode(str(doc.get("value", "")))
+        if len(sig) != 2 * _COORD:
+            raise SignatureError(f"firma de Key Vault de {len(sig)} bytes; se esperaban 64")
+        der = utils.encode_dss_signature(
+            int.from_bytes(sig[:_COORD], "big"), int.from_bytes(sig[_COORD:], "big")
+        )
+        try:
+            public.verify(der, digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
+        except InvalidSignature:
+            raise SignatureError("la firma de Key Vault no casa con su clave pública") from None
+        return sig
+
+    def public_jwk(self) -> dict[str, str]:
+        return _jwk(self._load(), self._kid)
+
+
+class SigningUnavailable(RuntimeError):
+    """Este proceso no firma (la API en Azure, D-3). La API responde 503 a lo que lo necesite."""
+
+
+class UnavailableSigner(Signer):
+    """Firmante vacío: mantiene el `kid` para todo lo que no firma y falla en cuanto se firma."""
+
+    def __init__(self, kid: str) -> None:
+        if not kid:
+            raise ValueError("kid vacío")
         self._kid = kid
 
     @property
@@ -186,10 +350,10 @@ class KeyVaultSigner(Signer):
         return self._kid
 
     def sign_digest(self, digest: bytes) -> bytes:
-        raise NotImplementedError("KeyVaultSigner.sign_digest: se implementa en la F1a")
+        raise SigningUnavailable("este proceso no tiene clave de firma")
 
     def public_jwk(self) -> dict[str, str]:
-        raise NotImplementedError("KeyVaultSigner.public_jwk: se implementa en la F1a")
+        raise SigningUnavailable("este proceso no tiene clave de firma")
 
 
 # -- JWS detached --------------------------------------------------------------------------------

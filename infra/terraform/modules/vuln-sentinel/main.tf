@@ -122,14 +122,18 @@ locals {
       env        = {}
     }
     # Migraciones: manual, con la identidad runtime. Por defecto runtime es el administrador Entra
-    # de PostgreSQL (postgres_entra_admin); el pipeline no administra la BD.
+    # de PostgreSQL (postgres_entra_admin); el pipeline no administra la BD. Tras migrar, crea el rol
+    # de Entra de publish (por object id, sin Graph) y le da solo lo que necesita (vs.model.roles).
     migrate = {
       args       = ["vs.model.migrate", "upgrade", "head"]
       cron       = null
       timeout    = 900
       secrets    = {}
       secret_env = {}
-      env        = {}
+      env = {
+        VS_DATABASE_PUBLISH_ROLE = var.identities.publish.name
+        VS_DATABASE_PUBLISH_OID  = var.identities.publish.principal_id
+      }
     }
   }
 }
