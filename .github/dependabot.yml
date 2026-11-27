@@ -23,6 +23,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Los tipos van con la versión de Node que ejecuta el build (node:24 en el Dockerfile y
+      # engines >=24): un salto de mayor describe APIs que ese Node no tiene. Se sube con la imagen.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint admite typescript <6.1.0: con la 7, `npm ci` falla (PR #6). Se sube cuando
+      # typescript-eslint la admita.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   # Python (uv.lock).
   - package-ecosystem: uv
