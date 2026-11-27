@@ -23,13 +23,13 @@ el `.terraform.lock.hcl` los pone la raíz que lo instancia, como hace el ejempl
 | cloudflared (opcional) | `ca-<nombre>-cfd-<env>` | Sin ingress, 1 réplica, token del Tunnel por referencia de Key Vault, probes `/ready` en el puerto de métricas. Con `acr`, imagen replicada en el ACR. Apagado por defecto: en LAB el conector es el de la plataforma |
 | Jobs | `caj-<nombre>-{ing,inv,pub,day,mig}-<env>` | ingest, publish y daily con cron (UTC); investigate manual y con `VS_AGENT_ENABLED=0` mientras `investigate_enabled = false`; migrate manual |
 | PostgreSQL Flexible | `psql-<nombre>-<env>-<hash4>` | Sin acceso público, solo Entra ID (administrador por defecto: la identidad runtime), TLS obligatorio. Geo-backup activado en prod y desactivado en el resto. Sin `prevent_destroy` (ver abajo) |
-| Endpoint privado de PostgreSQL (opcional) | `pe-psql-<nombre>-<env>` | **Apagado por defecto: lo crea la plataforma** con `postgres.id` (la red es suya). Solo con `private_endpoint_subnet_id`, para landing zones sin esa capacidad: en esa subred y con grupo de zona en la `privatelink.postgres.database.azure.com` que se le pase |
 | Diagnósticos | `diag-gt-<recurso>` | `allLogs` del entorno y de PostgreSQL al workspace de entrada. Prefijo configurable (`diagnostic_setting_prefix`) para terceros |
 
 ## Qué no crea
 
-RG, identidades, Key Vault, la **clave de firma**, redes, zonas DNS privadas ni **asignaciones de
-rol**. La salida `required_platform_grants` dice qué rol necesita cada identidad (`runtime` o
+RG, identidades, Key Vault, la **clave de firma**, redes, zonas DNS privadas, **endpoints
+privados** (tampoco el de PostgreSQL: lo crea la plataforma con `postgres.id` y `postgres.name`;
+un landing zone sin esa capacidad lo declara en su raíz) ni **asignaciones de rol**. La salida `required_platform_grants` dice qué rol necesita cada identidad (`runtime` o
 `publish`) y sobre qué alcance; lo concede el vending antes de aplicar (si no, las referencias de
 Key Vault y el pull de ACR fallan al crear la revisión).
 
@@ -42,9 +42,7 @@ Sin Cost Management Reader: ningún componente consulta Cost Management todavía
 colector de coste, no antes.
 
 La identidad que aplica necesita además `Microsoft.Network/virtualNetworks/subnets/join/action`
-sobre la subred del entorno, que es de la plataforma y suele estar fuera del RG del workload. Si
-el módulo crea el endpoint de PostgreSQL, también join sobre la subred de endpoints y permiso de
-registros en la zona privada.
+sobre la subred del entorno, que es de la plataforma y suele estar fuera del RG del workload.
 
 ## PostgreSQL y la retirada
 
@@ -63,7 +61,6 @@ protección de prod la da el contrato de retirada de la plataforma y lo que deci
 | `identities` | `{ runtime, publish }`, cada una `{ id, principal_id, client_id, name }`; distintas |
 | `postgres_entra_admin` | Opcional: otro administrador Entra de PostgreSQL (por defecto, runtime) |
 | `container_apps_subnet_id` | Subred del entorno, de la plataforma |
-| `private_endpoint_subnet_id`, `postgres_private_dns_zone_id` | Opcionales (null por defecto): solo si el módulo debe crear el endpoint de PostgreSQL |
 | `key_vault_id`, `signing_key_id`, `log_analytics_workspace_id` | Vault, clave de firma (key_id sin versión, en ese vault) y workspace |
 | `image_registry` (`acr` por defecto), `registry_server`, `acr_id`, `image_repository`, `image_digest` | Imagen por digest; `ghcr` solo para terceros |
 | `crons`, `investigate_enabled` | Programación (UTC) y agente |

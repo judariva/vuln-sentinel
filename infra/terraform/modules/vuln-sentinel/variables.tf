@@ -107,35 +107,6 @@ variable "container_apps_subnet_id" {
   }
 }
 
-variable "private_endpoint_subnet_id" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    Opcional. null (por defecto) = el endpoint privado de PostgreSQL lo crea la plataforma (D-7 de
-    golden: la red es de la plataforma y la identidad de entrega no se une a la subred compartida
-    ni escribe en la zona). Con un id de subred, el módulo crea el endpoint en ella: solo para
-    landing zones sin esa capacidad; la identidad que aplica necesita entonces join sobre la
-    subred y permiso de registros en la zona.
-  EOT
-  validation {
-    condition     = var.private_endpoint_subnet_id == null || can(regex("^/subscriptions/.+/subnets/.+$", var.private_endpoint_subnet_id))
-    error_message = "private_endpoint_subnet_id: null o id de subred."
-  }
-}
-
-variable "postgres_private_dns_zone_id" {
-  type        = string
-  default     = null
-  description = <<-EOT
-    Solo con private_endpoint_subnet_id: zona privatelink.postgres.database.azure.com de la
-    plataforma, enlazada a las VNet consumidoras. El módulo no crea zonas: el grupo de zona del
-    endpoint escribe en ella el registro A.
-  EOT
-  validation {
-    condition     = var.postgres_private_dns_zone_id == null || can(regex("/providers/Microsoft.Network/privateDnsZones/privatelink\\.postgres\\.database\\.azure\\.com$", var.postgres_private_dns_zone_id))
-    error_message = "postgres_private_dns_zone_id: null o id de la zona privatelink.postgres.database.azure.com."
-  }
-}
 
 variable "key_vault_id" {
   type        = string
