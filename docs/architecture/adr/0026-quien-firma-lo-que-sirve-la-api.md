@@ -1,7 +1,7 @@
 ---
 adr: "0026"
 titulo: Quién firma lo que sirve la API (la API no tiene la clave)
-estado: propuesto
+estado: aceptado
 fecha: 2026-11-27
 afecta: [CMP-002, CMP-005, CMP-008]
 sustituye: null
@@ -46,9 +46,12 @@ Desde la F1a, en Azure, la API recibe un `UnavailableSigner` y responde **503** 
   comprometa la API puede firmar lo que quiera, y esas firmas se verificarían como del feed. Eso
   anula el motivo de firmar.
 
-## Recomendación
+## Decisión
 
 **(a)**, y **(b)** cuando exista R2: la clave solo la usa publish. Se descarta **(c)**.
+
+Aceptada el 2026-11-27. Hasta que (a) esté implementada, la API sigue respondiendo 503 a los
+`.jws` y a `keys.json` en Azure.
 
 ## Evidencia
 
