@@ -149,6 +149,25 @@ class FeedChange(Base):
     sha256: Mapped[str] = mapped_column(Text)
 
 
+class FeedSignature(Base):
+    """Firmas que deja el job de publicación para que la API las sirva sin clave (0003, ADR-0026).
+
+    Una fila por ruta. `sha256` es el de los bytes firmados: la API solo sirve la firma si sus
+    bytes tienen ese hash. `body` va solo en los documentos que la API no puede reconstruir igual
+    (`alerts/latest.json` y `keys.json`); `expires_at`, en los que caducan con la retención.
+    """
+
+    __tablename__ = "feed_signature"
+
+    path: Mapped[str] = mapped_column(Text, primary_key=True)
+    sha256: Mapped[str] = mapped_column(Text)
+    jws: Mapped[str | None] = mapped_column(Text)
+    kid: Mapped[str] = mapped_column(Text)
+    body: Mapped[bytes | None] = mapped_column(LargeBinary)
+    signed_at: Mapped[datetime] = mapped_column(TZ)
+    expires_at: Mapped[datetime | None] = mapped_column(TZ)
+
+
 class JobState(Base):
     """Estado de cada job entre ejecuciones (0002): marcas de agua y estado del feed."""
 

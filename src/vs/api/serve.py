@@ -3,8 +3,9 @@
     python -m vs.api.serve            # escucha en VS_API_HOST:VS_API_PORT (0.0.0.0:8080)
 
 La aplicación es la de `create_app` (T6). El feed lo lee de lo que guardó el job de publicación
-(`feed_record`, `feed_change`, `job_state`): `DbFeed` lo carga entero y lo recarga cuando cambia,
-como mucho cada `VS_API_REFRESH` segundos (15). Las métricas salen de `metric_daily`.
+(`feed_record`, `feed_change`, `feed_signature`, `job_state`): `DbFeed` lo carga entero y lo
+recarga cuando cambia, como mucho cada `VS_API_REFRESH` segundos (15). Las métricas salen de
+`metric_daily`. En Azure no hay clave (ADR-0026): las firmas son las de `feed_signature`.
 
 Con `VS_WEB_DIST` sirve además el build del portal en el **mismo origen** (como la prueba de humo
 de T8a): cualquier ruta que no sea de la API devuelve el fichero o, si no existe, `index.html`.
@@ -35,7 +36,7 @@ from vs.model.schema import JobState
 from vs.rules.lists import RuleLists
 from vs.sources.health import SourceHealth
 from vs.sources.run import RunStatus
-from vs.store import connect, load_feed_entries, load_feed_records
+from vs.store import connect, load_feed_entries, load_feed_records, load_signatures
 
 PUBLISH_STATE = "publish"
 API_PREFIXES = ("v1/", ".well-known/", "admin/")
@@ -89,6 +90,7 @@ class DbFeed:
         pub = self._empty()
         horizon = self.clock() - timedelta(days=self.config.retention_days)
         pub.restore(load_feed_records(session), load_feed_entries(session, horizon))
+        pub.load_signatures(load_signatures(session))  # ADR-0026: lo que firmó publish
         status = status_from_state(state)
         if status is not None:
             pub.set_status(status)

@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 
 from vs.feed.changes import ChangeEntry
 from vs.feed.osv import alert_id
+from vs.feed.publish import StoredSignature
 from vs.instance import Instance, audit
 from vs.model.migrate import create_db_engine, require_url
 from vs.model.schema import (
@@ -42,6 +43,7 @@ from vs.model.schema import (
     FactSeen,
     FeedChange,
     FeedRecord,
+    FeedSignature,
     JobState,
     RuleEvaluation,
     Signal,
@@ -675,6 +677,72 @@ def save_feed(
             )
             n += 1
     session.execute(delete(FeedChange).where(FeedChange.modified <= horizon))
+    return n
+
+
+VULN_PATH_PREFIX = "/v1/vulns/"
+
+
+def load_signatures(session: Session) -> list[StoredSignature]:
+    """Firmas que dejó el job de publicación (ADR-0026), para la API."""
+    rows = session.execute(
+        select(
+            FeedSignature.path,
+            FeedSignature.sha256,
+            FeedSignature.jws,
+            FeedSignature.kid,
+            FeedSignature.body,
+        )
+    )
+    return [
+        StoredSignature(p, sha, jws, kid, None if body is None else bytes(body))
+        for p, sha, jws, kid, body in rows
+    ]
+
+
+def signature_hashes(session: Session) -> dict[str, str]:
+    """`ruta → sha256` de lo ya firmado (para no volver a firmar lo mismo)."""
+    return dict(session.execute(select(FeedSignature.path, FeedSignature.sha256)).all())
+
+
+def unsigned_record_ids(session: Session, limit: int) -> list[str]:
+    """Registros publicados sin firma guardada de sus bytes actuales (relleno, ADR-0026)."""
+    path = VULN_PATH_PREFIX + FeedRecord.id + ".json"
+    signed = select(FeedSignature.path).where(
+        FeedSignature.path == path, FeedSignature.sha256 == FeedRecord.sha256
+    )
+    stmt = select(FeedRecord.id).where(~signed.exists()).order_by(FeedRecord.id).limit(limit)
+    return list(session.scalars(stmt))
+
+
+def save_signatures(
+    session: Session,
+    signatures: Iterable[tuple[StoredSignature, datetime | None]],
+    now: datetime,
+) -> int:
+    """Guarda (o sustituye) cada firma con su caducidad y borra las caducadas."""
+    n = 0
+    for s, expires in signatures:
+        stmt = insert(FeedSignature).values(
+            path=s.path,
+            sha256=s.sha256,
+            jws=s.jws,
+            kid=s.kid,
+            body=s.body,
+            signed_at=now,
+            expires_at=expires,
+        )
+        session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=["path"],
+                set_={
+                    c: stmt.excluded[c]
+                    for c in ("sha256", "jws", "kid", "body", "signed_at", "expires_at")
+                },
+            )
+        )
+        n += 1
+    session.execute(delete(FeedSignature).where(FeedSignature.expires_at <= now))
     return n
 
 

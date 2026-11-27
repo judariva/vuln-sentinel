@@ -4,7 +4,7 @@ El administrador Entra del servidor es la identidad `runtime` (la del job de mig
 identidades tienen su propio rol, con lo justo:
 
 - `publish` (solo firma el feed): lectura de todas las tablas y escritura solo en `feed_record`,
-  `feed_change` (con borrado de lo caducado) y `job_state`.
+  `feed_change`, `feed_signature` (con borrado de lo caducado) y `job_state`.
 - `readonly` (la API, que está expuesta y no escribe): SOLO lectura. Además de los GRANT, un REVOKE
   explícito de toda escritura, para que lo siga siendo aunque alguien le diera permisos a mano.
 
@@ -38,6 +38,7 @@ _OID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 PUBLISH_WRITES: Mapping[str, str] = {
     "feed_record": "INSERT, UPDATE, DELETE",
     "feed_change": "INSERT, UPDATE, DELETE",
+    "feed_signature": "INSERT, UPDATE, DELETE",  # ADR-0026: firmas que sirve la API
     "job_state": "INSERT, UPDATE",
 }
 
