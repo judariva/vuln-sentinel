@@ -1,7 +1,9 @@
 # PostgreSQL Flexible (CMP-007, ADR-0003). CONDICIONAL del patrón de Container Apps: privado y con
 # Entra ID.
-# - Acceso privado por endpoint privado (D-7) en la subred de endpoints compartida de la plataforma,
-#   con su zona privatelink: sin acceso público, sin subred delegada por workload y sin crear zonas.
+# - Acceso privado por endpoint privado: sin acceso público, sin subred delegada por workload y sin
+#   crear zonas. Por defecto el endpoint lo crea la plataforma (D-7 de golden), con las salidas
+#   postgres.id y postgres.name; el módulo solo lo crea si recibe private_endpoint_subnet_id
+#   (landing zones sin esa capacidad).
 # - Solo Entra ID: sin contraseña de administrador ni autenticación por contraseña. Por defecto el
 #   administrador Entra es la identidad runtime (job migrate); los demás componentes entran con su
 #   identidad y los roles de base de datos que les da la migración.
@@ -48,6 +50,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
 }
 
 resource "azurerm_private_endpoint" "postgres" {
+  count                         = var.private_endpoint_subnet_id == null ? 0 : 1
   name                          = local.names.postgres_pe
   location                      = var.location
   resource_group_name           = var.resource_group.name
@@ -66,6 +69,13 @@ resource "azurerm_private_endpoint" "postgres" {
   private_dns_zone_group {
     name                 = "default"
     private_dns_zone_ids = [var.postgres_private_dns_zone_id]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.postgres_private_dns_zone_id != null
+      error_message = "Con private_endpoint_subnet_id hace falta postgres_private_dns_zone_id."
+    }
   }
 }
 

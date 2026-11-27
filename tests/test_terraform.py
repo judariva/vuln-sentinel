@@ -116,15 +116,35 @@ def test_postgres_private_endpoint_and_entra_only(resources):
     assert re.search(r"password_auth_enabled\s*=\s*false", pg)
     assert re.search(r"active_directory_auth_enabled\s*=\s*true", pg)
     assert "administrator_password" not in pg and "administrator_login" not in pg
-    # D-7: endpoint privado en la subred compartida, sin subred delegada.
+    # D-7: endpoint privado, sin subred delegada. Por defecto lo crea la plataforma (v0.1.1): el
+    # del módulo solo existe si se le da la subred.
     assert "delegated_subnet_id" not in pg and "private_dns_zone_id" not in pg
     pe = resources[("azurerm_private_endpoint", "postgres")]
+    assert re.search(r"count\s*=\s*var\.private_endpoint_subnet_id == null \? 0 : 1", pe)
     assert "var.private_endpoint_subnet_id" in pe
     assert "azurerm_postgresql_flexible_server.this.id" in pe
     assert re.search(r'subresource_names\s*=\s*\["postgresqlServer"\]', pe)
     assert "private_dns_zone_group" in pe and "var.postgres_private_dns_zone_id" in pe
     tls = resources[("azurerm_postgresql_flexible_server_configuration", "require_tls")]
     assert '"require_secure_transport"' in tls and '"on"' in tls
+
+
+def test_postgres_private_endpoint_off_by_default():
+    variables = (MODULE / "variables.tf").read_text(encoding="utf-8")
+    for name in ("private_endpoint_subnet_id", "postgres_private_dns_zone_id"):
+        block = _block(variables, variables.index(f'variable "{name}"'))
+        assert re.search(r"default\s*=\s*null", block), name
+    # El ejemplo golden no se lo pasa: el endpoint es de la plataforma.
+    example = _strip_comments(_tf(EXAMPLE))
+    assert "private_endpoint_subnet_id" not in example
+    outputs = (MODULE / "outputs.tf").read_text(encoding="utf-8")
+    pg_out = _block(outputs, outputs.index('output "postgres"'))
+    assert re.search(r"name\s*=\s*azurerm_postgresql_flexible_server\.this\.name", pg_out)
+
+
+def test_no_grant_without_consumer(code):
+    # Mínimo privilegio: ningún componente consulta Cost Management todavía.
+    assert "Cost Management Reader" not in code
 
 
 def test_postgres_without_prevent_destroy(code):
