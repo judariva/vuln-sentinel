@@ -71,11 +71,11 @@ module "vuln_sentinel" {
     }
   }
 
-  container_apps_subnet_id     = "${local.net}/virtualNetworks/vnet-example/subnets/snet-vulnsentinel-cae"
-  private_endpoint_subnet_id   = "${local.net}/virtualNetworks/vnet-example/subnets/snet-example-pep"
-  postgres_private_dns_zone_id = "${local.net}/privateDnsZones/privatelink.postgres.database.azure.com"
-  key_vault_id                 = "${local.sub}/resourceGroups/${local.rg}/providers/Microsoft.KeyVault/vaults/${local.kv}"
-  log_analytics_workspace_id   = "${local.sub}/resourceGroups/rg-example-monitoring/providers/Microsoft.OperationalInsights/workspaces/law-example"
+  # Subred del entorno, de la plataforma. El endpoint privado de PostgreSQL también lo crea la
+  # plataforma (D-7) a partir de la salida `postgres`: sin private_endpoint_subnet_id.
+  container_apps_subnet_id   = "${local.net}/virtualNetworks/vnet-example/subnets/snet-vulnsentinel-cae"
+  key_vault_id               = "${local.sub}/resourceGroups/${local.rg}/providers/Microsoft.KeyVault/vaults/${local.kv}"
+  log_analytics_workspace_id = "${local.sub}/resourceGroups/rg-example-monitoring/providers/Microsoft.OperationalInsights/workspaces/law-example"
 
   # Clave de firma creada por el vending (P-4): key_id sin versión.
   signing_key_id = "https://${local.kv}.vault.azure.net/keys/feed-signing-es256"

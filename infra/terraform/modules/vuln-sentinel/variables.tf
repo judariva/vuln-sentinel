@@ -109,27 +109,31 @@ variable "container_apps_subnet_id" {
 
 variable "private_endpoint_subnet_id" {
   type        = string
+  default     = null
   description = <<-EOT
-    Subred de endpoints privados compartida de la plataforma (D-7). El endpoint privado de
-    PostgreSQL va en ella; la plataforma no crea una subred por workload. La identidad que aplica
-    necesita join sobre esa subred.
+    Opcional. null (por defecto) = el endpoint privado de PostgreSQL lo crea la plataforma (D-7 de
+    golden: la red es de la plataforma y la identidad de entrega no se une a la subred compartida
+    ni escribe en la zona). Con un id de subred, el módulo crea el endpoint en ella: solo para
+    landing zones sin esa capacidad; la identidad que aplica necesita entonces join sobre la
+    subred y permiso de registros en la zona.
   EOT
   validation {
-    condition     = can(regex("^/subscriptions/.+/subnets/.+$", var.private_endpoint_subnet_id))
-    error_message = "private_endpoint_subnet_id: id de subred."
+    condition     = var.private_endpoint_subnet_id == null || can(regex("^/subscriptions/.+/subnets/.+$", var.private_endpoint_subnet_id))
+    error_message = "private_endpoint_subnet_id: null o id de subred."
   }
 }
 
 variable "postgres_private_dns_zone_id" {
   type        = string
+  default     = null
   description = <<-EOT
-    Zona privatelink.postgres.database.azure.com de la plataforma, enlazada a las VNet
-    consumidoras. El módulo no crea zonas: el grupo de zona del endpoint escribe en ella el registro
-    A (la identidad que aplica necesita permiso de registros en la zona).
+    Solo con private_endpoint_subnet_id: zona privatelink.postgres.database.azure.com de la
+    plataforma, enlazada a las VNet consumidoras. El módulo no crea zonas: el grupo de zona del
+    endpoint escribe en ella el registro A.
   EOT
   validation {
-    condition     = can(regex("/providers/Microsoft.Network/privateDnsZones/privatelink\\.postgres\\.database\\.azure\\.com$", var.postgres_private_dns_zone_id))
-    error_message = "postgres_private_dns_zone_id: id de la zona privatelink.postgres.database.azure.com."
+    condition     = var.postgres_private_dns_zone_id == null || can(regex("/providers/Microsoft.Network/privateDnsZones/privatelink\\.postgres\\.database\\.azure\\.com$", var.postgres_private_dns_zone_id))
+    error_message = "postgres_private_dns_zone_id: null o id de la zona privatelink.postgres.database.azure.com."
   }
 }
 

@@ -37,12 +37,9 @@ locals {
       role      = "Key Vault Crypto User"
       scope     = local.signing_key_scope
       reason    = "firma del feed con la clave ES256 no exportable (ADR-0008)"
-      }, {
-      component = "daily"
-      role      = "Cost Management Reader"
-      scope     = var.resource_group.id
-      reason    = "coste real del RG para la pantalla de transparencia (G-17)"
     }],
+    # Sin Cost Management Reader: ningún componente consulta Cost Management (cost_daily se
+    # carga aparte). Se pedirá con el colector de coste, no antes (mínimo privilegio).
     var.heartbeat == null ? [] : [for c in ["ingest", "investigate", "publish", "daily"] : {
       component = c
       role      = "Monitoring Metrics Publisher"
@@ -117,17 +114,18 @@ output "migrate_job_name" {
 }
 
 output "postgres" {
-  description = "Servidor y base de datos (sin credenciales: solo Entra ID)."
+  description = "Servidor y base de datos (sin credenciales: solo Entra ID). id y name son lo que necesita la plataforma para crear el endpoint privado."
   value = {
     id       = azurerm_postgresql_flexible_server.this.id
+    name     = azurerm_postgresql_flexible_server.this.name
     fqdn     = azurerm_postgresql_flexible_server.this.fqdn
     database = azurerm_postgresql_flexible_server_database.this.name
   }
 }
 
 output "postgres_private_endpoint_id" {
-  description = "Endpoint privado de PostgreSQL en la subred compartida (D-7)."
-  value       = azurerm_private_endpoint.postgres.id
+  description = "Endpoint privado de PostgreSQL si lo crea el módulo; null si lo crea la plataforma (por defecto)."
+  value       = one(azurerm_private_endpoint.postgres[*].id)
 }
 
 output "signing_key_scope" {
