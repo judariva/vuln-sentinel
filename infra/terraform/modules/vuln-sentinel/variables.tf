@@ -229,12 +229,34 @@ variable "api" {
     max_replicas   = optional(number, 1)
     liveness_path  = optional(string, "/healthz")
     readiness_path = optional(string, "/healthz")
+    # CIDR privados desde los que la VNet puede llegar a la API (p. ej. el conector del borde de la
+    # plataforma, /32). Vacío: solo las apps del entorno. Nunca Internet: el entorno es interno.
+    vnet_ingress_from = optional(list(string), [])
   })
   description = "API (CMP-002): ingress interno, escala 0-1 por defecto. Probes obligatorios."
   default     = {}
   validation {
     condition     = var.api.min_replicas >= 0 && var.api.max_replicas >= 1 && var.api.max_replicas >= var.api.min_replicas
     error_message = "api: réplicas coherentes (min >= 0, max >= 1, max >= min)."
+  }
+  validation {
+    # RFC 1918 con su prefijo mínimo (10/8, 172.16/12, 192.168/16). try(): una entrada mal formada
+    # se rechaza, no rompe el plan.
+    condition = alltrue([
+      for c in var.api.vnet_ingress_from : try(
+        can(cidrhost(c, 0)) && (
+          (startswith(c, "10.") && tonumber(split("/", c)[1]) >= 8) ||
+          (can(regex("^172\\.(1[6-9]|2[0-9]|3[01])\\.", c)) && tonumber(split("/", c)[1]) >= 12) ||
+          (startswith(c, "192.168.") && tonumber(split("/", c)[1]) >= 16)
+        ),
+        false
+      )
+    ])
+    error_message = "api.vnet_ingress_from: solo CIDR privados (RFC 1918), nunca 0.0.0.0/0 ni rangos públicos."
+  }
+  validation {
+    condition     = length(var.api.vnet_ingress_from) <= 8
+    error_message = "api.vnet_ingress_from: como mucho 8 CIDR (lista cerrada de conectores)."
   }
 }
 
