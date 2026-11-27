@@ -62,19 +62,35 @@ variable "identities" {
       client_id    = string
       name         = string
     })
+    api = optional(object({
+      id           = string
+      principal_id = string
+      client_id    = string
+      name         = string
+    }))
   })
   description = <<-EOT
-    Las dos UAMI del vending (D-3, T16b). `runtime`: la API, cloudflared y los jobs ingest,
-    investigate, daily y migrate. `publish`: solo el job publish, el único que firma el feed
-    (CTL-019, THR-017). `name` es el usuario de PostgreSQL de la identidad (Entra ID).
+    UAMI del vending (D-3, T16b). `runtime`: cloudflared y los jobs ingest, investigate, daily y
+    migrate (es el administrador Entra de PostgreSQL). `publish`: solo el job publish, el único que
+    firma el feed (CTL-019, THR-017). `api` (opcional, mínimo privilegio): la API, que está expuesta
+    y no escribe; migrate le da un rol de PostgreSQL de SOLO LECTURA. Sin `api`, la API usa runtime.
+    `name` es el usuario de PostgreSQL de la identidad (Entra ID).
   EOT
   validation {
-    condition     = alltrue([for i in [var.identities.runtime, var.identities.publish] : can(regex("/providers/Microsoft.ManagedIdentity/userAssignedIdentities/", i.id))])
+    condition = alltrue([for i in concat([var.identities.runtime, var.identities.publish], var.identities.api == null ? [] : [var.identities.api]) :
+    can(regex("/providers/Microsoft.ManagedIdentity/userAssignedIdentities/", i.id))])
     error_message = "identities: cada id tiene que ser una identidad asignada por el usuario."
   }
   validation {
     condition     = var.identities.runtime.principal_id != var.identities.publish.principal_id
     error_message = "identities: runtime y publish tienen que ser identidades distintas (solo publish firma el feed)."
+  }
+  validation {
+    condition = var.identities.api == null ? true : (
+      var.identities.api.principal_id != var.identities.runtime.principal_id &&
+      var.identities.api.principal_id != var.identities.publish.principal_id
+    )
+    error_message = "identities: api tiene que ser distinta de runtime (admin de PostgreSQL) y de publish (firma)."
   }
 }
 
