@@ -7,8 +7,10 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 import uuid
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -36,8 +38,14 @@ from vs.feed.sign import (
 )
 from vs.heartbeat.client import MONITOR_SCOPE, ManagedIdentityTokenProvider
 from vs.jobs.settings import Settings, SettingsError
+from vs.model import roles as vs_roles
 from vs.model.migrate import create_db_engine, database_url, downgrade, upgrade, uses_entra
-from vs.model.roles import Principal, ensure_publish_role, grant_statements, publish_principal
+from vs.model.roles import (
+    Principal,
+    ensure_publish_role,
+    grant_statements,
+    publish_principal,
+)
 
 ENDPOINT = "http://localhost:42356/msi/token"
 HEADER = "cabecera-secreta-de-prueba"
@@ -502,3 +510,56 @@ def test_api_without_signer_serves_json_and_503_for_signatures():
         resp = client.get(path)
         assert resp.status_code == 503, path
         assert resp.json()["error"] == "signing_unavailable"
+
+
+# -- contrato módulo ↔ app -----------------------------------------------------------------------
+# El primer despliegue pasó todas las puertas de infraestructura y ningún componente arrancó: el
+# módulo ponía unas variables y la app leía otras. Estos tests leen las variables del módulo.
+
+MODULE = Path(__file__).resolve().parents[1] / "infra" / "terraform" / "modules" / "vuln-sentinel"
+
+
+def _block(text: str, name: str) -> str:
+    m = re.search(rf"^\s*{name}\s*=\s*\{{(.*?)^\s*\}}", text, re.S | re.M)
+    assert m, f"no encuentro el bloque {name} en el módulo"
+    return m.group(1)
+
+
+def _module_env() -> dict[str, str]:
+    main = (MODULE / "main.tf").read_text(encoding="utf-8")
+    env: dict[str, str] = {}
+    for key, value in re.findall(r"^\s*(VS_[A-Z_]+)\s*=\s*(.+?)\s*$", _block(main, "db_env"), re.M):
+        literal = re.fullmatch(r'"([^"]*)"', value)
+        env[key] = literal.group(1) if literal else f"<{key}>"
+    return env
+
+
+def test_module_db_env_is_what_the_app_reads():
+    env = _module_env()
+    assert env.get("VS_DATABASE_AUTH") == "entra"
+    apps_jobs = (MODULE / "apps.tf").read_text() + (MODULE / "jobs.tf").read_text()
+    for name in ("VS_DATABASE_USER", "AZURE_CLIENT_ID"):
+        assert apps_jobs.count(f'"{name}"') >= 2, f"{name} tiene que ir a la API y a los jobs"
+    # Lo que Terraform resuelve en el apply (FQDN, nombre de la BD) y lo que inyecta Container Apps.
+    env.update(
+        {
+            "VS_DATABASE_HOST": "psql-ejemplo-0000.postgres.database.azure.com",
+            "VS_DATABASE_NAME": "vulnsentinel",
+            "VS_DATABASE_USER": "id-ejemplo-runtime",
+            "IDENTITY_ENDPOINT": ENDPOINT,
+            "IDENTITY_HEADER": HEADER,
+            "AZURE_CLIENT_ID": CLIENT,
+        }
+    )
+    assert set(_module_env()) <= set(env)
+    settings = Settings.from_env(env)
+    assert uses_entra(env) and settings.azure
+    assert settings.require_db().startswith("postgresql+psycopg://id-ejemplo-runtime@")
+
+
+def test_module_job_env_names_match_the_code():
+    main = (MODULE / "main.tf").read_text(encoding="utf-8")
+    assert "VS_SIGNING_KEY_URI = var.signing_key_id" in _block(main, "publish")
+    migrate = re.sub(r"\s+", " ", _block(main, "migrate"))
+    assert f"{vs_roles.ROLE_ENV} = var.identities.publish.name" in migrate
+    assert f"{vs_roles.OID_ENV} = var.identities.publish.principal_id" in migrate
