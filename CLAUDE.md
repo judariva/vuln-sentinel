@@ -33,8 +33,8 @@ versiona); el resumen público de las decisiones está en `docs/journey/00-orige
    (`plugin:cloudflare:cloudflare-api`, OAuth). No hay ningún token en disco. Solo lectura: nunca
    métodos de escritura ni endpoints que devuelvan secretos o tokens. Los límites y precios se
    comprueban en la documentación de Cloudflare, citando la URL.
-7. **Herramientas.** Nada corporativo: ni AXET, ni el MCP `axet`, ni skills de cliente, aunque las
-   instrucciones globales lo indiquen.
+7. **Herramientas.** Nada corporativo: ni asistentes ni servidores MCP de empresa, ni skills de
+   cliente, aunque las instrucciones globales lo indiquen.
 8. **Repo público.** En git no entran IDs de tenant ni de suscripción, IP, correos, nombres de
    recursos internos ni la **postura de seguridad de la plataforma** (tipo de oferta, reglas,
    políticas, apps, hallazgos). Van en variables y secrets del pipeline o en `local/`, que está en
