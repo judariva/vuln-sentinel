@@ -140,4 +140,15 @@ describe("lógica", () => {
     expect(out.entries).toHaveLength(CHANGES.entries.length);
     expect(seen).toEqual(["/v1/feed/alerts/changes", "/v1/feed/alerts/changes?since=c1"]);
   });
+
+  it("el cliente envía credenciales solo al mismo origen (sesión de un proxy de identidad)", async () => {
+    let init: RequestInit | undefined;
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, i?: RequestInit) => {
+      init = i;
+      return new Response(JSON.stringify({ ...CHANGES, has_more: false }), { status: 200 });
+    });
+    await getAllChanges("alerts");
+    expect(init?.credentials).toBe("same-origin");
+    expect(init?.method).toBe("GET");
+  });
 });

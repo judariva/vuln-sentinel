@@ -22,7 +22,11 @@ export async function getJson<T>(path: string, signal?: AbortSignal, base = conf
   const resp = await fetch(`${base}${path}`, {
     method: "GET",
     headers: { Accept: "application/json" },
-    credentials: "omit",
+    // same-origin: la cookie de sesión del proxy de identidad que proteja el despliegue (p. ej. un
+    // control de acceso delante del portal) viaja solo cuando portal y API comparten origen. Con
+    // `omit` esas peticiones salían sin sesión y el proxy las redirigía al login (bloqueado por CORS).
+    // A una API en otro origen no se envía ninguna credencial.
+    credentials: "same-origin",
     signal,
   });
   if (!resp.ok) {
