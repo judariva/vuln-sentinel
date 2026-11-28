@@ -12,7 +12,7 @@
 # Portal (web/): se construye aquí y la API lo sirve en el mismo origen (VS_WEB_DIST). Mismo digest
 # de Node que infra/compose/Dockerfile. npm ci instala exacto desde package-lock.json (con integridad).
 # Sin VITE_API_BASE_URL: el portal llama a la API en su mismo origen. La marca, por build-arg.
-FROM node:24-bookworm-slim@sha256:873f586f3794f52281bd039bf02c048a0be08fde619338f9941bad1eb6b34530 AS web
+FROM node:26-bookworm-slim@sha256:0042e17d232a87a2cd485be1da7900fca4d10a4ad11b29e9285da1d2e54798c9 AS web
 ARG VITE_BRAND_NAME=vuln-sentinel
 ENV VITE_BRAND_NAME=${VITE_BRAND_NAME}
 WORKDIR /web
