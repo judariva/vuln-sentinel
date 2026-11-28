@@ -8,21 +8,39 @@ sirva lo mismo, y escribe los documentos y sus firmas detrás de `FeedWriter`: e
 directorio (`VS_FEED_DIR`); en la F1b, a R2.
 
 Firma con `LocalDevSigner` (clave en `.cache/` o en `VS_SIGNING_KEY`); en Azure, `KeyVaultSigner`.
+
+ADR-0026: la API no tiene la clave. Este job firma, **en la misma transacción** en la que guarda el
+feed, todo lo que la API sirve firmado y deja las firmas en `feed_signature`: los registros
+cambiados (y, hasta `BACKFILL_LIMIT` por ejecución, los que aún no tienen firma de sus bytes
+actuales), las páginas selladas, los resúmenes de los días cerrados, `alerts/latest.json` y el JWKS.
+Así la API nunca ve un registro nuevo sin su firma. La cabeza del índice (`changes` sin hora) no
+se firma: cambia con cada petición; se verifica por las páginas selladas y el sha256 de cada
+registro.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from typing import Protocol
 
 from sqlalchemy.orm import Session
 
 from vs.api.app import api_audience
+from vs.api.digest import DayNotClosedError, build_digest
+from vs.feed.changes import FEEDS, Gone
 from vs.feed.config import FeedConfig
 from vs.feed.osv import alert_id, ts
-from vs.feed.publish import Document, FeedPublisher, FeedStatus
+from vs.feed.publish import (
+    IMMUTABLE,
+    KEYS_PATH,
+    LATEST_PATH,
+    Document,
+    FeedPublisher,
+    FeedStatus,
+    StoredSignature,
+)
 from vs.feed.sign import Signer
 from vs.jobs.settings import Settings, exit_with, log
 from vs.rules.levels import Level
@@ -41,12 +59,18 @@ from vs.store import (
     max_ids,
     recent_runs,
     save_feed,
+    save_signatures,
     set_state,
+    signature_hashes,
     touched_since,
+    unsigned_record_ids,
 )
 
 STATE = "publish"
 HEALTH_WINDOW = timedelta(days=2)
+BACKFILL_LIMIT = 500
+# Lo que la API no puede reconstruir igual (depende del reloj del job o de la clave): va entero.
+STORED_BODIES = frozenset({LATEST_PATH, KEYS_PATH})
 
 
 class FeedWriter(Protocol):
@@ -77,36 +101,85 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _put_signed(writer: FeedWriter, pub: FeedPublisher, doc: Document) -> None:
-    writer.put(doc)
-    writer.put(pub.signature(doc))
+def closed_days(now: datetime, retention: timedelta) -> list[date]:
+    """Días UTC ya cerrados dentro de la retención (los que tienen resumen inmutable)."""
+    first = (now - retention).date()
+    last = now.date() - timedelta(days=1)
+    return [first + timedelta(days=i) for i in range((last - first).days + 1)]
+
+
+def signable_documents(
+    pub: FeedPublisher, idents: Iterable[str], now: datetime
+) -> list[tuple[Document, datetime | None]]:
+    """Lo que la API sirve firmado, con su caducidad (None = mientras exista la ruta)."""
+    retention = timedelta(days=pub.config.retention_days)
+    docs: list[tuple[Document, datetime | None]] = [
+        (pub.vuln(i), None) for i in sorted(set(idents))
+    ]
+    for feed in FEEDS:
+        for doc in pub.sealed_pages(feed, now):
+            hour = doc.path.rsplit("/", 1)[1].removesuffix(".json")
+            hour_end = datetime.strptime(hour, "%Y-%m-%dT%H").replace(tzinfo=UTC)
+            docs.append((doc, hour_end + timedelta(hours=1) + retention))
+    for day in closed_days(now, retention):
+        try:
+            digest = build_digest(pub.logs["all"], day, now)
+        except (Gone, DayNotClosedError):
+            continue
+        doc = pub.json_document(f"/v1/digest/{day.isoformat()}.json", digest, IMMUTABLE)
+        day_end = datetime.combine(day, time(0), tzinfo=UTC) + timedelta(days=1)
+        docs.append((doc, day_end + retention))
+    docs.append((pub.alerts_latest(now), None))
+    return docs
+
+
+def presign(
+    pub: FeedPublisher,
+    docs: Iterable[tuple[Document, datetime | None]],
+    already: dict[str, str],
+) -> list[tuple[Document, Document, StoredSignature, datetime | None]]:
+    """Firma lo que aún no tiene firma de estos mismos bytes. Devuelve (doc, jws, fila, caduca)."""
+    out = []
+    for doc, expires in docs:
+        if already.get(doc.path) == doc.sha256:
+            continue
+        jws = pub.signature(doc)
+        body = doc.body if doc.path in STORED_BODIES else None
+        jws_text = jws.body.decode("ascii")
+        row = StoredSignature(doc.path, doc.sha256, jws_text, pub.signer.kid, body)
+        out.append((doc, jws, row, expires))
+    return out
+
+
+def keys_row(
+    pub: FeedPublisher, already: dict[str, str]
+) -> tuple[Document, StoredSignature] | None:
+    """El JWKS público, guardado entero (la API no tiene la clave para generarlo)."""
+    doc = pub.keys()
+    if already.get(doc.path) == doc.sha256:
+        return None
+    return doc, StoredSignature(doc.path, doc.sha256, None, pub.signer.kid, doc.body)
 
 
 def write_documents(
     writer: FeedWriter,
     pub: FeedPublisher,
-    idents: Iterable[str],
+    signed: Iterable[tuple[Document, Document]],
     now: datetime,
-    since: datetime | None,
 ) -> int:
-    """Escribe lo que cambia en esta ejecución: registros publicados, índices, alertas y claves."""
+    """Escribe lo firmado en esta ejecución, la cabeza de cada índice (firmada aquí) y el JWKS."""
     n = 0
-    for ident in sorted(idents):
-        _put_signed(writer, pub, pub.vuln(ident))
+    for doc, jws in signed:
+        writer.put(doc)
+        writer.put(jws)
         n += 1
-    for feed in ("all", "alerts"):
-        _put_signed(writer, pub, pub.changes_head(feed, None, now))
+    for feed in FEEDS:
+        head = pub.changes_head(feed, None, now)
+        writer.put(head)
+        writer.put(pub.signature(head))
         n += 1
-        for doc in pub.sealed_pages(feed, now):
-            hour_end = datetime.strptime(doc.path.rsplit("/", 1)[1], "%Y-%m-%dT%H.json").replace(
-                tzinfo=UTC
-            ) + timedelta(hours=1)
-            if since is None or hour_end > since:  # solo las horas que se cierran ahora
-                _put_signed(writer, pub, doc)
-                n += 1
-    _put_signed(writer, pub, pub.alerts_latest(now))
     writer.put(pub.keys())
-    return n + 2
+    return n + 1
 
 
 def run(
@@ -128,18 +201,19 @@ def run(
 
     with Session(engine) as session, session.begin():
         state = get_state(session, STATE)
-        prev_modified = state.get("modified")
-        prev = (
-            datetime.fromisoformat(prev_modified.replace("Z", "+00:00")) if prev_modified else None
-        )
         max_run, max_hist = max_ids(session)
         touched = touched_since(
             session, int(state.get("run_id", 0)), max_run, int(state.get("history_id", 0))
         )
+        backfill = unsigned_record_ids(session, BACKFILL_LIMIT)
         pub = FeedPublisher(audience, feed_cfg, signer, lists)
-        # Lo tocado (para comparar con lo publicado) y todo lo que tiene nivel (alerts/latest.json).
+        # Lo tocado (para comparar con lo publicado), todo lo que tiene nivel (alerts/latest.json)
+        # y los registros que aún no tienen firma guardada.
         pub.restore(
-            load_feed_records(session, {alert_id(c) for c in touched} | alerting_ids(session)),
+            load_feed_records(
+                session,
+                {alert_id(c) for c in touched} | alerting_ids(session) | set(backfill),
+            ),
             load_feed_entries(session, horizon),
             last_feed_modified(session),
         )
@@ -160,6 +234,15 @@ def run(
             modified=now, sources=tuple(source_health(recent_runs(session, now - HEALTH_WINDOW)))
         )
         pub.set_status(status)
+        # ADR-0026: las firmas entran en la misma transacción que el feed y que el cambio de
+        # `job_state` con el que la API recarga, así que la API nunca ve bytes sin su firma.
+        already = signature_hashes(session)
+        signed = presign(pub, signable_documents(pub, changed | set(backfill), now), already)
+        keys = keys_row(pub, already)
+        rows = [(row, expires) for _doc, _jws, row, expires in signed]
+        if keys is not None:
+            rows.append((keys[1], None))
+        save_signatures(session, rows, now)
         set_state(
             session,
             STATE,
@@ -167,7 +250,7 @@ def run(
             now,
         )
 
-    docs = write_documents(writer, pub, changed, now, prev)
+    docs = write_documents(writer, pub, [(d, j) for d, j, _row, _exp in signed], now)
     by_level: dict[str, int] = {}
     for _body, _sha, level in published.values():
         by_level[level.label] = by_level.get(level.label, 0) + 1
@@ -178,6 +261,8 @@ def run(
         by_level=by_level,
         entries={f: len(e) for f, e in new_entries.items()},
         documents=docs,
+        signed=len(signed),
+        backfill=len(set(backfill) - changed),
         modified=ts(now),
         unknown_sources=[s.source for s in status.sources if s.unknown],
     )

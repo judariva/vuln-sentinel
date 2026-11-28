@@ -53,6 +53,23 @@ Desde la F1a, en Azure, la API recibe un `UnavailableSigner` y responde **503** 
 Aceptada el 2026-11-27. Hasta que (a) esté implementada, la API sigue respondiendo 503 a los
 `.jws` y a `keys.json` en Azure.
 
+## Implementación de (a)
+
+- **Tabla `feed_signature`** (migración 0003): una fila por ruta con el sha256 de los bytes
+  firmados, el JWS y el `kid`. Lleva el cuerpo entero solo en lo que la API no puede reconstruir
+  igual: `alerts/latest.json` (depende del reloj de publish) y `keys.json` (la API no tiene la
+  clave). Las páginas selladas y los resúmenes caducan con la retención.
+- **Publish firma en la misma transacción** en la que guarda el feed y cambia `job_state`, que es
+  lo que hace recargar a la API. La API nunca ve un registro nuevo sin su firma. Firma lo que no
+  tiene firma de esos mismos bytes: registros cambiados, hasta 500 registros antiguos por
+  ejecución (relleno), páginas selladas, resúmenes de días cerrados y `latest.json`.
+- **La API sirve una firma solo si casa con los bytes que sirve.** Si no hay firma de esos bytes,
+  firma en el momento donde hay clave (local) o responde 503 (Azure).
+- **La cabeza del índice no se firma en Azure.** Cambia con cada petición. Lo verificable son las
+  páginas selladas (`/v1/feed/{feed}/changes/{AAAA-MM-DDTHH}.json`, ahora también en la API) y el
+  sha256 de cada registro.
+- **El rol de publish** escribe además en `feed_signature`; el de solo lectura la lee.
+
 ## Evidencia
 
 - En Azure, publish termina `Succeeded` con `KeyVaultSigner`, y cada firma se comprueba con la
@@ -60,3 +77,6 @@ Aceptada el 2026-11-27. Hasta que (a) esté implementada, la API sigue respondie
   funciona (pendiente en ADR-0008).
 - La API en Azure con `UnavailableSigner`: 200 en el JSON y 503 en los `.jws`
   (`tests/test_azure_runtime.py`).
+- Con (a): la API sin clave sirve las firmas de publish y verifican con su JWKS, una firma de otros
+  bytes nunca se sirve y la cabeza da 503 (`tests/test_presigned.py`). De punta a punta sobre
+  PostgreSQL, incluido el relleno de registros sin firma (`tests/test_jobs.py`).

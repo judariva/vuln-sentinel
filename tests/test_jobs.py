@@ -26,7 +26,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from tests.fakes import FakeTransport, fixture_bytes, ok
-from vs.feed.sign import jwks, verify_detached
+from vs.feed.sign import UnavailableSigner, jwks, verify_detached
 from vs.jobs import daily, ingest, investigate, publish
 from vs.jobs.settings import ROOT, Settings, run_main
 from vs.model.migrate import normalize_url, upgrade
@@ -145,8 +145,17 @@ def scalar(url: str, sql: str, **params):
     return found[0][0] if found else None
 
 
+def execute(url: str, sql: str, **params) -> None:
+    engine = create_engine(normalize_url(url))
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(sql), params)
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.db
-def test_entrypoints_end_to_end(db_url, tmp_path):
+def test_entrypoints_end_to_end(db_url, tmp_path, monkeypatch):
     s = settings(tmp_path, db_url)
 
     # 1. Carga inicial: nada alerta.
@@ -243,6 +252,45 @@ def test_entrypoints_end_to_end(db_url, tmp_path):
         assert client.get("/assets/app.js").headers["cache-control"].startswith("public")
         assert client.get("/v1/no-existe").status_code == 404
         assert client.post("/v1/feed/alerts/latest.json").status_code == 405
+
+    # ADR-0026: publish deja firmado todo registro publicado (y el JWKS y latest con su cuerpo).
+    n_records = scalar(db_url, "SELECT count(*) FROM feed_record")
+    assert (
+        scalar(db_url, "SELECT count(*) FROM feed_signature WHERE path LIKE '/v1/vulns/%'")
+        == n_records
+    )
+    stored_bodies = {
+        r[0] for r in rows(db_url, "SELECT path FROM feed_signature WHERE body IS NOT NULL")
+    }
+    assert stored_bodies == {
+        "/v1/feed/alerts/latest.json",
+        "/.well-known/vuln-sentinel/keys.json",
+    }
+
+    # Relleno: un registro sin firma guardada (p. ej. publicado antes de 0003) se firma en la
+    # siguiente ejecución aunque no haya cambiado.
+    execute(db_url, "DELETE FROM feed_signature WHERE path LIKE '/v1/vulns/%'")
+    assert publish.run(s, clock=lambda: T3 + timedelta(minutes=1)) == 0
+    assert (
+        scalar(db_url, "SELECT count(*) FROM feed_signature WHERE path LIKE '/v1/vulns/%'")
+        == n_records
+    )
+
+    # La API como en Azure: sin clave. Sirve las firmas de publish y verifican con su JWKS.
+    monkeypatch.setattr(
+        Settings,
+        "signer",
+        lambda self, feed, required=True: UnavailableSigner(feed.key_id),
+    )
+    with TestClient(build_app(settings(tmp_path, db_url))) as client:
+        keys_api = client.get("/.well-known/vuln-sentinel/keys.json")
+        assert keys_api.status_code == 200
+        for path in (f"/v1/vulns/VS-{NEW_KEV_KNOWN}.json", "/v1/feed/alerts/latest.json"):
+            doc = client.get(path)
+            jws_resp = client.get(path + ".jws")
+            assert doc.status_code == 200 and jws_resp.status_code == 200, path
+            assert verify_detached(jws_resp.text, doc.content, keys_api.json()), path
+        assert client.get("/v1/feed/all/changes.jws").status_code == 503
 
 
 def test_jobs_fail_without_database(tmp_path, monkeypatch):
