@@ -11,6 +11,11 @@ de datos que esa audiencia no puede ver.
 ADR-0008: cada documento sale como bytes exactos (`Document.body`) y su firma JWS detached se
 sirve en la misma ruta con `.jws`.
 
+ADR-0026: quien no tiene la clave (la API en Azure) sirve las firmas que dejó el job de
+publicación (`StoredSignature`). Una firma guardada solo se usa si sus bytes tienen el mismo
+sha256 que el documento que se sirve; si no, se firma en el momento o, sin clave,
+`SigningUnavailable` (503).
+
 Todo en memoria: la persistencia (PostgreSQL) y la escritura en R2 quedan fuera de esta tarea.
 """
 
@@ -50,7 +55,27 @@ JWS = "application/jose"
 IMMUTABLE = "public, max-age=31536000, immutable"
 HEAD = f"public, max-age={HEAD_TTL_SECONDS}"
 KEYS_PATH = "/.well-known/vuln-sentinel/keys.json"
+LATEST_PATH = "/v1/feed/alerts/latest.json"
 _TICK = timedelta(microseconds=1)
+
+
+@dataclass(frozen=True)
+class StoredSignature:
+    """Lo que el job de publicación deja firmado para la API (ADR-0026, tabla `feed_signature`).
+
+    `sha256` es el de los bytes firmados. `jws` es None en lo que no se firma (`keys.json`).
+    `body` solo en los documentos que la API no puede reconstruir igual.
+    """
+
+    path: str
+    sha256: str
+    jws: str | None
+    kid: str
+    body: bytes | None = None
+
+    def __post_init__(self) -> None:
+        if self.body is not None and sha256_hex(self.body) != self.sha256:
+            raise ValueError(f"el cuerpo guardado de {self.path} no tiene el sha256 declarado")
 
 
 @dataclass(frozen=True)
@@ -183,6 +208,7 @@ class FeedPublisher:
             "alerts": ChangeLog("alerts", retention, self.snapshot_url),
         }
         self._records: dict[str, _Published] = {}
+        self._stored: dict[str, StoredSignature] = {}
         self._last: datetime | None = None
         self.status: FeedStatus | None = None
 
@@ -334,7 +360,15 @@ class FeedPublisher:
     # -- documentos -----------------------------------------------------------------------------
 
     def _json(self, path: str, doc: Any, cache: str | None = None, status: int = 200) -> Document:
-        body = canonical_bytes(doc)
+        return self._json_bytes(path, canonical_bytes(doc), cache, status)
+
+    def json_document(self, path: str, doc: Any, cache: str | None = None) -> Document:
+        """Documento JSON canónico (mismos bytes que sirve la API para ese contenido)."""
+        return self._json(path, doc, cache)
+
+    def _json_bytes(
+        self, path: str, body: bytes, cache: str | None = None, status: int = 200
+    ) -> Document:
         headers = {
             "Content-Type": JSON,
             "X-VS-Schema": FEED_SCHEMA_VERSION,
@@ -344,9 +378,29 @@ class FeedPublisher:
             headers["Cache-Control"] = cache
         return Document(path, body, headers, status)
 
+    def load_signatures(self, stored: Iterable[StoredSignature]) -> None:
+        """Firmas y documentos que dejó el job de publicación (lo que sirve la API, ADR-0026)."""
+        for s in stored:
+            self._stored[s.path] = s
+
+    def stored_document(self, path: str, cache: str | None = HEAD) -> Document | None:
+        """Documento guardado tal cual lo publicó el job (`alerts/latest.json`, `keys.json`)."""
+        s = self._stored.get(path)
+        if s is None or s.body is None:
+            return None
+        return self._json_bytes(path, s.body, cache)
+
     def signature(self, doc: Document) -> Document:
-        """Firma JWS detached de los bytes exactos del documento, en `<ruta>.jws`."""
-        jws = sign_detached(doc.body, self.signer).encode("ascii")
+        """Firma JWS detached de los bytes exactos del documento, en `<ruta>.jws`.
+
+        Usa la firma guardada si es de estos mismos bytes; si no, firma con el firmante, que en un
+        proceso sin clave lanza `SigningUnavailable`.
+        """
+        s = self._stored.get(doc.path)
+        if s is not None and s.jws and s.sha256 == doc.sha256:
+            jws = s.jws.encode("ascii")
+        else:
+            jws = sign_detached(doc.body, self.signer).encode("ascii")
         headers = {"Content-Type": JWS, "X-VS-Schema": FEED_SCHEMA_VERSION}
         if "Cache-Control" in doc.headers:
             headers["Cache-Control"] = doc.headers["Cache-Control"]
@@ -439,7 +493,7 @@ class FeedPublisher:
             "generated_at": ts(now),
             "alerts": alerts,
         }
-        return self._json("/v1/feed/alerts/latest.json", doc, HEAD)
+        return self._json(LATEST_PATH, doc, HEAD)
 
     def gone_document(self, path: str, exc: Gone) -> Document:
         return self._json(path, exc.body(), status=410)
@@ -456,5 +510,6 @@ __all__ = [
     "FeedStatus",
     "Gone",
     "PublishStats",
+    "StoredSignature",
     "classify",
 ]

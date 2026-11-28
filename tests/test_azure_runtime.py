@@ -258,6 +258,7 @@ def test_grants_are_least_privilege():
     assert sorted(s.split(" ON ")[1].split(" TO ")[0] for s in writes) == [
         "feed_change",
         "feed_record",
+        "feed_signature",
         "job_state",
     ]
     for forbidden in ("ALL PRIVILEGES", "CREATE", "TRUNCATE", "SUPERUSER", "azure_pg_admin"):
@@ -415,7 +416,7 @@ def test_readonly_role_on_real_postgres(db_url):  # noqa: F811 - fixture importa
 @pytest.mark.db
 @pytest.mark.skipif(not os.environ.get("VS_TEST_DATABASE_URL"), reason="sin VS_TEST_DATABASE_URL")
 def test_publish_grants_on_real_postgres(db_url):  # noqa: F811 - fixture importada de test_db
-    """Los GRANT reales sobre el esquema migrado: lee todo y solo escribe en sus tres tablas."""
+    """Los GRANT reales sobre el esquema migrado: lee todo y solo escribe en sus cuatro tablas."""
     upgrade(db_url)
     role = f"vs-test-publish-{uuid.uuid4().hex[:8]}"
     engine = create_engine(db_url)
@@ -441,8 +442,8 @@ def test_publish_grants_on_real_postgres(db_url):  # noqa: F811 - fixture import
             assert tables and all(can(t, "SELECT") for t in tables)
             writable = {t for t in tables if can(t, "INSERT") or can(t, "UPDATE")}
             deletable = {t for t in tables if can(t, "DELETE")}
-            assert writable == {"feed_record", "feed_change", "job_state"}
-            assert deletable == {"feed_record", "feed_change"}
+            assert writable == {"feed_record", "feed_change", "feed_signature", "job_state"}
+            assert deletable == {"feed_record", "feed_change", "feed_signature"}
             assert not any(can(t, "TRUNCATE") for t in tables)
     finally:
         with engine.begin() as conn:

@@ -3,8 +3,10 @@
 Sirve lo que publica `FeedPublisher` (T5) y las métricas precalculadas en `metric_daily`:
 
 - `/v1/feed/{all,alerts}/changes?since=&limit=` (+ `.jws`): índice con cursor, TTL de 60 s; `410`
-  más allá de la retención, `400` con un cursor mal formado.
-- `/v1/feed/alerts/latest.json` (+ `.jws`).
+  más allá de la retención, `400` con un cursor mal formado. La cabeza solo lleva firma donde hay
+  clave (en Azure, 503): lo verificable son las páginas selladas.
+- `/v1/feed/{all,alerts}/changes/{AAAA-MM-DDTHH}.json` (+ `.jws`): hora cerrada, inmutable.
+- `/v1/feed/alerts/latest.json` (+ `.jws`): el que dejó el job de publicación, si lo hay.
 - `/v1/vulns/{id}.json` (+ `.jws`): registro OSV completo, `ETag` igual a su hash; `304` con
   `If-None-Match`.
 - `/v1/digest/{fecha}.json` (+ `.jws`): resumen de un día cerrado, inmutable.
@@ -14,6 +16,8 @@ Sirve lo que publica `FeedPublisher` (T5) y las métricas precalculadas en `metr
 - `/admin/*`: esqueleto. Exige el JWT de Access y no tiene lógica (501).
 
 Reglas:
+- **Sin clave en Azure (ADR-0026).** Las firmas y el JWKS salen de lo que guardó el job de
+  publicación (`feed_signature`); una firma solo se sirve si casa con los bytes servidos.
 - **Solo lectura.** Las rutas públicas solo admiten `GET`. Nada escribe en la base de datos ni en
   el publicador.
 - **Audiencia de la instancia.** La API pública sirve el feed de la audiencia `public` de la
@@ -36,10 +40,10 @@ from fastapi.responses import Response
 from vs.api.access import HEADER as ACCESS_HEADER
 from vs.api.access import AccessConfig, AccessError, AccessVerifier
 from vs.api.digest import DayNotClosedError, build_digest
-from vs.feed.changes import FEEDS, CursorError, Gone
+from vs.feed.changes import FEEDS, CursorError, Gone, NotSealedError
 from vs.feed.config import FEED_SCHEMA_VERSION
 from vs.feed.osv import ID_RE, canonical_bytes, sha256_hex
-from vs.feed.publish import HEAD, IMMUTABLE, JSON, Document, FeedPublisher
+from vs.feed.publish import HEAD, IMMUTABLE, JSON, KEYS_PATH, LATEST_PATH, Document, FeedPublisher
 from vs.feed.rights import Audience, audience_for
 from vs.feed.sign import Signer, SigningUnavailable
 from vs.instance import Instance
@@ -268,8 +272,9 @@ def create_app(cfg: ApiConfig) -> FastAPI:
 
     @app.exception_handler(SigningUnavailable)
     async def signing_unavailable(request: Request, exc: SigningUnavailable):
-        # La API en Azure no firma (D-3): los `.jws` y las claves salen del job de publicación.
-        return error(503, "signing_unavailable", "este origen no sirve firmas ni claves")
+        # La API en Azure no firma (ADR-0026): sirve lo que firmó el job de publicación. Aquí
+        # llega lo que no tiene firma guardada de esos bytes (la cabeza del índice o lo pendiente).
+        return error(503, "signing_unavailable", "este documento no tiene firma en este origen")
 
     @app.middleware("http")
     async def common_headers(request: Request, call_next):
@@ -312,13 +317,37 @@ def create_app(cfg: ApiConfig) -> FastAPI:
         q = request.query_params
         return maybe_signed(request, changes_doc(feed, q.get("since"), q.get("limit")), jws=True)
 
+    def sealed_doc(feed: str, hour: str) -> Document | Response:
+        if feed not in FEEDS:
+            return error(404, "not_found", f"feed no válido: {feed}")
+        try:
+            return pub.sealed_page(feed, hour, cfg.clock())
+        except NotSealedError as exc:
+            return error(404, "not_found", str(exc))
+        except Gone as exc:
+            return pub.gone_document(f"/v1/feed/{feed}/changes/{hour}.json", exc)
+        except ValueError as exc:
+            return error(400, "bad_request", str(exc))
+
+    @app.get("/v1/feed/{feed}/changes/{hour}.json")
+    def feed_sealed(request: Request, feed: str, hour: str):
+        return maybe_signed(request, sealed_doc(feed, hour), jws=False)
+
+    @app.get("/v1/feed/{feed}/changes/{hour}.json.jws")
+    def feed_sealed_jws(request: Request, feed: str, hour: str):
+        return maybe_signed(request, sealed_doc(feed, hour), jws=True)
+
+    def latest_doc() -> Document:
+        # El que dejó el job de publicación (sus bytes son los firmados); si no hay, el actual.
+        return pub.stored_document(LATEST_PATH) or pub.alerts_latest(cfg.clock())
+
     @app.get("/v1/feed/alerts/latest.json")
     def alerts_latest(request: Request):
-        return send(request, pub.alerts_latest(cfg.clock()))
+        return send(request, latest_doc())
 
     @app.get("/v1/feed/alerts/latest.json.jws")
     def alerts_latest_jws(request: Request):
-        return send(request, pub.signature(pub.alerts_latest(cfg.clock())))
+        return send(request, pub.signature(latest_doc()))
 
     def vuln_doc(ident: str) -> Document | Response:
         if not ID_RE.fullmatch(ident):
@@ -359,7 +388,10 @@ def create_app(cfg: ApiConfig) -> FastAPI:
 
     @app.get("/.well-known/vuln-sentinel/keys.json")
     def keys(request: Request):
-        return send(request, pub.keys(cfg.previous_signers))
+        # Con claves anteriores configuradas (rotación), el JWKS se compone aquí; si no, el que
+        # guardó el job de publicación (la API en Azure no tiene la clave para generarlo).
+        stored = None if cfg.previous_signers else pub.stored_document(KEYS_PATH)
+        return send(request, stored or pub.keys(cfg.previous_signers))
 
     # -- métricas ------------------------------------------------------------------------------
 
